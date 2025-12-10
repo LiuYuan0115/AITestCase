@@ -1,0 +1,51 @@
+# ========================================
+# PluginCode 项目根目录 Git Ignore
+# ========================================
+
+# 环境变量（所有子项目 - 包含敏感密钥）
+**/.env
+**/.env.local
+**/.env.*.local
+
+# 依赖目录
+**/node_modules/
+**/venv/
+**/__pycache__/
+
+# 构建产物
+**/.output/
+**/dist/
+**/*.zip
+
+# WXT
+**/.wxt/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# 日志
+*.log
+**/agent.log
+
+# 临时文件
+*.tmp
+*.temp
+
+# 测试截图
+**/screenshots/*.png
+**/screenshots/*.jpg
+
+# Python
+*.py[cod]
+*$py.class
+*.so
+

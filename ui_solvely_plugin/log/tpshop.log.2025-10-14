@@ -1,0 +1,43 @@
+2025-10-14 15:58:33,984 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 15:58:49,552 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 16:02:46,303 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 16:03:12,703 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 16:07:50,975 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 16:42:44,648 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 16:43:04,105 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 16:52:29,958 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 16:52:40,939 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 17:03:50,848 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 17:05:47,048 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 17:15:31,084 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 17:32:29,225 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 17:49:32,281 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 17:53:18,379 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 17:55:05,737 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 17:57:32,596 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 17:59:19,009 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 18:00:54,139 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 18:02:04,717 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 18:03:52,264 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 18:04:24,203 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 18:05:42,590 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 18:06:11,284 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 18:42:15,526 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 18:43:08,368 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 18:44:34,032 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 18:45:55,029 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 18:47:22,149 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 18:53:18,462 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 18:58:40,169 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 19:03:53,836 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 19:05:22,361 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 19:07:00,787 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 19:07:00,788 WARNING [urllib3.connectionpool] [connectionpool.py:urlopen:827] - Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x106d656d0>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/b89e6a43a4bb72f52483e5d342b35f14
+2025-10-14 19:07:00,789 WARNING [urllib3.connectionpool] [connectionpool.py:urlopen:827] - Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x106d65a90>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/b89e6a43a4bb72f52483e5d342b35f14
+2025-10-14 19:07:00,790 WARNING [urllib3.connectionpool] [connectionpool.py:urlopen:827] - Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x106cfa3f0>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/b89e6a43a4bb72f52483e5d342b35f14
+2025-10-14 19:07:14,716 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 19:08:55,965 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 19:11:11,030 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 19:18:23,153 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 19:19:26,640 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-10-14 19:20:29,783 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
