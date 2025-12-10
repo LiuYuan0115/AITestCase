@@ -1,0 +1,41 @@
+variables:
+  CONTAINER_IMAGE_FULLPATH: $CONTAINER_CI_HOSTNAME/$CONTAINER_REGISTRY_NAMESPACE/$CI_PROJECT_NAME
+  PROJECT_DIR: /app/$CI_PROJECT_NAME
+
+stages:
+  - build_image
+  - deploy
+
+build_image:
+  stage: build_image
+  only:
+    - develop
+    - master
+    - feature/devops
+  cache:
+    - key:
+        files:
+          - package-lock.json
+      paths:
+        - ./node_modules
+  image: quay.io/buildah/stable:latest
+  script:
+    - echo $CONTAINER_REGISTRY_PASSWORD | buildah login --username $CONTAINER_REGISTRY_USERNAME --password-stdin $CONTAINER_CI_HOSTNAME
+    - CONTAINER=$(buildah from node:22-alpine)
+    - buildah copy $CONTAINER . $PROJECT_DIR
+    - buildah config --workingdir $PROJECT_DIR $CONTAINER
+    - buildah run $CONTAINER -- npm install --prefix $PROJECT_DIR
+    - buildah commit $CONTAINER $CONTAINER_IMAGE_FULLPATH:ci-$CI_PIPELINE_ID
+    - buildah tag $CONTAINER_IMAGE_FULLPATH:ci-$CI_PIPELINE_ID $CONTAINER_IMAGE_FULLPATH:ci-latest
+    - buildah push $CONTAINER_IMAGE_FULLPATH:ci-$CI_PIPELINE_ID
+    - buildah push $CONTAINER_IMAGE_FULLPATH:ci-latest
+
+deploy-test:
+  stage: deploy
+  only:
+    - develop
+    - feature/devops
+  image: alpine/kubectl:latest
+  script:
+    - kubectl --kubeconfig $KUBECONFIG_APN set image deployment/${CI_PROJECT_NAME}-deployment $CI_PROJECT_NAME=$CONTAINER_IMAGE_FULLPATH:ci-$CI_PIPELINE_ID -n $CONTAINER_REGISTRY_NAMESPACE
+    - kubectl --kubeconfig $KUBECONFIG_APN rollout status deployment/${CI_PROJECT_NAME}-deployment -n $CONTAINER_REGISTRY_NAMESPACE --timeout 3m

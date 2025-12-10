@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Solvely.ai PDF View</title>
+    <!-- 移除旧版全局脚本，改用 ESM 导入 -->
+    <!-- <script src="/pdf.min.js"></script> -->
+    <link href="~/styles/tailwind.css" rel="stylesheet" />
+    <!-- 由组件内 import 'pdfjs-dist/web/pdf_viewer.css' 提供官方样式 -->
+    <!-- <link href="./style/pdf_viewer.min.css" rel="stylesheet" /> -->
+    <style>
+      html {
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app-root"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

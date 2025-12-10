@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <rect x="1.5" y="2.5" width="17" height="15" rx="1.5" stroke="currentColor" />
+    <rect x="9.25" y="3.25" width="0.5" height="13.5" fill="currentColor" stroke="currentColor"
+        stroke-width="0.5" />
+    <mask id="path-3-inside-1_2840_1252" fill="currentColor">
+        <path d="M12 6H16V7H12V6Z" />
+    </mask>
+    <path d="M12 6H16V7H12V6Z" fill="currentColor" />
+    <path
+        d="M12 6V5H11V6H12ZM16 6H17V5H16V6ZM16 7V8H17V7H16ZM12 7H11V8H12V7ZM12 6V7H16V6V5H12V6ZM16 6H15V7H16H17V6H16ZM16 7V6H12V7V8H16V7ZM12 7H13V6H12H11V7H12Z"
+        fill="currentColor" mask="url(#path-3-inside-1_2840_1252)" />
+    <mask id="path-5-inside-2_2840_1252" fill="currentColor">
+        <path d="M12 9.5H16V10.5H12V9.5Z" />
+    </mask>
+    <path d="M12 9.5H16V10.5H12V9.5Z" fill="currentColor" />
+    <path
+        d="M12 9.5V8.5H11V9.5H12ZM16 9.5H17V8.5H16V9.5ZM16 10.5V11.5H17V10.5H16ZM12 10.5H11V11.5H12V10.5ZM12 9.5V10.5H16V9.5V8.5H12V9.5ZM16 9.5H15V10.5H16H17V9.5H16ZM16 10.5V9.5H12V10.5V11.5H16V10.5ZM12 10.5H13V9.5H12H11V10.5H12Z"
+        fill="currentColor" mask="url(#path-5-inside-2_2840_1252)" />
+    <rect x="12.25" y="13.25" width="3.5" height="0.5" fill="currentColor" stroke="currentColor"
+        stroke-width="0.5" />
+</svg>
