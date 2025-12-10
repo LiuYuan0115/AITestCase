@@ -49,3 +49,12 @@
 *$py.class
 *.so
 
+# 临时截图文件
+screenshot_*.png
+**/screenshot_*.png
+
+# 临时 HTML
+image_gallery.html
+
+# 子目录 .idea
+**/.idea/
