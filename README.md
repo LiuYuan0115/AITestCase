@@ -13,6 +13,7 @@ PluginCode/
 ├── agent-server/          # 🐍 Python 后端服务 (FastAPI)
 │   ├── agent_server.py    # 主服务文件
 │   ├── requirements.txt   # Python 依赖
+│   ├── run_agent.sh       # 启动脚本
 │   └── .env              # 环境变量配置（需自行创建）
 │
 ├── solvely-mvp/           # 🖥️ Chrome 扩展前端 (Vue.js + WXT)
@@ -24,10 +25,14 @@ PluginCode/
 │   ├── package.json      # Node 依赖
 │   └── .env              # 环境变量配置（需自行创建）
 │
+├── 方案/                   # 📋 设计文档
+│   ├── 智能体方案.md       # 智能体架构设计
+│   ├── 新增方案细节.md     # 功能细节说明
+│   ├── 插件自动化测试.md   # 自动化测试方案
+│   └── 生成示例            # 输出格式示例
+│
 └── README.md             # 本文件
 ```
-
-> ⚠️ 其他目录（`activity-pages`, `solvely-browser-extension`, `solvely-plugin-config`, `solvely-web-server`）为历史遗留代码，**本项目不依赖**。
 
 ---
 
