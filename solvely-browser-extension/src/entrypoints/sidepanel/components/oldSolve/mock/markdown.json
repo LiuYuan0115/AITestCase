@@ -1,0 +1,141 @@
+[
+  { "statusCode": 200, "data": { "command": "pending", "type": "init", "renderStyle": "v9" } },
+  {
+    "statusCode": 200,
+    "data": {
+      "content": "{\"questionText\":\"1．下列哪一历史事件被认为是西方人文主义精神的重要源头？\\nA．罗马法的颁布\\nB．十字军东征\\nC．希腊哲学的兴起\\nD．文艺复兴运动\\n2．以下哪种地理现象与板块构造理论关系最为密切？\\nA．季风气候的形成\\nB．地震和火山的分布\\nC．陆地风化作用的发生\\nD．全球气候变暖的趋势\\n3．在经济学中，以下哪一项最能体现＂机会成本＂的概念？\\nA．生产一种商品所需要的全部费用\\nB．为了得到某种东西而放弃的最好的东西\\nC．销售一种商品所获得的全部利润\\nD．购买一种商品所支付的货币价格\",\"isImageSolve\":false,\"imageUrl\":\"https://static.justsolvely.com/questionImage/855436a5-48b7-4515-a710-84f8ce13a24f.webp\",\"auto_rotate_degrees\":0}",
+      "command": "pending",
+      "contentSectionType": "json",
+      "contentSection": "ocr"
+    }
+  },
+  {
+    "statusCode": 200,
+    "data": {
+      "content": "{\"isSmallQuestions\":true,\"smallQuestions\":true,\"isImageSolve\":false,\"isGraph\":false,\"questionCategory\":\"multiple_choice\",\"completeness\":\"completeness\",\"realSubject\":\"others\",\"subject\":\"others\"}",
+      "command": "pending",
+      "contentSectionType": "json",
+      "contentSection": "questionType"
+    }
+  },
+  {
+    "statusCode": 200,
+    "data": { "content": "", "command": "pending", "contentSection": "solving", "contentSectionType": "json/overwrite", "contentSubSection": "solving-output" }
+  },
+  { "statusCode": 200, "data": { "content": "1", "command": "pending", "contentType": "markdown" } },
+  { "statusCode": 200, "data": { "content": "1.  ", "command": "pending", "contentType": "markdown" } },
+  { "statusCode": 200, "data": { "content": "1.  The answer is C. 希腊哲学的兴起 (The rise of", "command": "pending", "contentType": "markdown" } },
+  {
+    "statusCode": 200,
+    "data": {
+      "content": "1.  The answer is C. 希腊哲学的兴起 (The rise of Greek philosophy)\n\n    *   **Explanation:** Greek philosophy, particularly the works of",
+      "command": "pending",
+      "contentType": "markdown"
+    }
+  },
+  {
+    "statusCode": 200,
+    "data": {
+      "content": "1.  The answer is C. 希腊哲学的兴起 (The rise of Greek philosophy)\n\n    *   **Explanation:** Greek philosophy, particularly the works of thinkers like Socrates, Plato, and Aristotle, placed a strong emphasis on human reason, ethics, and the individual's role in society. This focus on human potential",
+      "command": "pending",
+      "contentType": "markdown"
+    }
+  },
+  {
+    "statusCode": 200,
+    "data": {
+      "content": "1.  The answer is C. 希腊哲学的兴起 (The rise of Greek philosophy)\n\n    *   **Explanation:** Greek philosophy, particularly the works of thinkers like Socrates, Plato, and Aristotle, placed a strong emphasis on human reason, ethics, and the individual's role in society. This focus on human potential and rational inquiry is considered a foundational element of Western humanism.\n    *   **Why other options are incorrect:**\n        *   A. 罗马法的颁",
+      "command": "pending",
+      "contentType": "markdown"
+    }
+  },
+  {
+    "statusCode": 200,
+    "data": {
+      "content": "1.  The answer is C. 希腊哲学的兴起 (The rise of Greek philosophy)\n\n    *   **Explanation:** Greek philosophy, particularly the works of thinkers like Socrates, Plato, and Aristotle, placed a strong emphasis on human reason, ethics, and the individual's role in society. This focus on human potential and rational inquiry is considered a foundational element of Western humanism.\n    *   **Why other options are incorrect:**\n        *   A. 罗马法的颁布 (The promulgation of Roman law): While Roman law was highly influential in shaping Western legal systems, its primary focus was on legal structures and governance, not directly on the philosophical underpinnings of humanism.\n        *   B.",
+      "command": "pending",
+      "contentType": "markdown"
+    }
+  },
+  {
+    "statusCode": 200,
+    "data": {
+      "content": "1.  The answer is C. 希腊哲学的兴起 (The rise of Greek philosophy)\n\n    *   **Explanation:** Greek philosophy, particularly the works of thinkers like Socrates, Plato, and Aristotle, placed a strong emphasis on human reason, ethics, and the individual's role in society. This focus on human potential and rational inquiry is considered a foundational element of Western humanism.\n    *   **Why other options are incorrect:**\n        *   A. 罗马法的颁布 (The promulgation of Roman law): While Roman law was highly influential in shaping Western legal systems, its primary focus was on legal structures and governance, not directly on the philosophical underpinnings of humanism.\n        *   B. 十字军东征 (The Crusades): The Crusades were a series of religious wars that, while having significant cultural and economic impacts, did not directly contribute to the development of humanism as a philosophical movement.\n        *   D. 文",
+      "command": "pending",
+      "contentType": "markdown"
+    }
+  },
+  {
+    "statusCode": 200,
+    "data": {
+      "content": "1.  The answer is C. 希腊哲学的兴起 (The rise of Greek philosophy)\n\n    *   **Explanation:** Greek philosophy, particularly the works of thinkers like Socrates, Plato, and Aristotle, placed a strong emphasis on human reason, ethics, and the individual's role in society. This focus on human potential and rational inquiry is considered a foundational element of Western humanism.\n    *   **Why other options are incorrect:**\n        *   A. 罗马法的颁布 (The promulgation of Roman law): While Roman law was highly influential in shaping Western legal systems, its primary focus was on legal structures and governance, not directly on the philosophical underpinnings of humanism.\n        *   B. 十字军东征 (The Crusades): The Crusades were a series of religious wars that, while having significant cultural and economic impacts, did not directly contribute to the development of humanism as a philosophical movement.\n        *   D. 文艺复兴运动 (The Renaissance movement): The Renaissance is indeed a major period for the flourishing of humanism, but it is considered a *reawakening* and *development* of humanist ideas, drawing heavily from classical Greek and Roman thought. Therefore, Greek philosophy is the *source*, while the Renaissance is a",
+      "command": "pending",
+      "contentType": "markdown"
+    }
+  },
+  {
+    "statusCode": 200,
+    "data": {
+      "content": "1.  The answer is C. 希腊哲学的兴起 (The rise of Greek philosophy)\n\n    *   **Explanation:** Greek philosophy, particularly the works of thinkers like Socrates, Plato, and Aristotle, placed a strong emphasis on human reason, ethics, and the individual's role in society. This focus on human potential and rational inquiry is considered a foundational element of Western humanism.\n    *   **Why other options are incorrect:**\n        *   A. 罗马法的颁布 (The promulgation of Roman law): While Roman law was highly influential in shaping Western legal systems, its primary focus was on legal structures and governance, not directly on the philosophical underpinnings of humanism.\n        *   B. 十字军东征 (The Crusades): The Crusades were a series of religious wars that, while having significant cultural and economic impacts, did not directly contribute to the development of humanism as a philosophical movement.\n        *   D. 文艺复兴运动 (The Renaissance movement): The Renaissance is indeed a major period for the flourishing of humanism, but it is considered a *reawakening* and *development* of humanist ideas, drawing heavily from classical Greek and Roman thought. Therefore, Greek philosophy is the *source*, while the Renaissance is a later manifestation.\n\n2.  The answer is B. 地震和火山的分布 (The distribution of earthquakes and volcanoes)\n\n    *   **Explanation:** Plate tectonics is the scientific theory that describes the large-scale motion of Earth's lithosphere. The boundaries where these tectonic plates interact (converge, diverge, or slide",
+      "command": "pending",
+      "contentType": "markdown"
+    }
+  },
+  {
+    "statusCode": 200,
+    "data": {
+      "content": "1.  The answer is C. 希腊哲学的兴起 (The rise of Greek philosophy)\n\n    *   **Explanation:** Greek philosophy, particularly the works of thinkers like Socrates, Plato, and Aristotle, placed a strong emphasis on human reason, ethics, and the individual's role in society. This focus on human potential and rational inquiry is considered a foundational element of Western humanism.\n    *   **Why other options are incorrect:**\n        *   A. 罗马法的颁布 (The promulgation of Roman law): While Roman law was highly influential in shaping Western legal systems, its primary focus was on legal structures and governance, not directly on the philosophical underpinnings of humanism.\n        *   B. 十字军东征 (The Crusades): The Crusades were a series of religious wars that, while having significant cultural and economic impacts, did not directly contribute to the development of humanism as a philosophical movement.\n        *   D. 文艺复兴运动 (The Renaissance movement): The Renaissance is indeed a major period for the flourishing of humanism, but it is considered a *reawakening* and *development* of humanist ideas, drawing heavily from classical Greek and Roman thought. Therefore, Greek philosophy is the *source*, while the Renaissance is a later manifestation.\n\n2.  The answer is B. 地震和火山的分布 (The distribution of earthquakes and volcanoes)\n\n    *   **Explanation:** Plate tectonics is the scientific theory that describes the large-scale motion of Earth's lithosphere. The boundaries where these tectonic plates interact (converge, diverge, or slide past each other) are the primary locations for seismic activity (earthquakes) and volcanic eruptions.\n    *   **Why other options are incorrect:**\n        *   A. 季风气候的形成 (The formation of monsoon climate): Monsoon climates are primarily driven by differential heating of land and sea, leading to seasonal",
+      "command": "pending",
+      "contentType": "markdown"
+    }
+  },
+  {
+    "statusCode": 200,
+    "data": {
+      "content": "1.  The answer is C. 希腊哲学的兴起 (The rise of Greek philosophy)\n\n    *   **Explanation:** Greek philosophy, particularly the works of thinkers like Socrates, Plato, and Aristotle, placed a strong emphasis on human reason, ethics, and the individual's role in society. This focus on human potential and rational inquiry is considered a foundational element of Western humanism.\n    *   **Why other options are incorrect:**\n        *   A. 罗马法的颁布 (The promulgation of Roman law): While Roman law was highly influential in shaping Western legal systems, its primary focus was on legal structures and governance, not directly on the philosophical underpinnings of humanism.\n        *   B. 十字军东征 (The Crusades): The Crusades were a series of religious wars that, while having significant cultural and economic impacts, did not directly contribute to the development of humanism as a philosophical movement.\n        *   D. 文艺复兴运动 (The Renaissance movement): The Renaissance is indeed a major period for the flourishing of humanism, but it is considered a *reawakening* and *development* of humanist ideas, drawing heavily from classical Greek and Roman thought. Therefore, Greek philosophy is the *source*, while the Renaissance is a later manifestation.\n\n2.  The answer is B. 地震和火山的分布 (The distribution of earthquakes and volcanoes)\n\n    *   **Explanation:** Plate tectonics is the scientific theory that describes the large-scale motion of Earth's lithosphere. The boundaries where these tectonic plates interact (converge, diverge, or slide past each other) are the primary locations for seismic activity (earthquakes) and volcanic eruptions.\n    *   **Why other options are incorrect:**\n        *   A. 季风气候的形成 (The formation of monsoon climate): Monsoon climates are primarily driven by differential heating of land and sea, leading to seasonal shifts in wind patterns, not directly by plate tectonics.\n        *   C. 陆地风化作用的发生 (The occurrence of terrestrial weathering): Weathering is the process of breaking down rocks and minerals on Earth's surface, influenced by climate, water, and biological activity, not directly by plate",
+      "command": "pending",
+      "contentType": "markdown"
+    }
+  },
+  {
+    "statusCode": 200,
+    "data": {
+      "content": "1.  The answer is C. 希腊哲学的兴起 (The rise of Greek philosophy)\n\n    *   **Explanation:** Greek philosophy, particularly the works of thinkers like Socrates, Plato, and Aristotle, placed a strong emphasis on human reason, ethics, and the individual's role in society. This focus on human potential and rational inquiry is considered a foundational element of Western humanism.\n    *   **Why other options are incorrect:**\n        *   A. 罗马法的颁布 (The promulgation of Roman law): While Roman law was highly influential in shaping Western legal systems, its primary focus was on legal structures and governance, not directly on the philosophical underpinnings of humanism.\n        *   B. 十字军东征 (The Crusades): The Crusades were a series of religious wars that, while having significant cultural and economic impacts, did not directly contribute to the development of humanism as a philosophical movement.\n        *   D. 文艺复兴运动 (The Renaissance movement): The Renaissance is indeed a major period for the flourishing of humanism, but it is considered a *reawakening* and *development* of humanist ideas, drawing heavily from classical Greek and Roman thought. Therefore, Greek philosophy is the *source*, while the Renaissance is a later manifestation.\n\n2.  The answer is B. 地震和火山的分布 (The distribution of earthquakes and volcanoes)\n\n    *   **Explanation:** Plate tectonics is the scientific theory that describes the large-scale motion of Earth's lithosphere. The boundaries where these tectonic plates interact (converge, diverge, or slide past each other) are the primary locations for seismic activity (earthquakes) and volcanic eruptions.\n    *   **Why other options are incorrect:**\n        *   A. 季风气候的形成 (The formation of monsoon climate): Monsoon climates are primarily driven by differential heating of land and sea, leading to seasonal shifts in wind patterns, not directly by plate tectonics.\n        *   C. 陆地风化作用的发生 (The occurrence of terrestrial weathering): Weathering is the process of breaking down rocks and minerals on Earth's surface, influenced by climate, water, and biological activity, not directly by plate tectonics.\n        *   D. 全球气候变暖的趋势 (The trend of global warming): Global warming is primarily caused by the increase of greenhouse gases in the atmosphere due to human activities, not by plate tectonics.\n\n3.  The answer is B. 为了得到某种东西而放弃的最好的东西 (The",
+      "command": "pending",
+      "contentType": "markdown"
+    }
+  },
+  {
+    "statusCode": 200,
+    "data": {
+      "content": "1.  The answer is C. 希腊哲学的兴起 (The rise of Greek philosophy)\n\n    *   **Explanation:** Greek philosophy, particularly the works of thinkers like Socrates, Plato, and Aristotle, placed a strong emphasis on human reason, ethics, and the individual's role in society. This focus on human potential and rational inquiry is considered a foundational element of Western humanism.\n    *   **Why other options are incorrect:**\n        *   A. 罗马法的颁布 (The promulgation of Roman law): While Roman law was highly influential in shaping Western legal systems, its primary focus was on legal structures and governance, not directly on the philosophical underpinnings of humanism.\n        *   B. 十字军东征 (The Crusades): The Crusades were a series of religious wars that, while having significant cultural and economic impacts, did not directly contribute to the development of humanism as a philosophical movement.\n        *   D. 文艺复兴运动 (The Renaissance movement): The Renaissance is indeed a major period for the flourishing of humanism, but it is considered a *reawakening* and *development* of humanist ideas, drawing heavily from classical Greek and Roman thought. Therefore, Greek philosophy is the *source*, while the Renaissance is a later manifestation.\n\n2.  The answer is B. 地震和火山的分布 (The distribution of earthquakes and volcanoes)\n\n    *   **Explanation:** Plate tectonics is the scientific theory that describes the large-scale motion of Earth's lithosphere. The boundaries where these tectonic plates interact (converge, diverge, or slide past each other) are the primary locations for seismic activity (earthquakes) and volcanic eruptions.\n    *   **Why other options are incorrect:**\n        *   A. 季风气候的形成 (The formation of monsoon climate): Monsoon climates are primarily driven by differential heating of land and sea, leading to seasonal shifts in wind patterns, not directly by plate tectonics.\n        *   C. 陆地风化作用的发生 (The occurrence of terrestrial weathering): Weathering is the process of breaking down rocks and minerals on Earth's surface, influenced by climate, water, and biological activity, not directly by plate tectonics.\n        *   D. 全球气候变暖的趋势 (The trend of global warming): Global warming is primarily caused by the increase of greenhouse gases in the atmosphere due to human activities, not by plate tectonics.\n\n3.  The answer is B. 为了得到某种东西而放弃的最好的东西 (The best alternative foregone when making a choice)\n\n    *   **Explanation:** Opportunity cost is a fundamental concept in economics that refers to the value of the next best alternative that was not taken when a decision was made. It highlights the trade-offs inherent in every choice.\n    *   **Why other options are incorrect",
+      "command": "pending",
+      "contentType": "markdown"
+    }
+  },
+  {
+    "statusCode": 200,
+    "data": {
+      "content": "1.  The answer is C. 希腊哲学的兴起 (The rise of Greek philosophy)\n\n    *   **Explanation:** Greek philosophy, particularly the works of thinkers like Socrates, Plato, and Aristotle, placed a strong emphasis on human reason, ethics, and the individual's role in society. This focus on human potential and rational inquiry is considered a foundational element of Western humanism.\n    *   **Why other options are incorrect:**\n        *   A. 罗马法的颁布 (The promulgation of Roman law): While Roman law was highly influential in shaping Western legal systems, its primary focus was on legal structures and governance, not directly on the philosophical underpinnings of humanism.\n        *   B. 十字军东征 (The Crusades): The Crusades were a series of religious wars that, while having significant cultural and economic impacts, did not directly contribute to the development of humanism as a philosophical movement.\n        *   D. 文艺复兴运动 (The Renaissance movement): The Renaissance is indeed a major period for the flourishing of humanism, but it is considered a *reawakening* and *development* of humanist ideas, drawing heavily from classical Greek and Roman thought. Therefore, Greek philosophy is the *source*, while the Renaissance is a later manifestation.\n\n2.  The answer is B. 地震和火山的分布 (The distribution of earthquakes and volcanoes)\n\n    *   **Explanation:** Plate tectonics is the scientific theory that describes the large-scale motion of Earth's lithosphere. The boundaries where these tectonic plates interact (converge, diverge, or slide past each other) are the primary locations for seismic activity (earthquakes) and volcanic eruptions.\n    *   **Why other options are incorrect:**\n        *   A. 季风气候的形成 (The formation of monsoon climate): Monsoon climates are primarily driven by differential heating of land and sea, leading to seasonal shifts in wind patterns, not directly by plate tectonics.\n        *   C. 陆地风化作用的发生 (The occurrence of terrestrial weathering): Weathering is the process of breaking down rocks and minerals on Earth's surface, influenced by climate, water, and biological activity, not directly by plate tectonics.\n        *   D. 全球气候变暖的趋势 (The trend of global warming): Global warming is primarily caused by the increase of greenhouse gases in the atmosphere due to human activities, not by plate tectonics.\n\n3.  The answer is B. 为了得到某种东西而放弃的最好的东西 (The best alternative foregone when making a choice)\n\n    *   **Explanation:** Opportunity cost is a fundamental concept in economics that refers to the value of the next best alternative that was not taken when a decision was made. It highlights the trade-offs inherent in every choice.\n    *   **Why other options are incorrect:**\n        *   A. 生产一种商品所需要的全部费用 (All costs required to produce a commodity): This describes the total cost of production, which includes explicit costs, but doesn't specifically capture the *foregone alternative*.\n        *   C. 销售一种商品所获得的全部利润 (All profits",
+      "command": "pending",
+      "contentType": "markdown"
+    }
+  },
+  {
+    "statusCode": 200,
+    "data": {
+      "content": "1.  The answer is C. 希腊哲学的兴起 (The rise of Greek philosophy)\n\n    *   **Explanation:** Greek philosophy, particularly the works of thinkers like Socrates, Plato, and Aristotle, placed a strong emphasis on human reason, ethics, and the individual's role in society. This focus on human potential and rational inquiry is considered a foundational element of Western humanism.\n    *   **Why other options are incorrect:**\n        *   A. 罗马法的颁布 (The promulgation of Roman law): While Roman law was highly influential in shaping Western legal systems, its primary focus was on legal structures and governance, not directly on the philosophical underpinnings of humanism.\n        *   B. 十字军东征 (The Crusades): The Crusades were a series of religious wars that, while having significant cultural and economic impacts, did not directly contribute to the development of humanism as a philosophical movement.\n        *   D. 文艺复兴运动 (The Renaissance movement): The Renaissance is indeed a major period for the flourishing of humanism, but it is considered a *reawakening* and *development* of humanist ideas, drawing heavily from classical Greek and Roman thought. Therefore, Greek philosophy is the *source*, while the Renaissance is a later manifestation.\n\n2.  The answer is B. 地震和火山的分布 (The distribution of earthquakes and volcanoes)\n\n    *   **Explanation:** Plate tectonics is the scientific theory that describes the large-scale motion of Earth's lithosphere. The boundaries where these tectonic plates interact (converge, diverge, or slide past each other) are the primary locations for seismic activity (earthquakes) and volcanic eruptions.\n    *   **Why other options are incorrect:**\n        *   A. 季风气候的形成 (The formation of monsoon climate): Monsoon climates are primarily driven by differential heating of land and sea, leading to seasonal shifts in wind patterns, not directly by plate tectonics.\n        *   C. 陆地风化作用的发生 (The occurrence of terrestrial weathering): Weathering is the process of breaking down rocks and minerals on Earth's surface, influenced by climate, water, and biological activity, not directly by plate tectonics.\n        *   D. 全球气候变暖的趋势 (The trend of global warming): Global warming is primarily caused by the increase of greenhouse gases in the atmosphere due to human activities, not by plate tectonics.\n\n3.  The answer is B. 为了得到某种东西而放弃的最好的东西 (The best alternative foregone when making a choice)\n\n    *   **Explanation:** Opportunity cost is a fundamental concept in economics that refers to the value of the next best alternative that was not taken when a decision was made. It highlights the trade-offs inherent in every choice.\n    *   **Why other options are incorrect:**\n        *   A. 生产一种商品所需要的全部费用 (All costs required to produce a commodity): This describes the total cost of production, which includes explicit costs, but doesn't specifically capture the *foregone alternative*.\n        *   C. 销售一种商品所获得的全部利润 (All profits obtained from selling a commodity): This refers to the financial gain from a sale, not the cost of a foregone alternative.\n        *   D. 购买一种商品所支付的货币价格 (The monetary price paid for a commodity): This is the explicit price of a good, but it doesn't encompass",
+      "command": "pending",
+      "contentType": "markdown"
+    }
+  },
+  {
+    "statusCode": 200,
+    "data": {
+      "content": "1.  The answer is C. 希腊哲学的兴起 (The rise of Greek philosophy)\n\n    *   **Explanation:** Greek philosophy, particularly the works of thinkers like Socrates, Plato, and Aristotle, placed a strong emphasis on human reason, ethics, and the individual's role in society. This focus on human potential and rational inquiry is considered a foundational element of Western humanism.\n    *   **Why other options are incorrect:**\n        *   A. 罗马法的颁布 (The promulgation of Roman law): While Roman law was highly influential in shaping Western legal systems, its primary focus was on legal structures and governance, not directly on the philosophical underpinnings of humanism.\n        *   B. 十字军东征 (The Crusades): The Crusades were a series of religious wars that, while having significant cultural and economic impacts, did not directly contribute to the development of humanism as a philosophical movement.\n        *   D. 文艺复兴运动 (The Renaissance movement): The Renaissance is indeed a major period for the flourishing of humanism, but it is considered a *reawakening* and *development* of humanist ideas, drawing heavily from classical Greek and Roman thought. Therefore, Greek philosophy is the *source*, while the Renaissance is a later manifestation.\n\n2.  The answer is B. 地震和火山的分布 (The distribution of earthquakes and volcanoes)\n\n    *   **Explanation:** Plate tectonics is the scientific theory that describes the large-scale motion of Earth's lithosphere. The boundaries where these tectonic plates interact (converge, diverge, or slide past each other) are the primary locations for seismic activity (earthquakes) and volcanic eruptions.\n    *   **Why other options are incorrect:**\n        *   A. 季风气候的形成 (The formation of monsoon climate): Monsoon climates are primarily driven by differential heating of land and sea, leading to seasonal shifts in wind patterns, not directly by plate tectonics.\n        *   C. 陆地风化作用的发生 (The occurrence of terrestrial weathering): Weathering is the process of breaking down rocks and minerals on Earth's surface, influenced by climate, water, and biological activity, not directly by plate tectonics.\n        *   D. 全球气候变暖的趋势 (The trend of global warming): Global warming is primarily caused by the increase of greenhouse gases in the atmosphere due to human activities, not by plate tectonics.\n\n3.  The answer is B. 为了得到某种东西而放弃的最好的东西 (The best alternative foregone when making a choice)\n\n    *   **Explanation:** Opportunity cost is a fundamental concept in economics that refers to the value of the next best alternative that was not taken when a decision was made. It highlights the trade-offs inherent in every choice.\n    *   **Why other options are incorrect:**\n        *   A. 生产一种商品所需要的全部费用 (All costs required to produce a commodity): This describes the total cost of production, which includes explicit costs, but doesn't specifically capture the *foregone alternative*.\n        *   C. 销售一种商品所获得的全部利润 (All profits obtained from selling a commodity): This refers to the financial gain from a sale, not the cost of a foregone alternative.\n        *   D. 购买一种商品所支付的货币价格 (The monetary price paid for a commodity): This is the explicit price of a good, but it doesn't encompass the value of what one could have bought instead with that money or time.",
+      "command": "pending",
+      "contentType": "markdown"
+    }
+  },
+  { "statusCode": 200, "data": { "content": "", "command": "done" } }
+]

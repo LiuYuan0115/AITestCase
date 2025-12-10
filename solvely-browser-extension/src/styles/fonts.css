@@ -1,0 +1,7 @@
+/* src/styles/fonts.css */
+
+/* 只导入latin子集的必要字重，移除不必要的字体变体 */
+@import '@fontsource/inter/latin-400.css';
+@import '@fontsource/inter/latin-500.css';
+@import '@fontsource/inter/latin-600.css';
+@import '@fontsource/inter/latin-700.css';

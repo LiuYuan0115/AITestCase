@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="12" height="14" viewBox="0 0 12 14" fill="none">
+  <!-- Filled arrow -->
+  <path fill="#F1EEFF"
+    d="M1 13V1l8.422 4.211c1.474.737 1.474 2.84 0 3.578L1 13Z" />
+  <!-- Stroke arrow -->
+  <path d="M1 1L9.42229 5.21115C10.8964 5.94819 10.8964 8.05181 9.42229 8.78885L1 13" stroke="white" stroke-width="1.5"/>
+</svg>

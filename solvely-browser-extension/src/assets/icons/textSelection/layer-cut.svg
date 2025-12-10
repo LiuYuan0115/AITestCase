@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+    <path stroke="currentColor" stroke-linecap="round" stroke-width="1.44"
+        d="M11.948 1.836 9.376 5.509m-3.953 5.645 2.487-3.55" />
+    <circle cx="1.799" cy="1.799" r="1.799" stroke="currentColor" stroke-linecap="round"
+        stroke-width="1.44" transform="scale(-1 1) rotate(-35 15.876 17.03)" />
+    <path stroke="currentColor" stroke-linecap="round" stroke-width="1.44" d="m4.076 1.836 6.525 9.318" />
+    <circle cx="11.633" cy="12.628" r="1.799" stroke="currentColor" stroke-linecap="round"
+        stroke-width="1.44" transform="rotate(-35 11.633 12.628)" />
+</svg>

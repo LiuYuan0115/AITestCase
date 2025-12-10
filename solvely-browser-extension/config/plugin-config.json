@@ -1,0 +1,10 @@
+{
+  "version": "0.0.3",
+  "limits": {
+    "quizPdfMaxSize": 50,
+    "quizPdfMaxPages": 50
+  },
+  "features": {
+    "oneClickSolve": "enabled"
+  }
+}

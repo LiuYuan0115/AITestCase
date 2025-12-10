@@ -1,0 +1,10 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+  xmlns="http://www.w3.org/2000/svg">
+  <circle opacity="0.8" cx="12" cy="12" r="12" fill="#999999" />
+  <path
+    d="M7.75739 7.05042L16.9498 16.2428L16.2427 16.9499L7.05028 7.75752L7.75739 7.05042Z"
+    fill="white" />
+  <path
+    d="M16.9498 7.75745L7.75738 16.9498L7.05027 16.2427L16.2427 7.05034L16.9498 7.75745Z"
+    fill="white" />
+</svg>

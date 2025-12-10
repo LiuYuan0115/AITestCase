@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>插件注入页面</title>
+<meta name="description" content="可以在这个页面上测试插件效果">
+<meta name="description" content="npm run dev:server 会启动一个http静态服务，地址为 http://localhost:8080，并启动wxt插件">
+</head>
+<body>
+    <h1 id="send-message">插件注入页面<span>0</span></h1>
+    <script>
+        document.getElementById("send-message").addEventListener("click", () => {
+            window.postMessage({type : "FROM_PAGE", text : "Hello from the webpage!"}, "*");
+        }, false);
+        
+        window.addEventListener('message', (event) => {
+            console.log('被注入页面 message received', event);
+            if (event.source !== window) {
+                return;
+            }
+            if (event.data.type && (event.data.type === "FROM_LOGIN_MODAL")) {
+               const span = document.querySelector('#send-message span');
+               let count = parseInt(span.innerText);
+               console.log('count', count, span);
+               span.innerText = ++count
+            }
+        });
+    </script>
+</body>
+</html>

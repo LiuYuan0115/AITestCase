@@ -1,0 +1,229 @@
+{
+  "version": "0.2.3",
+  "limits": {
+    "quizPdfMaxSize": 50,
+    "quizPdfMaxPages": 50
+  },
+  "features": {
+    "oneClickSolve": "enabled",
+    "modals": [
+      {
+        "name": "GPT-5",
+        "totalName": "OpenAI GPT-5",
+        "url": "https://static.justsolvely.com/web-static/images/plugin/icons/gpt.svg",
+        "url-dark": "https://static.justsolvely.com/web-static/images/plugin/icons/gpt-dark.svg",
+        "icon": "models/gpt"
+      },
+      {
+        "name": "Claude 4.1 Sonnet",
+        "totalName": "Anthropic Claude 4.1 Sonnet",
+        "url": "https://static.justsolvely.com/web-static/images/plugin/icons/claude.svg",
+        "url-dark": "",
+        "icon": "models/claude"
+      },
+      {
+        "name": "Gemini 2.5 Pro",
+        "totalName": "Google Gemini 2.5 Pro",
+        "url": "https://static.justsolvely.com/web-static/images/plugin/icons/gemini.svg",
+        "url-dark": "",
+        "icon": "models/gemini"
+      }
+    ],
+    "aiModals": [
+      {
+        "name": "Solvely AI",
+        "type": "group",
+        "defaultMode": "Auto",
+        "modes": [
+          {
+            "id": "Auto",
+            "name": "Auto",
+            "description": "Select the mode automatically",
+            "icon": "aiModels/solvely-auto",
+            "iconActive": "aiModels/solvely-auto-active",
+            "iconDark": "aiModels/solvely-auto-dark"
+          },
+          {
+            "id": "Fast",
+            "name": "Fast",
+            "description": "Lightning-fast solutions",
+            "icon": "aiModels/solvely-fast",
+            "iconActive": "aiModels/solvely-fast-active"
+          },
+          {
+            "id": "MultiModel",
+            "name": "Multi-model",
+            "description": "Accurate but more time-consuming",
+            "icon": "aiModels/solvely-multi",
+            "iconActive": "aiModels/solvely-multi-active"
+          }
+        ]
+      },
+      {
+        "id": "GPT5Pro",
+        "name": "GPT-5 Pro",
+        "icon": "aiModels/gpt",
+        "iconDark": "aiModels/gpt-dark"
+      },
+      {
+        "id": "ClaudeMax",
+        "name": "Claude Max",
+        "icon": "aiModels/claude"
+      },
+      {
+        "id": "GeminiPro",
+        "name": "Gemini Pro",
+        "icon": "aiModels/gemini"
+      }
+    ],
+    "aiModelsV2": {
+      "defaultModel": "Fast",
+      "data": [
+        {
+          "name": "Solvely AI",
+          "showGroupNameInButton": true,
+          "models": [
+            {
+              "id": "Fast",
+              "name": "Fast",
+              "description": "Instant answers, reliable results",
+              "icon": "aiModels/solvely-fast-active"
+            },
+            {
+              "id": "MultiModel",
+              "name": "Multi-model",
+              "description": "Cross-checked for highest accuracy",
+              "icon": "aiModels/solvely-multi-active",
+              "isPro": true
+            }
+          ]
+        },
+        {
+          "name": "Third-Party Model",
+          "showGroupNameInButton": false,
+          "models": [
+            {
+              "id": "GPT5Pro",
+              "name": "GPT-5 Pro",
+              "description": "Strong in math and logic",
+              "icon": "aiModels/gpt",
+              "iconDark": "aiModels/gpt-dark",
+              "isPro": true
+            },
+            {
+              "id": "GeminiPro",
+              "name": "Gemini Pro",
+              "description": "Deep, insightful, cross-domain",
+              "icon": "aiModels/gemini",
+              "isPro": true
+            },
+            {
+              "id": "ClaudeMax",
+              "name": "Claude Max",
+              "description": "Eloquent, thoughtful, linguist",
+              "icon": "aiModels/claude",
+              "isPro": true
+            }
+          ]
+        }
+      ]
+    },
+    "canvasCapture": {
+      "enabled": true,
+      "captureFiles": true
+    },
+    "ratingPopup": {
+      "enabled": true
+    }
+  },
+  "experiments": {
+    "TEST_Plugin_Onboarding": {
+      "id": "TEST_Plugin_Onboarding",
+      "status": "running",
+      "audience": "all",
+      "allocation": {
+        "Test": 1,
+        "Control": 0
+      },
+      "mutableVariants": ["Control"],
+      "order": ["Test", "Control"]
+    },
+    "TEST_Plugin_QuaterPackage": {
+      "id": "TEST_Plugin_QuaterPackage",
+      "status": "running",
+      "audience": "new",
+      "allocation": {
+        "Test": 0.5,
+        "Control": 0.5
+      },
+      "mutableVariants": ["Control"],
+      "order": ["Test", "Control"]
+    },
+    "TEST_Plugin_Weblogin": {
+      "id": "TEST_Plugin_Weblogin",
+      "status": "running",
+      "audience": "new",
+      "allocation": {
+        "Test": 1,
+        "Control": 0
+      },
+      "mutableVariants": ["Control"],
+      "order": ["Test", "Control"]
+    },
+    "TEST_Plugin_2Solves": {
+      "id": "TEST_Plugin_2Solves",
+      "status": "running",
+      "audience": "new",
+      "allocation": {
+        "Test": 1,
+        "Control": 0
+      },
+      "mutableVariants": ["Control"],
+      "order": ["Test", "Control"]
+    },
+    "TEST_Plugin_MutiModel": {
+      "id": "TEST_Plugin_MutiModel",
+      "status": "running",
+      "audience": "all",
+      "allocation": {
+        "Test": 1,
+        "Control": 0
+      },
+      "mutableVariants": ["Control"],
+      "order": ["Test", "Control"]
+    },
+    "TEST_Plugin_MutiModel_Panel": {
+      "id": "TEST_Plugin_MutiModel_Panel",
+      "status": "running",
+      "audience": "all",
+      "allocation": {
+        "Test": 1,
+        "Control": 0
+      },
+      "mutableVariants": ["Control"],
+      "order": ["Test", "Control"]
+    },
+    "TEST_Plugin_QuaterPackage_Recall": {
+      "id": "TEST_Plugin_QuaterPackage_Recall",
+      "status": "running",
+      "audience": "new",
+      "allocation": {
+        "Test": 1,
+        "Control": 0
+      },
+      "mutableVariants": ["Control"],
+      "order": ["Test", "Control"]
+    },
+    "TEST_Plugin_Raisepackage": {
+      "id": "TEST_Plugin_Raisepackage",
+      "status": "running",
+      "audience": "new",
+      "allocation": {
+        "Test": 0.5,
+        "Control": 0.5
+      },
+      "mutableVariants": ["Control"],
+      "order": ["Test", "Control"]
+    }
+  }
+}

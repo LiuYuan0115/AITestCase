@@ -1,0 +1,7 @@
+{
+  "extends": "./.wxt/tsconfig.json",
+  "compilerOptions": {
+    "checkJs": false,
+    "allowJs": true
+  }
+}

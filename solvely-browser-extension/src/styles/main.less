@@ -1,0 +1,47 @@
+/* src/styles/main.less */
+
+@import './mathpix.less';
+@import './mjx-svg.less';
+@import './fonts.css';
+
+
+/* 滚动条样式 scrollbar styles */
+@scrollbar-width: 4px;
+@scrollbar-radius: @scrollbar-width;
+@scrollbar-track-bg: #ffffff;
+@scrollbar-thumb-bg: #eeeeee;
+@scrollbar-track-bg-dark: #161B26;
+@scrollbar-thumb-bg-dark: #474C58;
+
+::-webkit-scrollbar {
+  width: @scrollbar-width;
+  height: @scrollbar-width;
+}
+
+::-webkit-scrollbar-track {
+  background: @scrollbar-track-bg;
+  border-radius: @scrollbar-radius;
+  margin: 12px 0px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: @scrollbar-thumb-bg;
+  border-radius: @scrollbar-radius;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: @scrollbar-thumb-bg;
+}
+
+/* 暗黑模式滚动条样式 */
+.dark ::-webkit-scrollbar-track {
+  background: @scrollbar-track-bg-dark;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: @scrollbar-thumb-bg-dark;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: @scrollbar-thumb-bg-dark;
+}
