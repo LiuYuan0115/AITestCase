@@ -1,0 +1,5 @@
+selenium==4.15.1
+pytest==8.3.2
+pytest-html==1.21.1
+allure-pytest==2.13.5
+pyautogui==0.9.54

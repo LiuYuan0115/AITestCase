@@ -1,0 +1,480 @@
+2025-08-13 15:55:04,603 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': 6ADEE6763639A3FA68A5F438B538836F
+2025-08-13 15:55:04,608 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 6ADEE6763639A3FA68A5F438B538836F
+2025-08-13 15:55:04,663 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 15:55:04,669 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 6ADEE6763639A3FA68A5F438B538836F
+2025-08-13 15:55:07,752 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 15:55:09,874 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': 6634F5B810295D66C4D12FE6210B9402
+2025-08-13 15:55:09,886 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 6634F5B810295D66C4D12FE6210B9402
+2025-08-13 15:55:09,901 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 15:55:09,905 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 6634F5B810295D66C4D12FE6210B9402
+2025-08-13 15:55:12,955 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 15:55:13,000 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 6ADEE6763639A3FA68A5F438B538836F
+2025-08-13 15:55:13,055 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 6634F5B810295D66C4D12FE6210B9402
+2025-08-13 15:55:13,083 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 6ADEE6763639A3FA68A5F438B538836F
+2025-08-13 15:55:13,088 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 6ADEE6763639A3FA68A5F438B538836F
+2025-08-13 15:55:13,088 ERROR [utils.window_manager] [window_manager.py:retry_operation:319] - 操作在3次尝试后仍然失败
+2025-08-13 15:55:13,112 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:55:13,112 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:55:14,802 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'test_pdf': 481B63512BFFA5DEF4198417DEAB3D1B
+2025-08-13 15:55:16,149 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'test_sidebar': 539558F52AD0168156D46F1082E270CE
+2025-08-13 15:55:16,212 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'test_pdf': 481B63512BFFA5DEF4198417DEAB3D1B
+2025-08-13 15:55:16,305 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'test_sidebar': 539558F52AD0168156D46F1082E270CE
+2025-08-13 15:55:16,327 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:55:16,327 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:55:17,796 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': A4580AF31B83F2EBCB1175D4AE12075A
+2025-08-13 15:55:17,800 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': A4580AF31B83F2EBCB1175D4AE12075A
+2025-08-13 15:55:17,835 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 15:55:17,838 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': A4580AF31B83F2EBCB1175D4AE12075A
+2025-08-13 15:55:20,888 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 15:55:21,850 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': 977CEAFD757D57B76CD7105CB1961A8B
+2025-08-13 15:55:21,857 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 977CEAFD757D57B76CD7105CB1961A8B
+2025-08-13 15:55:21,873 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 15:55:21,877 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 977CEAFD757D57B76CD7105CB1961A8B
+2025-08-13 15:55:24,919 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 15:55:24,957 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': A4580AF31B83F2EBCB1175D4AE12075A
+2025-08-13 15:55:25,040 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 977CEAFD757D57B76CD7105CB1961A8B
+2025-08-13 15:55:25,087 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': A4580AF31B83F2EBCB1175D4AE12075A
+2025-08-13 15:55:25,109 INFO [utils.window_manager] [window_manager.py:set_shared_data:169] - 设置共享数据: test_key = test_value
+2025-08-13 15:55:25,146 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 977CEAFD757D57B76CD7105CB1961A8B
+2025-08-13 15:55:25,163 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:55:25,163 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:55:26,604 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': 6BB7F8B6FA494FE0D6274C6FA5231C64
+2025-08-13 15:55:26,606 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 6BB7F8B6FA494FE0D6274C6FA5231C64
+2025-08-13 15:55:26,644 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 15:55:26,647 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 6BB7F8B6FA494FE0D6274C6FA5231C64
+2025-08-13 15:55:29,698 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 15:55:30,364 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': 2BE21DF12E09A296BFDD80E52704A765
+2025-08-13 15:55:30,371 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 2BE21DF12E09A296BFDD80E52704A765
+2025-08-13 15:55:30,394 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 15:55:30,404 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 2BE21DF12E09A296BFDD80E52704A765
+2025-08-13 15:55:33,444 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 15:55:33,479 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 6BB7F8B6FA494FE0D6274C6FA5231C64
+2025-08-13 15:55:33,546 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 2BE21DF12E09A296BFDD80E52704A765
+2025-08-13 15:55:33,590 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 6BB7F8B6FA494FE0D6274C6FA5231C64
+2025-08-13 15:55:33,602 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 6BB7F8B6FA494FE0D6274C6FA5231C64
+2025-08-13 15:55:36,652 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 15:55:36,653 WARNING [utils.window_manager] [window_manager.py:retry_operation:314] - 操作失败 (尝试 1/5): 模拟失败
+2025-08-13 15:55:37,658 WARNING [utils.window_manager] [window_manager.py:retry_operation:314] - 操作失败 (尝试 2/5): 模拟失败
+2025-08-13 15:55:38,671 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:55:38,672 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:55:40,083 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': 30AF416A668EAC8C19772875B63CF9CB
+2025-08-13 15:55:40,087 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 30AF416A668EAC8C19772875B63CF9CB
+2025-08-13 15:55:40,124 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 15:55:40,127 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 30AF416A668EAC8C19772875B63CF9CB
+2025-08-13 15:55:43,164 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 15:55:44,017 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': 784428E471B415599E4E49188BBB8C39
+2025-08-13 15:55:44,023 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 784428E471B415599E4E49188BBB8C39
+2025-08-13 15:55:44,042 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 15:55:44,045 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 784428E471B415599E4E49188BBB8C39
+2025-08-13 15:55:47,085 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 15:55:47,121 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 30AF416A668EAC8C19772875B63CF9CB
+2025-08-13 15:55:47,182 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 784428E471B415599E4E49188BBB8C39
+2025-08-13 15:55:47,255 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 30AF416A668EAC8C19772875B63CF9CB
+2025-08-13 15:55:47,259 INFO [utils.window_manager] [window_manager.py:set_shared_data:169] - 设置共享数据: test_scenario = 快速响应
+2025-08-13 15:55:47,266 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 30AF416A668EAC8C19772875B63CF9CB
+2025-08-13 15:55:47,270 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 30AF416A668EAC8C19772875B63CF9CB
+2025-08-13 15:55:47,270 ERROR [utils.window_manager] [window_manager.py:retry_operation:319] - 操作在3次尝试后仍然失败
+2025-08-13 15:55:47,283 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:55:47,283 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:55:48,768 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': 8AB7AEFA42E16C9E1C3F615D997478F6
+2025-08-13 15:55:48,772 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 8AB7AEFA42E16C9E1C3F615D997478F6
+2025-08-13 15:55:48,819 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 15:55:48,822 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 8AB7AEFA42E16C9E1C3F615D997478F6
+2025-08-13 15:55:51,865 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 15:55:52,525 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': F73AE9FD02754E12A0BC205EF407D286
+2025-08-13 15:55:52,530 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': F73AE9FD02754E12A0BC205EF407D286
+2025-08-13 15:55:52,559 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 15:55:52,562 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': F73AE9FD02754E12A0BC205EF407D286
+2025-08-13 15:55:55,609 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 15:55:55,646 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 8AB7AEFA42E16C9E1C3F615D997478F6
+2025-08-13 15:55:55,703 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': F73AE9FD02754E12A0BC205EF407D286
+2025-08-13 15:55:55,775 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 8AB7AEFA42E16C9E1C3F615D997478F6
+2025-08-13 15:55:55,793 INFO [utils.window_manager] [window_manager.py:set_shared_data:169] - 设置共享数据: test_scenario = 中等响应
+2025-08-13 15:55:55,799 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 8AB7AEFA42E16C9E1C3F615D997478F6
+2025-08-13 15:55:55,816 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 8AB7AEFA42E16C9E1C3F615D997478F6
+2025-08-13 15:55:55,816 ERROR [utils.window_manager] [window_manager.py:retry_operation:319] - 操作在3次尝试后仍然失败
+2025-08-13 15:55:55,828 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:55:55,828 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:55:57,258 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': 10101377A3070CA0467A2E2FE530CBFB
+2025-08-13 15:55:57,262 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 10101377A3070CA0467A2E2FE530CBFB
+2025-08-13 15:55:57,299 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 15:55:57,301 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 10101377A3070CA0467A2E2FE530CBFB
+2025-08-13 15:56:00,350 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 15:56:01,086 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': F5CF9B3020ACB7EF27487A68B74FD76C
+2025-08-13 15:56:01,089 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': F5CF9B3020ACB7EF27487A68B74FD76C
+2025-08-13 15:56:01,102 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 15:56:01,106 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': F5CF9B3020ACB7EF27487A68B74FD76C
+2025-08-13 15:56:04,148 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 15:56:04,187 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 10101377A3070CA0467A2E2FE530CBFB
+2025-08-13 15:56:04,261 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': F5CF9B3020ACB7EF27487A68B74FD76C
+2025-08-13 15:56:04,315 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 10101377A3070CA0467A2E2FE530CBFB
+2025-08-13 15:56:04,326 INFO [utils.window_manager] [window_manager.py:set_shared_data:169] - 设置共享数据: test_scenario = 慢速响应
+2025-08-13 15:56:04,333 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 10101377A3070CA0467A2E2FE530CBFB
+2025-08-13 15:56:04,348 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 10101377A3070CA0467A2E2FE530CBFB
+2025-08-13 15:56:04,349 ERROR [utils.window_manager] [window_manager.py:retry_operation:319] - 操作在3次尝试后仍然失败
+2025-08-13 15:56:04,360 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:56:04,361 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:56:05,844 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'error_test': D67D73687E619E7303478016F3AA1BDD
+2025-08-13 15:56:05,873 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:56:05,873 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:56:15,715 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:57:01,890 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': CF80089ED1210235F1DE3E70FAC131D5
+2025-08-13 15:57:01,893 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': CF80089ED1210235F1DE3E70FAC131D5
+2025-08-13 15:57:01,930 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 15:57:01,935 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': CF80089ED1210235F1DE3E70FAC131D5
+2025-08-13 15:57:04,984 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 15:57:05,807 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': A57A1E570C01079F79190DEEDFFA1C7F
+2025-08-13 15:57:05,813 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': A57A1E570C01079F79190DEEDFFA1C7F
+2025-08-13 15:57:05,827 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 15:57:05,830 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': A57A1E570C01079F79190DEEDFFA1C7F
+2025-08-13 15:57:08,917 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 15:57:08,947 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': CF80089ED1210235F1DE3E70FAC131D5
+2025-08-13 15:57:09,027 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': A57A1E570C01079F79190DEEDFFA1C7F
+2025-08-13 15:57:09,092 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': CF80089ED1210235F1DE3E70FAC131D5
+2025-08-13 15:57:09,108 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': CF80089ED1210235F1DE3E70FAC131D5
+2025-08-13 15:57:09,108 ERROR [utils.window_manager] [window_manager.py:retry_operation:319] - 操作在3次尝试后仍然失败
+2025-08-13 15:57:09,161 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:57:09,162 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:57:10,657 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'test_pdf': 954A65E03F1D03126C9CDD7AF251D10A
+2025-08-13 15:57:11,493 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'test_sidebar': 56DF354EC8F32BBD55788411CBE63C52
+2025-08-13 15:57:11,539 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'test_pdf': 954A65E03F1D03126C9CDD7AF251D10A
+2025-08-13 15:57:11,575 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'test_sidebar': 56DF354EC8F32BBD55788411CBE63C52
+2025-08-13 15:57:11,593 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:57:11,594 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:57:13,077 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': B7AB3FC9D9DD26E283ADAD7D6E973135
+2025-08-13 15:57:13,081 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': B7AB3FC9D9DD26E283ADAD7D6E973135
+2025-08-13 15:57:13,120 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 15:57:13,123 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': B7AB3FC9D9DD26E283ADAD7D6E973135
+2025-08-13 15:57:16,168 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 15:57:16,744 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': 6055C090D23FE31A2FC303CFDC09E352
+2025-08-13 15:57:16,748 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 6055C090D23FE31A2FC303CFDC09E352
+2025-08-13 15:57:16,752 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 15:57:16,759 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 6055C090D23FE31A2FC303CFDC09E352
+2025-08-13 15:57:19,791 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 15:57:19,825 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': B7AB3FC9D9DD26E283ADAD7D6E973135
+2025-08-13 15:57:19,940 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 6055C090D23FE31A2FC303CFDC09E352
+2025-08-13 15:57:19,988 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': B7AB3FC9D9DD26E283ADAD7D6E973135
+2025-08-13 15:57:19,997 INFO [utils.window_manager] [window_manager.py:set_shared_data:169] - 设置共享数据: test_key = test_value
+2025-08-13 15:57:20,007 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 6055C090D23FE31A2FC303CFDC09E352
+2025-08-13 15:57:20,034 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:57:20,034 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:57:21,413 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': F8902F79C10B9780662D7CD64DA9FCD8
+2025-08-13 15:57:21,421 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': F8902F79C10B9780662D7CD64DA9FCD8
+2025-08-13 15:57:21,529 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 15:57:21,532 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': F8902F79C10B9780662D7CD64DA9FCD8
+2025-08-13 15:57:44,292 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': 18F05725FC2732A3C79E982931620A73
+2025-08-13 15:57:44,295 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 18F05725FC2732A3C79E982931620A73
+2025-08-13 15:57:44,334 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 15:57:44,336 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 18F05725FC2732A3C79E982931620A73
+2025-08-13 15:57:47,391 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 15:57:47,506 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': D22AA29C4AE62C1CC38CB648D297A44A
+2025-08-13 15:57:47,509 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': D22AA29C4AE62C1CC38CB648D297A44A
+2025-08-13 15:57:48,256 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 15:57:48,261 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': D22AA29C4AE62C1CC38CB648D297A44A
+2025-08-13 15:57:51,316 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 15:57:51,353 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 18F05725FC2732A3C79E982931620A73
+2025-08-13 15:57:51,415 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': D22AA29C4AE62C1CC38CB648D297A44A
+2025-08-13 15:57:51,494 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 18F05725FC2732A3C79E982931620A73
+2025-08-13 15:57:51,500 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 18F05725FC2732A3C79E982931620A73
+2025-08-13 15:57:51,501 ERROR [utils.window_manager] [window_manager.py:retry_operation:319] - 操作在3次尝试后仍然失败
+2025-08-13 15:57:51,538 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:57:51,538 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:57:53,032 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'test_pdf': 2A74A9F4F74FA39B1D7E3FDD00617594
+2025-08-13 15:57:53,704 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'test_sidebar': BC4869669592C2EE7CFBC20A408808DE
+2025-08-13 15:57:53,742 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'test_pdf': 2A74A9F4F74FA39B1D7E3FDD00617594
+2025-08-13 15:57:53,808 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'test_sidebar': BC4869669592C2EE7CFBC20A408808DE
+2025-08-13 15:57:53,819 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:57:53,820 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:57:55,185 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': 0157CA0FA5521E073EBF79C2E81DF927
+2025-08-13 15:57:55,188 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 0157CA0FA5521E073EBF79C2E81DF927
+2025-08-13 15:57:55,213 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 15:57:55,216 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 0157CA0FA5521E073EBF79C2E81DF927
+2025-08-13 15:57:58,256 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 15:57:58,893 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': 57F88899F725887C3700276DCFABE57C
+2025-08-13 15:57:58,896 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 57F88899F725887C3700276DCFABE57C
+2025-08-13 15:57:58,904 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 15:57:58,908 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 57F88899F725887C3700276DCFABE57C
+2025-08-13 15:58:01,947 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 15:58:01,970 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 0157CA0FA5521E073EBF79C2E81DF927
+2025-08-13 15:58:02,107 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 57F88899F725887C3700276DCFABE57C
+2025-08-13 15:58:02,177 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 0157CA0FA5521E073EBF79C2E81DF927
+2025-08-13 15:58:02,184 INFO [utils.window_manager] [window_manager.py:set_shared_data:169] - 设置共享数据: test_key = test_value
+2025-08-13 15:58:02,194 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 57F88899F725887C3700276DCFABE57C
+2025-08-13 15:58:02,221 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:58:02,221 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:58:03,519 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': F5F671CAAE66AD5E94673353AE0E02E5
+2025-08-13 15:58:03,524 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': F5F671CAAE66AD5E94673353AE0E02E5
+2025-08-13 15:58:03,562 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 15:58:03,565 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': F5F671CAAE66AD5E94673353AE0E02E5
+2025-08-13 15:58:06,602 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 15:58:07,074 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': 6A083B9330636E68A5882EC2DAF337B1
+2025-08-13 15:58:07,077 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 6A083B9330636E68A5882EC2DAF337B1
+2025-08-13 15:58:07,080 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 15:58:07,084 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 6A083B9330636E68A5882EC2DAF337B1
+2025-08-13 15:58:10,123 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 15:58:10,162 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': F5F671CAAE66AD5E94673353AE0E02E5
+2025-08-13 15:58:10,302 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 6A083B9330636E68A5882EC2DAF337B1
+2025-08-13 15:58:10,348 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': F5F671CAAE66AD5E94673353AE0E02E5
+2025-08-13 15:58:10,360 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': F5F671CAAE66AD5E94673353AE0E02E5
+2025-08-13 15:58:13,396 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 15:58:13,396 WARNING [utils.window_manager] [window_manager.py:retry_operation:314] - 操作失败 (尝试 1/5): 模拟失败
+2025-08-13 15:58:14,399 WARNING [utils.window_manager] [window_manager.py:retry_operation:314] - 操作失败 (尝试 2/5): 模拟失败
+2025-08-13 15:58:15,410 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:58:15,410 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:58:16,725 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': 6263835DCBEA8D29D5EDAA333A0E9629
+2025-08-13 15:58:16,728 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 6263835DCBEA8D29D5EDAA333A0E9629
+2025-08-13 15:58:16,767 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 15:58:16,769 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 6263835DCBEA8D29D5EDAA333A0E9629
+2025-08-13 15:58:30,658 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': DE3330CCB8B2112414B70F4F2FC69AAC
+2025-08-13 15:58:30,661 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': DE3330CCB8B2112414B70F4F2FC69AAC
+2025-08-13 15:58:30,704 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 15:58:30,709 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': DE3330CCB8B2112414B70F4F2FC69AAC
+2025-08-13 15:58:33,758 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 15:58:34,927 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': 6DEBE26A035C84850620189D2AAC2B65
+2025-08-13 15:58:34,933 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 6DEBE26A035C84850620189D2AAC2B65
+2025-08-13 15:58:34,949 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 15:58:34,953 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 6DEBE26A035C84850620189D2AAC2B65
+2025-08-13 15:58:37,991 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 15:58:38,038 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': DE3330CCB8B2112414B70F4F2FC69AAC
+2025-08-13 15:58:38,084 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 6DEBE26A035C84850620189D2AAC2B65
+2025-08-13 15:58:38,145 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': DE3330CCB8B2112414B70F4F2FC69AAC
+2025-08-13 15:58:38,162 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': DE3330CCB8B2112414B70F4F2FC69AAC
+2025-08-13 15:58:38,163 ERROR [utils.window_manager] [window_manager.py:retry_operation:319] - 操作在3次尝试后仍然失败
+2025-08-13 15:58:38,194 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:58:38,194 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:58:39,724 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'test_pdf': 7F36C2FA207E224C23C12BDC72A8E4FA
+2025-08-13 15:58:40,679 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'test_sidebar': 41AE6556575FA60EEB0E4C4BAE08140F
+2025-08-13 15:58:40,704 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'test_pdf': 7F36C2FA207E224C23C12BDC72A8E4FA
+2025-08-13 15:58:40,745 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'test_sidebar': 41AE6556575FA60EEB0E4C4BAE08140F
+2025-08-13 15:58:40,770 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:58:40,770 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:58:42,212 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': 004072271B98475877B9F776D05358D3
+2025-08-13 15:58:42,215 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 004072271B98475877B9F776D05358D3
+2025-08-13 15:58:42,254 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 15:58:42,259 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 004072271B98475877B9F776D05358D3
+2025-08-13 15:58:45,300 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 15:58:45,396 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': 91042F0344A534EBDBD95425FE102B87
+2025-08-13 15:58:45,410 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 91042F0344A534EBDBD95425FE102B87
+2025-08-13 15:58:46,212 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 15:58:46,215 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 91042F0344A534EBDBD95425FE102B87
+2025-08-13 15:58:49,250 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 15:58:49,287 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 004072271B98475877B9F776D05358D3
+2025-08-13 15:58:49,346 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 91042F0344A534EBDBD95425FE102B87
+2025-08-13 15:58:49,396 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 004072271B98475877B9F776D05358D3
+2025-08-13 15:58:49,416 INFO [utils.window_manager] [window_manager.py:set_shared_data:169] - 设置共享数据: test_key = test_value
+2025-08-13 15:58:49,451 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 91042F0344A534EBDBD95425FE102B87
+2025-08-13 15:58:49,486 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:58:49,486 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:58:51,029 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': D9032A796F04F6BDAF36B79F61881C92
+2025-08-13 15:58:51,032 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': D9032A796F04F6BDAF36B79F61881C92
+2025-08-13 15:58:51,070 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 15:58:51,072 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': D9032A796F04F6BDAF36B79F61881C92
+2025-08-13 15:58:54,117 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 15:58:55,518 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': B71932C0F4A60363F6C2F6B41064B738
+2025-08-13 15:58:55,522 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': B71932C0F4A60363F6C2F6B41064B738
+2025-08-13 15:58:55,529 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 15:58:55,532 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': B71932C0F4A60363F6C2F6B41064B738
+2025-08-13 15:58:58,575 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 15:58:58,608 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': D9032A796F04F6BDAF36B79F61881C92
+2025-08-13 15:58:58,678 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': B71932C0F4A60363F6C2F6B41064B738
+2025-08-13 15:58:58,728 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': D9032A796F04F6BDAF36B79F61881C92
+2025-08-13 15:58:58,743 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': D9032A796F04F6BDAF36B79F61881C92
+2025-08-13 15:59:01,777 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 15:59:01,778 WARNING [utils.window_manager] [window_manager.py:retry_operation:314] - 操作失败 (尝试 1/5): 模拟失败
+2025-08-13 15:59:02,782 WARNING [utils.window_manager] [window_manager.py:retry_operation:314] - 操作失败 (尝试 2/5): 模拟失败
+2025-08-13 15:59:03,799 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 15:59:03,799 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 15:59:05,277 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': 15AB84BB98A6FE474A7D9562253D88D0
+2025-08-13 15:59:05,291 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 15AB84BB98A6FE474A7D9562253D88D0
+2025-08-13 15:59:05,449 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 15:59:05,455 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 15AB84BB98A6FE474A7D9562253D88D0
+2025-08-13 16:00:48,063 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': E95985258CBEE4D6A038C1A50A009940
+2025-08-13 16:00:48,066 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': E95985258CBEE4D6A038C1A50A009940
+2025-08-13 16:00:48,093 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 16:00:48,096 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': E95985258CBEE4D6A038C1A50A009940
+2025-08-13 16:00:51,150 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 16:00:51,789 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': C8C8E4F660C7E485209B5359C0AD76AF
+2025-08-13 16:00:51,792 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': C8C8E4F660C7E485209B5359C0AD76AF
+2025-08-13 16:00:51,796 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 16:00:51,799 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': C8C8E4F660C7E485209B5359C0AD76AF
+2025-08-13 16:00:54,844 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 16:00:54,878 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': E95985258CBEE4D6A038C1A50A009940
+2025-08-13 16:00:54,935 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': C8C8E4F660C7E485209B5359C0AD76AF
+2025-08-13 16:00:55,008 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': E95985258CBEE4D6A038C1A50A009940
+2025-08-13 16:00:55,017 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': E95985258CBEE4D6A038C1A50A009940
+2025-08-13 16:00:55,017 ERROR [utils.window_manager] [window_manager.py:retry_operation:319] - 操作在3次尝试后仍然失败
+2025-08-13 16:00:55,058 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 16:00:55,059 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:00:57,656 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'test_pdf': E411A7AE164897DF859D4AEB08A536F2
+2025-08-13 16:00:58,223 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'test_sidebar': 09DCA5F4FDC6EE0FF11ECACD388D90A6
+2025-08-13 16:00:58,268 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'test_pdf': E411A7AE164897DF859D4AEB08A536F2
+2025-08-13 16:00:58,290 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 16:00:58,290 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:01:00,686 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': 5C8EE45DB65FE7515FE9D0F0F4B4662B
+2025-08-13 16:01:00,703 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 5C8EE45DB65FE7515FE9D0F0F4B4662B
+2025-08-13 16:01:00,844 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 16:01:00,847 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 5C8EE45DB65FE7515FE9D0F0F4B4662B
+2025-08-13 16:01:03,902 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 16:01:04,543 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': 63B04DDF2F7F3B9D4B1B7DDFB527BEEF
+2025-08-13 16:01:04,550 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 63B04DDF2F7F3B9D4B1B7DDFB527BEEF
+2025-08-13 16:01:04,568 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 16:01:04,577 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 63B04DDF2F7F3B9D4B1B7DDFB527BEEF
+2025-08-13 16:01:07,632 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 16:01:07,689 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 5C8EE45DB65FE7515FE9D0F0F4B4662B
+2025-08-13 16:01:07,764 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 63B04DDF2F7F3B9D4B1B7DDFB527BEEF
+2025-08-13 16:01:07,817 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 5C8EE45DB65FE7515FE9D0F0F4B4662B
+2025-08-13 16:01:07,828 INFO [utils.window_manager] [window_manager.py:set_shared_data:169] - 设置共享数据: test_key = test_value
+2025-08-13 16:01:07,865 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 63B04DDF2F7F3B9D4B1B7DDFB527BEEF
+2025-08-13 16:01:07,891 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 16:01:07,892 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:01:11,555 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': 61D4F4CAC4BDF26B20BA08F8F1F148E1
+2025-08-13 16:01:11,558 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 61D4F4CAC4BDF26B20BA08F8F1F148E1
+2025-08-13 16:01:11,614 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 16:01:11,617 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 61D4F4CAC4BDF26B20BA08F8F1F148E1
+2025-08-13 16:01:14,666 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 16:01:15,714 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': 12430BA7F440B30B46C550DA1EE8804C
+2025-08-13 16:01:15,721 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 12430BA7F440B30B46C550DA1EE8804C
+2025-08-13 16:01:15,740 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 16:01:15,743 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 12430BA7F440B30B46C550DA1EE8804C
+2025-08-13 16:01:18,792 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 16:01:18,831 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 61D4F4CAC4BDF26B20BA08F8F1F148E1
+2025-08-13 16:01:18,901 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 12430BA7F440B30B46C550DA1EE8804C
+2025-08-13 16:01:18,970 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 61D4F4CAC4BDF26B20BA08F8F1F148E1
+2025-08-13 16:01:18,977 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 61D4F4CAC4BDF26B20BA08F8F1F148E1
+2025-08-13 16:01:22,036 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 16:01:22,036 WARNING [utils.window_manager] [window_manager.py:retry_operation:314] - 操作失败 (尝试 1/5): 模拟失败
+2025-08-13 16:01:23,041 WARNING [utils.window_manager] [window_manager.py:retry_operation:314] - 操作失败 (尝试 2/5): 模拟失败
+2025-08-13 16:01:24,055 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 16:01:24,056 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:01:27,056 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': 125DAB583F759B71DF61EBDA61204262
+2025-08-13 16:01:27,060 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 125DAB583F759B71DF61EBDA61204262
+2025-08-13 16:01:27,098 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 16:01:27,103 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 125DAB583F759B71DF61EBDA61204262
+2025-08-13 16:01:30,151 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 16:01:30,250 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': BA41C72CCE3C33DCCA847E1A02742EED
+2025-08-13 16:01:30,253 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': BA41C72CCE3C33DCCA847E1A02742EED
+2025-08-13 16:01:31,838 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 16:01:31,844 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': BA41C72CCE3C33DCCA847E1A02742EED
+2025-08-13 16:01:34,901 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 16:01:34,943 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 125DAB583F759B71DF61EBDA61204262
+2025-08-13 16:01:35,010 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': BA41C72CCE3C33DCCA847E1A02742EED
+2025-08-13 16:01:35,067 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 125DAB583F759B71DF61EBDA61204262
+2025-08-13 16:01:35,083 INFO [utils.window_manager] [window_manager.py:set_shared_data:169] - 设置共享数据: test_scenario = 快速响应
+2025-08-13 16:01:35,088 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 125DAB583F759B71DF61EBDA61204262
+2025-08-13 16:01:35,100 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 125DAB583F759B71DF61EBDA61204262
+2025-08-13 16:01:35,100 ERROR [utils.window_manager] [window_manager.py:retry_operation:319] - 操作在3次尝试后仍然失败
+2025-08-13 16:01:35,116 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 16:01:35,117 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:01:37,744 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': 11CE052182DB3EB9257E99B9AF003ABE
+2025-08-13 16:01:37,747 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 11CE052182DB3EB9257E99B9AF003ABE
+2025-08-13 16:01:37,788 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 16:01:37,793 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 11CE052182DB3EB9257E99B9AF003ABE
+2025-08-13 16:01:40,829 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 16:01:41,540 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': 7F7491D264EAB5B0831C6A7BC2B3920F
+2025-08-13 16:01:41,545 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 7F7491D264EAB5B0831C6A7BC2B3920F
+2025-08-13 16:01:41,568 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 16:01:41,571 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 7F7491D264EAB5B0831C6A7BC2B3920F
+2025-08-13 16:01:44,617 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 16:01:44,664 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 11CE052182DB3EB9257E99B9AF003ABE
+2025-08-13 16:01:44,728 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 7F7491D264EAB5B0831C6A7BC2B3920F
+2025-08-13 16:01:44,794 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 11CE052182DB3EB9257E99B9AF003ABE
+2025-08-13 16:01:44,801 INFO [utils.window_manager] [window_manager.py:set_shared_data:169] - 设置共享数据: test_scenario = 中等响应
+2025-08-13 16:01:44,806 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 11CE052182DB3EB9257E99B9AF003ABE
+2025-08-13 16:01:44,820 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': 11CE052182DB3EB9257E99B9AF003ABE
+2025-08-13 16:01:44,821 ERROR [utils.window_manager] [window_manager.py:retry_operation:319] - 操作在3次尝试后仍然失败
+2025-08-13 16:01:44,837 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 16:01:44,837 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:01:47,476 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'pdf_page': FCE7D41C1FA9A330445BBE3780DA3B73
+2025-08-13 16:01:47,482 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': FCE7D41C1FA9A330445BBE3780DA3B73
+2025-08-13 16:01:47,519 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'pdf_page' 加载完成
+2025-08-13 16:01:47,523 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': FCE7D41C1FA9A330445BBE3780DA3B73
+2025-08-13 16:01:50,560 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'pdf_page' 达到稳定状态
+2025-08-13 16:01:51,218 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'sidebar': 2CF83C5A484B8F24BD9323E82AEC1CA5
+2025-08-13 16:01:51,231 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 2CF83C5A484B8F24BD9323E82AEC1CA5
+2025-08-13 16:01:51,256 INFO [utils.window_manager] [window_manager.py:wait_for_window_ready:121] - 窗口 'sidebar' 加载完成
+2025-08-13 16:01:51,260 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 2CF83C5A484B8F24BD9323E82AEC1CA5
+2025-08-13 16:01:54,312 INFO [utils.window_manager] [window_manager.py:wait_for_stable_state:291] - 窗口 'sidebar' 达到稳定状态
+2025-08-13 16:01:54,354 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': FCE7D41C1FA9A330445BBE3780DA3B73
+2025-08-13 16:01:54,424 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'sidebar': 2CF83C5A484B8F24BD9323E82AEC1CA5
+2025-08-13 16:01:54,487 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': FCE7D41C1FA9A330445BBE3780DA3B73
+2025-08-13 16:01:54,503 INFO [utils.window_manager] [window_manager.py:set_shared_data:169] - 设置共享数据: test_scenario = 慢速响应
+2025-08-13 16:01:54,509 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': FCE7D41C1FA9A330445BBE3780DA3B73
+2025-08-13 16:01:54,535 INFO [utils.window_manager] [window_manager.py:switch_to_window:37] - 切换到窗口 'pdf_page': FCE7D41C1FA9A330445BBE3780DA3B73
+2025-08-13 16:01:54,536 ERROR [utils.window_manager] [window_manager.py:retry_operation:319] - 操作在3次尝试后仍然失败
+2025-08-13 16:01:54,547 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 16:01:54,547 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:01:57,620 INFO [utils.window_manager] [window_manager.py:register_window:20] - 注册窗口 'error_test': A4FFBEDA5A8E189624D5AC74C29EDD02
+2025-08-13 16:01:57,664 INFO [utils.window_manager] [window_manager.py:clear_shared_data:250] - 清理共享数据完成: all
+2025-08-13 16:01:57,664 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:02:04,114 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:02:06,708 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:02:10,926 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:02:33,398 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:02:50,386 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:02:54,291 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:02:56,843 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:03:00,059 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:04:44,244 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:34:55,195 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:35:49,289 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:36:52,107 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:44:03,907 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:45:22,962 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:51:42,672 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:53:38,763 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:53:58,429 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:55:45,153 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:57:37,435 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:58:05,021 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:58:16,101 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-13 16:58:45,031 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 15:26:24,544 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 15:28:39,780 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 15:28:49,223 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 15:28:49,238 WARNING [urllib3.connectionpool] [connectionpool.py:urlopen:868] - Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x108bf5810>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/fdead504b08d5933e7996306c0cf0b22
+2025-08-14 15:28:49,252 WARNING [urllib3.connectionpool] [connectionpool.py:urlopen:868] - Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x108bf5a70>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/fdead504b08d5933e7996306c0cf0b22
+2025-08-14 15:28:49,254 WARNING [urllib3.connectionpool] [connectionpool.py:urlopen:868] - Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x108cd0b90>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/fdead504b08d5933e7996306c0cf0b22
+2025-08-14 15:34:06,699 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 15:34:25,024 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 15:36:07,603 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 15:36:14,898 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 15:36:14,900 WARNING [urllib3.connectionpool] [connectionpool.py:urlopen:868] - Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1068e95b0>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/7fbaa9660e23df0e9a14eefb2e2732af
+2025-08-14 15:36:14,902 WARNING [urllib3.connectionpool] [connectionpool.py:urlopen:868] - Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1068e9940>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/7fbaa9660e23df0e9a14eefb2e2732af
+2025-08-14 15:36:14,903 WARNING [urllib3.connectionpool] [connectionpool.py:urlopen:868] - Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1069d0a70>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/7fbaa9660e23df0e9a14eefb2e2732af
+2025-08-14 15:36:20,677 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 15:37:44,387 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 15:39:21,169 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 15:41:03,816 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 15:41:19,733 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 15:42:15,916 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 15:51:29,371 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 16:00:33,400 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 16:01:13,269 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 16:04:57,993 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 16:05:47,062 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 16:08:06,601 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 16:09:00,515 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 16:12:18,927 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 16:13:50,665 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 16:16:00,929 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 16:16:00,930 WARNING [urllib3.connectionpool] [connectionpool.py:urlopen:868] - Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1024bcf50>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/3b0830d52fc202aadf8d58c962f0eceb
+2025-08-14 16:16:00,930 WARNING [urllib3.connectionpool] [connectionpool.py:urlopen:868] - Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1024bd310>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/3b0830d52fc202aadf8d58c962f0eceb
+2025-08-14 16:16:00,931 WARNING [urllib3.connectionpool] [connectionpool.py:urlopen:868] - Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1024516e0>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/3b0830d52fc202aadf8d58c962f0eceb
+2025-08-14 16:18:42,013 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 16:20:33,217 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 16:20:52,539 INFO [root] [driver_utils.py:quit_driver:53] - quit chrome driver
+2025-08-14 16:25:11,873 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-08-14 16:27:30,339 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-08-14 16:27:30,340 WARNING [urllib3.connectionpool] [connectionpool.py:urlopen:868] - Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1027e8e10>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/dcf48e1fd44023b583f3c875af3af13b
+2025-08-14 16:27:30,341 WARNING [urllib3.connectionpool] [connectionpool.py:urlopen:868] - Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1027e91d0>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/dcf48e1fd44023b583f3c875af3af13b
+2025-08-14 16:27:30,341 WARNING [urllib3.connectionpool] [connectionpool.py:urlopen:868] - Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x102739480>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/dcf48e1fd44023b583f3c875af3af13b
+2025-08-14 16:29:17,008 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-08-14 16:33:00,017 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-08-14 16:34:44,828 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-08-14 16:37:16,460 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-08-14 16:38:46,985 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-08-14 16:39:31,441 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-08-14 16:39:46,056 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-08-14 16:40:12,269 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-08-14 16:41:17,337 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
+2025-08-14 16:43:16,411 INFO [root] [driver_utils.py:quit_driver:51] - quit chrome driver
