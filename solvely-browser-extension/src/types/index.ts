@@ -1,5 +1,0 @@
-export * from './user'
-export * from './upload'
-export * from './common'
-export * from './question.d'
-export * from './performance'
