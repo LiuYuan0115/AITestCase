@@ -124,7 +124,10 @@ export const uploadImage = async (base64Data: string): Promise<string> => {
     }
 };
 const NEW_API_URL = 'http://public-test.justsolvely.com/solvelyPubServer/v1/plugin/context/ask';
-const LOCAL_AGENT_URL = 'http://localhost:8000';
+// 智能体服务器地址
+// - 开发模式: 使用 .env 中的 VITE_LOCAL_AGENT_URL (默认 localhost:8765)
+// - 生产模式: 使用 .env.production 中的地址 (公司服务器)
+const LOCAL_AGENT_URL = import.meta.env.VITE_LOCAL_AGENT_URL || 'http://192.168.108.240:8765';
 
 // ================= PRD 智能体接口 =================
 
