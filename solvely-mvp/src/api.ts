@@ -1,14 +1,18 @@
-import { getLocalAgentUrl } from '@/utils/agentUrl';
+import { getAgentUrl, buildHeaders, isRemoteMode } from '@/utils/agentUrl';
 import { generateFileMD5 } from '@/utils/md5';
 import { browser } from 'wxt/browser';
 
-// ================= 本地模式（只使用本地 agent-server） =================
+// ================= Agent 服务配置（支持远程/本地切换） =================
 // 说明：
-// - 所有能力统一走本地 agent-server（默认 http://localhost:8000）
-// - 网页提取链路需要把“页面图片 + 拼接长截图”上传换取 cdnUrl
+// - 通过 .env 中的 VITE_USE_REMOTE 控制使用远程或本地
+// - 远程模式自动携带 X-Api-Key
+// - 本地模式走 localhost:8000
 
-// 智能体服务器地址（强制本地模式：仅允许 localhost/127.0.0.1）
-const LOCAL_AGENT_URL = getLocalAgentUrl();
+// 智能体服务器地址
+const AGENT_URL = getAgentUrl();
+
+// 打印当前模式（便于调试）
+console.log(`🔌 API 模式: ${isRemoteMode() ? '远程' : '本地'} | 地址: ${AGENT_URL}`);
 
 // ================= 依赖 webserver 上传接口：uploadurl / uploadurl/file =================
 const UPLOAD_CFG_STORAGE_KEY = 'SOLVELY_UPLOAD_CONFIG';
@@ -227,9 +231,9 @@ export const prdAgent = async (options: PrdAgentOptions): Promise<PrdAgentRespon
     
     // 只使用本地 Agent（按需求移除远程回退）
     try {
-        const localRes = await fetch(`${LOCAL_AGENT_URL}/api/prd`, {
+        const localRes = await fetch(`${AGENT_URL}/api/prd`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: buildHeaders(),
             body: JSON.stringify({
                 sessionId,
                 code: 'plugin_test_testprd',
@@ -265,7 +269,7 @@ export const prdAgent = async (options: PrdAgentOptions): Promise<PrdAgentRespon
  */
 export const clearPrdSession = async (sessionId: string): Promise<void> => {
     try {
-        await fetch(`${LOCAL_AGENT_URL}/api/session/${sessionId}`, {
+        await fetch(`${AGENT_URL}/api/session/${sessionId}`, {
             method: 'DELETE'
         });
         console.log(`🗑️ 会话已清除: ${sessionId}`);
@@ -298,9 +302,9 @@ export const testCaseAgent = async (options: TestCaseAgentOptions): Promise<Test
 
     // 1. 尝试本地 Agent
     try {
-        const localRes = await fetch(`${LOCAL_AGENT_URL}/api/testcase`, {
+        const localRes = await fetch(`${AGENT_URL}/api/testcase`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: buildHeaders(),
             body: JSON.stringify({
                 sessionId,
                 code: 'plugin_test_testcase',
@@ -352,7 +356,7 @@ ${text.slice(0, 6000)}
 
 export const clearTestCaseSession = async (sessionId: string): Promise<void> => {
     try {
-        await fetch(`${LOCAL_AGENT_URL}/api/session/${sessionId}`, { method: 'DELETE' });
+        await fetch(`${AGENT_URL}/api/session/${sessionId}`, { method: 'DELETE' });
     } catch (e) {}
 };
 
@@ -412,15 +416,15 @@ interface ChatAgentResponse {
 export const chatAgent = async (options: ChatAgentOptions): Promise<ChatAgentResponse> => {
     const { sessionId, role, message, additionalPrds } = options;
     try {
-        const res = await fetch(`${LOCAL_AGENT_URL}/api/chat`, {
+        const res = await fetch(`${AGENT_URL}/api/chat`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: buildHeaders(),
             body: JSON.stringify({ sessionId, role, message, additionalPrds: additionalPrds && additionalPrds.length > 0 ? additionalPrds : undefined })
         });
         if (!res.ok) {
             if (res.status === 404) {
                 // 错误信息必须为英文
-                throw new Error(`Local agent endpoint not found: ${LOCAL_AGENT_URL}/api/chat. Please update and restart agent-server.`);
+                throw new Error(`Local agent endpoint not found: ${AGENT_URL}/api/chat. Please update and restart agent-server.`);
             }
             throw new Error(`Server Error: ${res.status} ${res.statusText}`);
         }
@@ -446,9 +450,9 @@ export const uiAgent = async (options: UiAgentOptions): Promise<UiAgentResponse>
     console.log(`   - 模式: ${headless ? '无头' : '有头'}`);
 
     try {
-        const localRes = await fetch(`${LOCAL_AGENT_URL}/api/ui_agent`, {
+        const localRes = await fetch(`${AGENT_URL}/api/ui_agent`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: buildHeaders(),
             body: JSON.stringify({
                 sessionId,
                 code: 'plugin_test_uinocode',
@@ -487,7 +491,7 @@ export const uiAgent = async (options: UiAgentOptions): Promise<UiAgentResponse>
  */
 export const getUiScreenshots = async (): Promise<ScreenshotsResponse> => {
     try {
-        const res = await fetch(`${LOCAL_AGENT_URL}/api/ui_agent/screenshots`);
+        const res = await fetch(`${AGENT_URL}/api/ui_agent/screenshots`);
         if (res.ok) {
             return await res.json();
         }
@@ -503,7 +507,7 @@ export const getUiScreenshots = async (): Promise<ScreenshotsResponse> => {
  */
 export const clearUiScreenshots = async (): Promise<void> => {
     try {
-        await fetch(`${LOCAL_AGENT_URL}/api/ui_agent/screenshots`, { method: 'DELETE' });
+        await fetch(`${AGENT_URL}/api/ui_agent/screenshots`, { method: 'DELETE' });
         console.log('🗑️ 截图已清空');
     } catch (e) {
         console.log('⚠️ 清空截图失败');
@@ -512,7 +516,7 @@ export const clearUiScreenshots = async (): Promise<void> => {
 
 export const clearUiSession = async (sessionId: string): Promise<void> => {
     try {
-        await fetch(`${LOCAL_AGENT_URL}/api/session/${sessionId}`, { method: 'DELETE' });
+        await fetch(`${AGENT_URL}/api/session/${sessionId}`, { method: 'DELETE' });
         console.log(`🗑️ UI 会话已清除: ${sessionId}`);
     } catch (e) {
         console.log('⚠️ 清除 UI 会话失败');
@@ -532,9 +536,9 @@ export const runSimpleTest = async (prompt: string, url: string): Promise<Simple
     console.log(`🔧 简单自动化测试 | 指令: ${prompt}`);
     
     try {
-        const res = await fetch(`${LOCAL_AGENT_URL}/api/run_test`, {
+        const res = await fetch(`${AGENT_URL}/api/run_test`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: buildHeaders(),
             body: JSON.stringify({ prompt, url })
         });
         
@@ -583,9 +587,9 @@ export const ask = async (
     body.additionalPrds = options.additionalPrds;
   }
 
-  const response = await fetch(`${LOCAL_AGENT_URL}/api/ask`, {
+  const response = await fetch(`${AGENT_URL}/api/ask`, {
      method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: buildHeaders(),
      body: JSON.stringify(body)
   });
 
