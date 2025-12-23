@@ -1,0 +1,54 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: "ai-testcase-agent-server"
+  namespace: "solvely-test"
+  annotations:
+    # 告诉 Cloud Run，ingress (入口流量) 应该由哪个容器处理
+    run.googleapis.com/invoker-iam-disabled: "true"
+spec:
+  template:
+    metadata:
+      annotations:
+        # 这里指定 nginx 容器作为流量入口
+        run.googleapis.com/container-dependencies: '{"app":["nginx"]}'
+    spec:
+      containers:
+        # --- 容器 1: Nginx (入口) ---
+        - image: gcr.io/solvely-test/ai-testcase-agent-nginx-server:latest  # 你刚刚构建的 Nginx 镜像
+          name: nginx
+          ports:
+            - containerPort: 8080  # 对外暴露 8080
+          resources:
+            limits:
+              cpu: "200m"    # 0.5 核
+              memory: "128Mi" # 256 MB
+          # 这一步是为了防止 Cloud Run 混淆，明确指定这是入口
+
+        # --- 容器 2: 用户的 App ---
+        - image: gcr.io/solvely-test/ai-testcase-agent-server:latest   # 开发者的镜像
+          name: app
+          env:
+            # !!! 关键 !!!
+            # 强制应用监听 8000，因为 8080 被 Nginx 占用了
+            # 绝大多数 App 都会读取 PORT 变量。如果不行，你需要查一下他的启动命令参数
+            - name: PORT
+              value: "8000"
+            - name: MY_DB_PASSWORD  # 你的业务变量
+              value: "secret"
+            - name: OPENAI_API_KEY
+              value: "---" # 部署时候需要写入密钥
+            - name: OPENAI_BASE_URL
+              value: "https://zenmux.ai/api/v1"
+            - name: DEFAULT_MODEL
+              value: "openai/gpt-4o"
+          resources:
+            limits:
+              cpu: "1000m"    # 0.5 核
+              memory: "512Mi" # 256 MB
+          startupProbe:
+            tcpSocket:
+              port: 8000   # 监测 App 的端口
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 24 # 允许 120秒 启动时间
