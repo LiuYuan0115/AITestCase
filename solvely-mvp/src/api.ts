@@ -12,7 +12,10 @@ import { browser } from 'wxt/browser';
 const AGENT_URL = getAgentUrl();
 
 // 打印当前模式（便于调试）
-console.log(`🔌 API 模式: ${isRemoteMode() ? '远程' : '本地'} | 地址: ${AGENT_URL}`);
+const currentMode = isRemoteMode();
+console.log(`%c🔌 API 配置`, 'font-weight: bold; color: #5D6AB4;');
+console.log(`   模式: ${currentMode ? '🌐 远程（正式包）' : '🏠 本地（开发包）'}`);
+console.log(`   地址: ${AGENT_URL}`);
 
 // ================= 依赖 webserver 上传接口：uploadurl / uploadurl/file =================
 const UPLOAD_CFG_STORAGE_KEY = 'SOLVELY_UPLOAD_CONFIG';
@@ -585,6 +588,78 @@ export const ask = async (
   // 添加辅助PRD参数（如果有）
   if (options.additionalPrds && options.additionalPrds.length > 0) {
     body.additionalPrds = options.additionalPrds;
+  }
+
+  // ================= 远程连接排查日志（关键：请求体大小/字段长度） =================
+  // 说明：curl 成功但插件失败时，最常见原因是“插件请求体过大”，服务端/网关会直接断开连接，
+  // 浏览器侧表现为 net::ERR_CONNECTION_CLOSED / TypeError: Failed to fetch。
+  const stringifySafe = (obj: any) => {
+    try {
+      return JSON.stringify(obj);
+    } catch (e) {
+      return '';
+    }
+  };
+
+  const safeLen = (s: any) => (typeof s === 'string' ? s.length : 0);
+  const safeArrLen = (a: any) => (Array.isArray(a) ? a.length : 0);
+
+  const rawText = body?.params?.text;
+  const rawPics = body?.params?.pictureKeyList;
+  const rawAdditional = body?.additionalPrds;
+  const payloadStr0 = stringifySafe(body);
+
+  console.log(`🧭 [ask] url=${AGENT_URL}/api/ask`);
+  console.log(`   - mode=${isRemoteMode() ? 'remote' : 'local'}`);
+  console.log(`   - bytes=${payloadStr0 ? payloadStr0.length : -1}`);
+  console.log(`   - textLen=${safeLen(rawText)}`);
+  console.log(`   - pictureKeyList=${safeArrLen(rawPics)}`);
+  console.log(`   - additionalPrds=${safeArrLen(rawAdditional)}`);
+  if (Array.isArray(rawAdditional) && rawAdditional.length > 0) {
+    const preview = rawAdditional.slice(0, 5).map((d: any) => ({
+      title: d?.title,
+      contentLen: safeLen(d?.content),
+    }));
+    console.log(`   - additionalPrdsPreview(<=5)=`, preview);
+  }
+
+  // 远程模式下做一个“超大请求”兜底：避免直接断链无响应（本地不限制，方便调试）
+  // Cloud Run / 代理层通常对请求体有大小限制，过大时会直接断开连接。
+  const MAX_REMOTE_BYTES = 900_000; // 约 0.9MB：足够覆盖绝大多数文本场景，避免超大文档导致断链
+  const MAX_REMOTE_TEXT = 120_000;  // text 最大 12 万字符（按需可调）
+  const MAX_REMOTE_ADDITIONAL = 6;  // 最多携带 6 个辅助文档
+  const MAX_REMOTE_ADDITIONAL_TEXT = 60_000; // 每个辅助文档最多 6 万字符
+
+  if (isRemoteMode()) {
+    // 1) 优先截断字段，再计算一次 bytes
+    if (typeof body?.params?.text === 'string' && body.params.text.length > MAX_REMOTE_TEXT) {
+      console.warn(`⚠️ [ask] remote text too large: ${body.params.text.length}, truncate to ${MAX_REMOTE_TEXT}`);
+      body.params.text = body.params.text.slice(0, MAX_REMOTE_TEXT);
+    }
+    if (Array.isArray(body?.additionalPrds) && body.additionalPrds.length > MAX_REMOTE_ADDITIONAL) {
+      console.warn(`⚠️ [ask] remote additionalPrds too many: ${body.additionalPrds.length}, keep first ${MAX_REMOTE_ADDITIONAL}`);
+      body.additionalPrds = body.additionalPrds.slice(0, MAX_REMOTE_ADDITIONAL);
+    }
+    if (Array.isArray(body?.additionalPrds)) {
+      body.additionalPrds = body.additionalPrds.map((d: any) => {
+        const title = d?.title || '';
+        const content = typeof d?.content === 'string' ? d.content : '';
+        if (content.length > MAX_REMOTE_ADDITIONAL_TEXT) {
+          return { ...d, title, content: content.slice(0, MAX_REMOTE_ADDITIONAL_TEXT) };
+        }
+        return { ...d, title, content };
+      });
+    }
+
+    const payloadStr1 = stringifySafe(body);
+    if (payloadStr1 && payloadStr1.length > MAX_REMOTE_BYTES) {
+      // 2) 仍然过大：直接抛出可读错误，避免浏览器只看到“Failed to fetch”
+      const errMsg =
+        `Error: Remote request payload too large (${payloadStr1.length} bytes). ` +
+        `Please reduce PRD/reference content or use fewer documents, then retry.`;
+      console.error(`❌ [ask] ${errMsg}`);
+      throw new Error(errMsg);
+    }
   }
 
   const response = await fetch(`${AGENT_URL}/api/ask`, {
