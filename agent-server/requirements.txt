@@ -2,4 +2,7 @@ fastapi
 uvicorn
 playwright
 openai
+anthropic
 python-dotenv
+langgraph
+pillow
