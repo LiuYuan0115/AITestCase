@@ -1,6 +1,35 @@
 export default defineBackground(() => {
   console.log('Solvely MVP Background Script Loaded');
 
+  // ================= 上传配置（内置默认值） =================
+  // 说明：按你的要求，不在 UI 展示入口；扩展启动时自动写入缓存（若用户未配置过）
+  const UPLOAD_CFG_STORAGE_KEY = 'SOLVELY_UPLOAD_CONFIG';
+  const DEFAULT_UPLOAD_BASE = 'https://dev-webserver.solvely.ai';
+  const DEFAULT_UPLOAD_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiJmR0xPV2NqbGp3V2NWRGR5QlJVV015aExGbW0yIiwiZXhwaXJlVGltZSI6MTc2ODQ2ODg4ODE2MCwiaWF0IjoxNzY1ODc2ODg4fQ.0Tz2d07hfnABQiz9G5MjSP3wXE5mzJRdISiHsNbI0TA';
+  const DEFAULT_PLUGIN_UUID = '';
+
+  const ensureUploadConfig = async () => {
+    try {
+      const res = await browser.storage.local.get(UPLOAD_CFG_STORAGE_KEY);
+      const cfg = (res?.[UPLOAD_CFG_STORAGE_KEY] || {}) as any;
+      // 只在缺失 token 时写入，避免覆盖用户已有配置
+      if (!cfg?.token) {
+        await browser.storage.local.set({
+          [UPLOAD_CFG_STORAGE_KEY]: {
+            base: DEFAULT_UPLOAD_BASE,
+            token: DEFAULT_UPLOAD_TOKEN,
+            pluginUuid: DEFAULT_PLUGIN_UUID,
+          },
+        });
+      }
+    } catch (e) {
+      // 忽略写入失败
+    }
+  };
+
+  // 异步执行，不阻塞其他逻辑
+  ensureUploadConfig();
+
   // 允许点击扩展图标时打开侧边栏
   browser.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch((error) => console.error(error));
 

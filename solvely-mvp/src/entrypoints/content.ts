@@ -363,27 +363,6 @@ function restorePageAfterScreenshot(): Promise<{ success: boolean }> {
   })
 }
 
-async function fetchImagesAsBase64(images: { url: string, width: number, height: number }[]) {
-    const results = await Promise.all(images.map(async (img) => {
-        try {
-            if (img.url.startsWith('data:')) {
-                return { url: img.url, base64: img.url };
-            }
-            const response = await fetch(img.url);
-            const blob = await response.blob();
-            return new Promise<{ url: string, base64: string }>((resolve) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve({ url: img.url, base64: reader.result as string });
-                reader.readAsDataURL(blob);
-            });
-        } catch (e) {
-            console.error('Failed to fetch image:', img.url, e);
-            return { url: img.url, base64: '' }; // Failed
-        }
-    }));
-    return results;
-}
-
 // Content Script Message Listener
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -478,20 +457,16 @@ export default defineContentScript({
     // Listen for messages
     browser.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
       if (message.type === 'GET_DOM') {
-        // Pass any options (like onlyInViewport) to the converter
         const result = convertDOMToMarkdown(document.body, { 
             checkSelectors: true, 
             onlyInViewport: message.onlyInViewport || false 
         })
         
-        // Async process images
-        fetchImagesAsBase64(result.images).then(imagesWithBase64 => {
-             sendResponse({
-                 markdown: result.markdown,
-                 images: imagesWithBase64
-             });
+        sendResponse({
+            markdown: result.markdown,
+            images: [] // No longer extracting images from DOM
         });
-        return true; // Return true to indicate async response
+        return false;
       }
 
 
@@ -554,25 +529,17 @@ export default defineContentScript({
             const getScrollPosition = () => window.scrollY + window.innerHeight;
             
             // 1. 检测滚动容器（可能是 body 或特定元素）
-            let scrollContainer: HTMLElement | Window = window;
             let scrollContainerEl: HTMLElement | null = null;
             
-            // 尝试检测飞书等 SPA 的特殊滚动容器
             const feishuContainers = [
-              '.page-main',
-              '.docx-container',
-              '.article-content',
-              '.notion-page-content',
-              '[class*="scroll"]',
-              'main',
-              'article'
+              '.page-main', '.docx-container', '.article-content', 
+              '.notion-page-content', '[class*="scroll"]', 'main', 'article'
             ];
             
             for (const selector of feishuContainers) {
               const el = document.querySelector<HTMLElement>(selector);
               if (el && el.scrollHeight > el.clientHeight + 100) {
                 scrollContainerEl = el;
-                scrollContainer = el;
                 console.log(`[SCROLL_AND_EXTRACT] 检测到滚动容器: ${selector}`);
                 break;
               }
@@ -580,68 +547,38 @@ export default defineContentScript({
             
             // 2. 执行自动滚动
             let attempts = 0;
-            let lastHeight = scrollContainerEl 
-              ? scrollContainerEl.scrollHeight 
-              : getScrollHeight();
             let stableCount = 0;
             
             while (attempts < MAX_SCROLL_ATTEMPTS) {
-              // 向下滚动
               if (scrollContainerEl) {
                 scrollContainerEl.scrollBy({ top: SCROLL_STEP, behavior: 'auto' });
               } else {
                 window.scrollBy({ top: SCROLL_STEP, behavior: 'auto' });
               }
               
-              // 等待内容加载
               await wait(DELAY_PER_SCROLL);
               
-              // 检查是否到底
-              const currentHeight = scrollContainerEl 
-                ? scrollContainerEl.scrollHeight 
-                : getScrollHeight();
-              
-              const scrolledAmount = scrollContainerEl
-                ? scrollContainerEl.scrollTop + scrollContainerEl.clientHeight
-                : getScrollPosition();
-              
-              // 判断是否到达底部（允许少量误差）
+              const currentHeight = scrollContainerEl ? scrollContainerEl.scrollHeight : getScrollHeight();
+              const scrolledAmount = scrollContainerEl ? scrollContainerEl.scrollTop + scrollContainerEl.clientHeight : getScrollPosition();
               const isAtBottom = scrolledAmount >= currentHeight - 50;
               
               if (isAtBottom) {
-                // 到达底部后，再等一下看高度是否变化（可能触发加载更多）
                 await wait(300);
-                const newHeight = scrollContainerEl 
-                  ? scrollContainerEl.scrollHeight 
-                  : getScrollHeight();
-                
+                const newHeight = scrollContainerEl ? scrollContainerEl.scrollHeight : getScrollHeight();
                 if (newHeight === currentHeight) {
                   stableCount++;
-                  // 连续2次高度稳定才认为真的到底了
-                  if (stableCount >= 2) {
-                    console.log(`[SCROLL_AND_EXTRACT] 到达底部，共滚动 ${attempts} 次`);
-                    break;
-                  }
+                  if (stableCount >= 2) break;
                 } else {
                   stableCount = 0;
-                  lastHeight = newHeight;
                 }
               } else {
                 stableCount = 0;
               }
-              
               attempts++;
-              
-              // 每 20 次打印一次进度
-              if (attempts % 20 === 0) {
-                console.log(`[SCROLL_AND_EXTRACT] 滚动进度: ${attempts}/${MAX_SCROLL_ATTEMPTS}, 高度: ${currentHeight}`);
-              }
             }
             
-            // 3. 滚动完毕，稳定等待
             await wait(SETTLE_TIME);
             
-            // 4. 滚回顶部（可选）
             if (message.scrollBackToTop !== false) {
               if (scrollContainerEl) {
                 scrollContainerEl.scrollTo({ top: 0, behavior: 'auto' });
@@ -657,19 +594,11 @@ export default defineContentScript({
               onlyInViewport: false 
             });
             
-            console.log(`[SCROLL_AND_EXTRACT] 提取完成，字符数: ${result.markdown.length}`);
-            
-            // 6. 异步获取图片 Base64
-            const imagesWithBase64 = await fetchImagesAsBase64(result.images);
-            
             sendResponse({
               success: true,
               markdown: result.markdown,
-              images: imagesWithBase64,
-              scrollAttempts: attempts,
-              finalHeight: scrollContainerEl 
-                ? scrollContainerEl.scrollHeight 
-                : getScrollHeight()
+              images: [], // No images per new policy
+              scrollAttempts: attempts
             });
             
           } catch (err: any) {

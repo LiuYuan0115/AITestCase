@@ -35,7 +35,7 @@ fi
 
 # 4. 检查并安装依赖
 echo "📦 检查依赖..."
-pip3 install -q fastapi uvicorn playwright openai
+pip3 install -q fastapi uvicorn playwright openai langgraph pillow
 
 # 5. 启动 Agent Server
 echo ""
