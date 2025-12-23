@@ -12,7 +12,6 @@ interface ProcessContext {
   listType?: 'ul' | 'ol'
   listIndex?: number
   inPreBlock?: boolean
-  imageCollector: ImageInfo[]
   onlyInViewport?: boolean
   // 用于追踪提取的内容数量，帮助调试
   extractedCount?: number
@@ -26,7 +25,6 @@ export interface ImageInfo {
 
 export interface ConvertResult {
   markdown: string
-  images: ImageInfo[]
 }
 
 /**
@@ -35,10 +33,8 @@ export interface ConvertResult {
  * @param options 配置项
  */
 export function convertDOMToMarkdown(rootNode: Node, options: { checkSelectors?: boolean, onlyInViewport?: boolean } = { checkSelectors: true, onlyInViewport: false }): ConvertResult {
-  const imageCollector: ImageInfo[] = []
   const context: ProcessContext = {
     depth: 0,
-    imageCollector,
     onlyInViewport: options.onlyInViewport
   }
 
@@ -138,18 +134,9 @@ export function convertDOMToMarkdown(rootNode: Node, options: { checkSelectors?:
   const result = processNode(targetNode, context)
   const markdown = result.replace(/\n{3,}/g, '\n\n').trim()
 
-    return {
-        markdown,
-        images: imageCollector.map((item) => {
-          if (!item.url.startsWith('data:') && !item.url.startsWith('http') && !item.url.startsWith('blob:')) {
-            return {
-              ...item,
-              url: window.location.origin + item.url,
-            }
-          }
-          return item
-        }),
-      }
+  return {
+    markdown,
+  }
 }
 
 function isElementInViewport(el: Element): boolean {
@@ -192,6 +179,12 @@ function processNode(
     }
 
     const tagName = element.tagName.toLowerCase()
+
+    // ========== 通用表格：不保留表格结构，转为列表/文本 ==========
+    // 目标：只保留标题、文本、列表、序列、图片等信息，不输出 Markdown 表格语法。
+    if (tagName === 'table') {
+      return processHtmlTableAsList(element, context)
+    }
     
     // 处理段落
     if (tagName === 'p') {
@@ -206,29 +199,29 @@ function processNode(
         if (className.includes('docx-heading1-block') || className.includes('heading-h1')) {
             const content = element.querySelector('.heading-content, .text-container, [data-content-editable-leaf]');
             if (content) {
-                return '\n\n# ' + processNode(content, context).trim() + '\n\n';
+                return '\n\n---\n\n# ' + processNode(content, context).trim() + '\n\n';
             }
             const text = element.textContent?.trim() || '';
-            if (text) return '\n\n# ' + text + '\n\n';
-            return '\n\n# ' + processChildrenNodes(element, context) + '\n\n';
+            if (text) return '\n\n---\n\n# ' + text + '\n\n';
+            return '\n\n---\n\n# ' + processChildrenNodes(element, context) + '\n\n';
         }
         if (className.includes('docx-heading2-block') || className.includes('heading-h2')) {
             const content = element.querySelector('.heading-content, .text-container, [data-content-editable-leaf]');
             if (content) {
-                return '\n\n## ' + processNode(content, context).trim() + '\n\n';
+                return '\n\n---\n\n## ' + processNode(content, context).trim() + '\n\n';
             }
             const text = element.textContent?.trim() || '';
-            if (text) return '\n\n## ' + text + '\n\n';
-            return '\n\n## ' + processChildrenNodes(element, context) + '\n\n';
+            if (text) return '\n\n---\n\n## ' + text + '\n\n';
+            return '\n\n---\n\n## ' + processChildrenNodes(element, context) + '\n\n';
         }
         if (className.includes('docx-heading3-block') || className.includes('heading-h3')) {
             const content = element.querySelector('.heading-content, .text-container, [data-content-editable-leaf]');
             if (content) {
-                return '\n\n### ' + processNode(content, context).trim() + '\n\n';
+                return '\n\n---\n\n### ' + processNode(content, context).trim() + '\n\n';
             }
             const text = element.textContent?.trim() || '';
-            if (text) return '\n\n### ' + text + '\n\n';
-            return '\n\n### ' + processChildrenNodes(element, context) + '\n\n';
+            if (text) return '\n\n---\n\n### ' + text + '\n\n';
+            return '\n\n---\n\n### ' + processChildrenNodes(element, context) + '\n\n';
         }
         if (className.includes('docx-heading4-block') || className.includes('heading-h4')) {
             const content = element.querySelector('.heading-content, .text-container, [data-content-editable-leaf]');
@@ -260,17 +253,9 @@ function processNode(
             return processFeishuList(element, context, 'unordered');
         }
         
-        // ========== 飞书图片块 ==========
+        // ========== 飞书图片块 (跳过提取) ==========
         if (className.includes('docx-image-block') || className.includes('image-block')) {
-             const img = element.querySelector('img');
-             if (img) {
-                 const src = img.getAttribute('src') || img.getAttribute('data-src') || '';
-                 const alt = img.getAttribute('alt') || 'Image';
-                 if (src) {
-                     context.imageCollector.push({ url: src, width: img.width || 0, height: img.height || 0 });
-                     return `\n![${alt}](${src})\n`;
-                 }
-             }
+             return '';
         }
         
         // ========== 飞书代码块 ==========
@@ -337,8 +322,6 @@ function processNode(
         
         // Ignore list order buttons if they are being handled by processFeishuList
         if (element.classList.contains('order') || element.classList.contains('heading-order')) {
-             // These are usually handled by the block processor, but if we are here, it might be a loose button.
-             // However, context would be needed. For now, let's keep numbers if they look like list markers.
              if (/^\d+\.$/.test(text)) return text + ' ';
              return '';
         }
@@ -355,6 +338,10 @@ function processNode(
         const type = element.getAttribute('type') || 'text';
         const placeholder = element.getAttribute('placeholder') || '';
         return ` [INPUT: ${type} | ${placeholder}] `;
+    }
+    if (tagName === 'img') {
+        // Skip all images per new requirement
+        return '';
     }
 
     if (hasDirectTextNodes(element)) {
@@ -378,6 +365,107 @@ function shouldIgnoreNode(node: Node, context: ProcessContext): boolean {
     const style = window.getComputedStyle(element)
     if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
         return true
+    }
+    
+    // ========== 过滤评论/批注相关元素 ==========
+    // 飞书、Notion、Google Docs 等平台的评论元素
+    const className = typeof element.className === 'string' ? element.className.toLowerCase() : '';
+    const id = element.id ? element.id.toLowerCase() : '';
+    
+    // 评论相关的 class 关键词
+    const commentKeywords = [
+      // ========== 飞书文档特有 ==========
+      'suspension-comment',     // 悬浮评论区域
+      'doccommentcontainer',    // 评论容器 (id)
+      'docx-comment',           // 飞书文档评论
+      'docs-comment',           // 飞书评论
+      'global-comment',         // 全局评论
+      'comment-numbers',        // 评论数字标记
+      'first-comment-btn',      // 第一条评论按钮
+      'comment-image-viewer',   // 评论图片查看器
+      'copilot-chat',           // Copilot 聊天框
+      'ai-suggestion',          // AI 建议
+      'docs-reminder',          // 提醒
+      'page-main-footer',       // 页脚（通常包含评论入口）
+      'help-block',             // 帮助块
+      'wiki-popover',           // Wiki 弹出框
+      
+      // ========== 通用评论关键词 ==========
+      'comment',           // 通用评论
+      'annotation',        // 批注
+      'remark',            // 备注
+      'note-popup',        // 弹出批注
+      'discuss',           // 讨论
+      'reply',             // 回复 (注意：不要匹配到正常内容)
+      'feedback',          // 反馈
+      'sidebar-comment',   // 侧边栏评论
+      'comment-panel',     // 评论面板
+      'comment-list',      // 评论列表
+      'comment-thread',    // 评论线程
+      'comment-container', // 评论容器
+      'comment-wrapper',   // 评论包装
+      'comment-content',   // 评论内容
+      'comment-body',      // 评论主体
+      'comment-item',      // 评论项
+      'comment-block',     // 评论块
+      'comment-box',       // 评论框
+      'comment-card',      // 评论卡片
+      'popover-comment',   // 弹出评论
+      'inline-comment',    // 行内评论
+      'doc-comment',       // 文档评论
+      'lark-comment',      // 飞书评论
+      'feishu-comment',    // 飞书评论
+      'comment-anchor',    // 评论锚点
+      'comment-highlight', // 评论高亮
+      'comment-mark',      // 评论标记
+      'resolved-comment',  // 已解决评论
+      'quote-comment',     // 引用评论
+    ];
+    
+    // 检查 class 是否包含评论关键词
+    for (const keyword of commentKeywords) {
+      if (className.includes(keyword) || id.includes(keyword)) {
+        console.log(`[DOM Extractor] Ignoring comment element: class="${element.className}", id="${element.id}"`);
+        return true;
+      }
+    }
+    
+    // 检查特定 ID（飞书评论容器等）
+    const ignoreIds = [
+      'doccommentcontainer',
+      'docs-poll-date-picker-container',
+      'page-main-footer-placeholder',
+      'link-editor-container',
+      'pp_popupcontainer',
+    ];
+    if (id && ignoreIds.some(ignoreId => id.includes(ignoreId))) {
+      console.log(`[DOM Extractor] Ignoring element by ID: ${element.id}`);
+      return true;
+    }
+    
+    // 检查 data 属性（飞书可能使用 data-comment-id 等）
+    const dataAttributes = ['data-comment', 'data-comment-id', 'data-annotation', 'data-remark', 'data-selection-node'];
+    for (const attr of dataAttributes) {
+      if (element.hasAttribute(attr)) {
+        console.log(`[DOM Extractor] Ignoring element with ${attr} attribute`);
+        return true;
+      }
+    }
+    
+    // 检查 lazy-selection-node（飞书评论锚点）
+    if (element.classList.contains('lazy-selection-node')) {
+      return true;
+    }
+    
+    // 检查 role 属性（可能是评论对话框）
+    const role = element.getAttribute('role');
+    if (role === 'dialog' || role === 'tooltip' || role === 'alertdialog') {
+      // 判断内容是否与评论相关
+      const textContent = element.textContent?.toLowerCase() || '';
+      if (textContent.includes('评论') || textContent.includes('comment') || 
+          textContent.includes('回复') || textContent.includes('reply')) {
+        return true;
+      }
     }
   }
   return false
@@ -425,7 +513,8 @@ function processFeishuList(element: Element, context: ProcessContext, type: 'ord
             }
         }
         // 最后的默认值
-        if (!orderText) orderText = '1.';
+        // If we can't find the order number, fallback to a bullet to avoid misleading "1. 1. 1." sequences
+        if (!orderText) orderText = '-';
     } else {
         orderText = '-';
     }
@@ -485,69 +574,124 @@ function processFeishuList(element: Element, context: ProcessContext, type: 'ord
 }
 
 function processFeishuTable(element: Element, context: ProcessContext): string {
-    // 尝试多种表格行选择器
-    const rowSelectors = ['.docx-table-tr', 'tr', '.table-row', '[data-row]'];
-    let rows: Element[] = [];
+    // 简化表格提取：只保留内容，不添加额外格式标记
     
-    for (const sel of rowSelectors) {
-        const found = Array.from(element.querySelectorAll(sel));
-        if (found.length > 0) {
-            rows = found;
-            break;
-        }
-    }
-    
-    if (rows.length === 0) {
-        // 如果没找到行，直接提取表格内所有文本
+    const rowCandidates = Array.from(element.querySelectorAll('.docx-table-tr, tr, .table-row, [data-row]'));
+    if (rowCandidates.length === 0) {
         const text = element.textContent?.trim() || '';
         return text ? `\n${text}\n` : '';
     }
 
-    let result = '\n';
-    const allRowData: string[][] = [];
-    let maxCols = 0;
-    
-    // 第一遍：收集所有单元格数据
-    for (const row of rows) {
-        const cellSelectors = ['.docx-table_cell-block', 'td', 'th', '.table-cell', '[data-cell]'];
-        let cells: Element[] = [];
-        
-        for (const sel of cellSelectors) {
-            const found = Array.from(row.querySelectorAll(sel));
-            if (found.length > 0) {
-                cells = found;
-                break;
-            }
+    // 只保留顶层行
+    const rows = rowCandidates.filter((row) => {
+        let parent = row.parentElement;
+        while (parent && parent !== element) {
+            if (rowCandidates.includes(parent as Element)) return false;
+            parent = parent.parentElement;
         }
-        
+        return true;
+    });
+
+    // 提取每行的单元格内容
+    const allRows: string[][] = [];
+    for (const row of rows) {
+        const cellCandidates = Array.from(
+            row.querySelectorAll('.docx-table_cell-block, td, th, .table-cell, [data-cell]')
+        );
+        const cells = cellCandidates.filter((cell) => {
+            let p = cell.parentElement;
+            while (p && p !== row) {
+                if (p.matches('.docx-table-tr, tr, .table-row')) return false;
+                p = p.parentElement;
+            }
+            return p === row;
+        });
+
         const rowData: string[] = [];
         for (const cell of cells) {
-            const cellContent = processNode(cell, context).trim().replace(/\n+/g, ' ');
-            rowData.push(cellContent || '');
+            const cellContext = { ...context, depth: 0 };
+            let cellText = processNode(cell, cellContext).trim();
+            cellText = cellText.replace(/飞书文档\s*-\s*图片/g, '').trim();
+            if (cellText) rowData.push(cellText);
         }
-        
-        if (rowData.length > maxCols) maxCols = rowData.length;
-        allRowData.push(rowData);
+        if (rowData.length > 0) allRows.push(rowData);
     }
-    
-    // 第二遍：生成 Markdown 表格（如果数据规整）
-    if (maxCols > 0 && allRowData.length > 0) {
-        // 尝试生成 Markdown 表格
-        // 第一行作为表头
-        const header = allRowData[0];
-        result += '| ' + header.map(c => c || ' ').join(' | ') + ' |\n';
-        result += '| ' + header.map(() => '---').join(' | ') + ' |\n';
-        
-        // 剩余行作为数据
-        for (let i = 1; i < allRowData.length; i++) {
-            const rowData = allRowData[i];
-            // 补齐列数
-            while (rowData.length < maxCols) {
-                rowData.push('');
+
+    if (allRows.length === 0) return '';
+
+    // 判断表头
+    const header = allRows[0];
+    const looksLikeHeader =
+        header.length >= 2 &&
+        header.every((c) => !!c && c.length <= 40 && !c.includes('http'));
+
+    let result = '\n\n';
+
+    if (looksLikeHeader && allRows.length > 1) {
+        // 有表头：每行按"字段: 值"格式输出，每个字段换行
+        for (let i = 1; i < allRows.length; i++) {
+            const row = allRows[i];
+            for (let j = 0; j < header.length; j++) {
+                const key = header[j] || '';
+                const val = row[j] || '';
+                if (val) {
+                    result += `**${key}**:\n${val}\n\n`;
+                }
             }
-            result += '| ' + rowData.map(c => c || ' ').join(' | ') + ' |\n';
+            result += '\n'; // 每条记录之间空行
         }
-        result += '\n';
+    } else {
+        // 无表头：直接逐行输出，每行换行
+        for (const row of allRows) {
+            result += row.join('\n') + '\n\n';
+        }
+    }
+
+    return result;
+}
+
+function processHtmlTableAsList(tableEl: Element, context: ProcessContext): string {
+    const rows = Array.from(tableEl.querySelectorAll('tr'));
+    if (rows.length === 0) {
+        const text = tableEl.textContent?.trim() || '';
+        return text ? `\n${text}\n` : '';
+    }
+
+    const parsed: string[][] = [];
+    for (const row of rows) {
+        const cells = Array.from(row.querySelectorAll('th, td'));
+        const rowData: string[] = [];
+        for (const cell of cells) {
+            const cellText = processNode(cell, context).trim();
+            if (cellText) rowData.push(cellText);
+        }
+        if (rowData.length) parsed.push(rowData);
+    }
+    if (parsed.length === 0) return '';
+
+    const header = parsed[0];
+    const looksLikeHeader =
+        header.length >= 2 &&
+        header.every((c) => !!c && c.length <= 40 && !c.includes('http'));
+
+    let result = '\n\n';
+
+    if (looksLikeHeader && parsed.length > 1) {
+        for (let i = 1; i < parsed.length; i++) {
+            const row = parsed[i];
+            for (let j = 0; j < header.length; j++) {
+                const key = header[j] || '';
+                const val = row[j] || '';
+                if (val) {
+                    result += `**${key}**:\n${val}\n\n`;
+                }
+            }
+            result += '\n';
+        }
+    } else {
+        for (const row of parsed) {
+            result += row.join('\n') + '\n\n';
+        }
     }
 
     return result;
@@ -557,9 +701,13 @@ function processBlockElement(element: Element, context: ProcessContext): string 
   const tagName = element.tagName.toLowerCase()
   let result = ''
   switch (tagName) {
-    case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6':
-      const level = parseInt(tagName[1])
-      result = '\n\n' + '#'.repeat(level) + ' ' + processChildrenNodes(element, context) + '\n\n'
+    case 'h1': case 'h2': case 'h3':
+      const bigLevel = parseInt(tagName[1])
+      result = '\n\n---\n\n' + '#'.repeat(bigLevel) + ' ' + processChildrenNodes(element, context) + '\n\n'
+      break
+    case 'h4': case 'h5': case 'h6':
+      const smallLevel = parseInt(tagName[1])
+      result = '\n\n' + '#'.repeat(smallLevel) + ' ' + processChildrenNodes(element, context) + '\n\n'
       break
     case 'div':
     case 'section':
