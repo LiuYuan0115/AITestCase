@@ -12,7 +12,16 @@ spec:
       annotations:
         # 这里指定 nginx 容器作为流量入口
         run.googleapis.com/container-dependencies: '{"app":["nginx"]}'
+        # 自动扩缩容设置 (0 ~ 10)
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "10"
+        # 开启 CPU 启动加速
+        run.googleapis.com/startup-cpu-boost: "true"
     spec:
+      # 并发限制 (硬性限制：每个实例最多接10个客户请求)
+      containerConcurrency: 10
+      # 超时时间 (1600秒)
+      timeoutSeconds: 1600
       containers:
         # --- 容器 1: Nginx (入口) ---
         - image: gcr.io/solvely-test/ai-testcase-agent-nginx-server:latest  # 你刚刚构建的 Nginx 镜像
@@ -34,10 +43,8 @@ spec:
             # 绝大多数 App 都会读取 PORT 变量。如果不行，你需要查一下他的启动命令参数
             - name: PORT
               value: "8000"
-            - name: MY_DB_PASSWORD  # 你的业务变量
-              value: "secret"
             - name: OPENAI_API_KEY
-              value: "---" # 部署时候需要写入密钥
+              value: "-" # 部署时候需要写入密钥
             - name: OPENAI_BASE_URL
               value: "https://zenmux.ai/api/v1"
             - name: DEFAULT_MODEL
