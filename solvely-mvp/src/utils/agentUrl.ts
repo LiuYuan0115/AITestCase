@@ -1,21 +1,37 @@
 /**
- * Agent 服务地址（支持远程/本地切换）
+ * Agent 服务地址（支持远程/本地自动切换）
+ *
+ * 自动模式（推荐）：
+ * - npm run dev   → 自动使用本地 (localhost:8000)
+ * - npm run build → 自动使用远程 (线上 API)
+ *
+ * 手动覆盖（优先级最高）：
+ * - VITE_USE_REMOTE=true  → 强制使用远程
+ * - VITE_USE_REMOTE=false → 强制使用本地
  *
  * 环境变量说明：
- * - VITE_USE_REMOTE: 是否使用远程服务 (true/false)
  * - VITE_REMOTE_AGENT_URL: 远程服务地址
  * - VITE_REMOTE_API_KEY: 远程服务 API Key
  * - VITE_LOCAL_AGENT_URL: 本地服务地址（默认 http://localhost:8000）
- *
- * 切换方式：
- * - 远程部署：设置 VITE_USE_REMOTE=true
- * - 本地调试：设置 VITE_USE_REMOTE=false 或不设置
  */
 
 // 是否使用远程服务
 export function isRemoteMode(): boolean {
-  const useRemote = (import.meta as any).env?.VITE_USE_REMOTE as string | undefined;
-  return useRemote === 'true';
+  const env = (import.meta as any).env;
+  
+  // 1. 手动覆盖：VITE_USE_REMOTE 优先级最高
+  const useRemoteOverride = env?.VITE_USE_REMOTE as string | undefined;
+  if (useRemoteOverride === 'true') return true;
+  if (useRemoteOverride === 'false') return false;
+  
+  // 2. 自动模式：根据构建模式判断
+  // - import.meta.env.PROD = true  → npm run build（正式包）
+  // - import.meta.env.DEV = true   → npm run dev（开发包）
+  const isProduction = env?.PROD === true || env?.MODE === 'production';
+  
+  console.log(`🔧 构建模式: ${isProduction ? 'production（正式包）' : 'development（开发包）'}`);
+  
+  return isProduction;
 }
 
 // 获取 Agent 服务地址
