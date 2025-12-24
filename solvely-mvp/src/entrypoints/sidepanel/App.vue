@@ -1658,13 +1658,33 @@ const confirmUsePickedDocs = async () => {
   else await proceedToGenerateTestCases();
 };
 
-const buildAdditionalPrdsForRequest = (): Array<{ title: string; content: string }> => {
+/**
+ * 构建 additionalPrds（全局带辅助PRD+Figma；URL/自定义仅在 @ 引用或弹窗选择时带）
+ *
+ * 注意：这里的“标题前缀”会影响后端 ask_graph 对文档分类，从而决定进入哪个标签：
+ * - `[辅助PRD] ...` → 后端会放进 `[辅助PRD]...[/辅助PRD]`
+ * - `[Figma交互补充] ...` → 后端会放进 `[Figma交互补充]...[/Figma交互补充]`
+ * - 其他标题 → 后端会放进 `[补充说明]...[/补充说明]`
+ */
+const buildAdditionalPrdsForRequest = (opts?: {
+  selected?: RefDoc[];
+  pickedOnce?: Array<{ title: string; content: string }>;
+}): Array<{ title: string; content: string }> => {
   const result: Array<{ title: string; content: string }> = [];
+  const selected = opts?.selected ?? selectedRefDocs.value;
+  const pickedOnce = opts?.pickedOnce ?? pendingAdditionalPrds.value;
   
   // 1) 全局引用：辅助PRD（additionalPrds）和 Figma 文档（始终带上）
   const successfulPrds = additionalPrds.value.filter(p => p.status === 'success');
   const successfulFigmas = figmaDocs.value.filter(f => f.status === 'success');
   
+  // 0) 一次性引用（弹窗选择）：优先级最高（放最前面）
+  if (pickedOnce && pickedOnce.length > 0) {
+    for (const picked of pickedOnce) {
+      result.push(picked);
+    }
+  }
+
   for (const prd of successfulPrds) {
     result.push({ title: `[辅助PRD] ${prd.title}`, content: prd.content });
   }
@@ -1673,8 +1693,8 @@ const buildAdditionalPrdsForRequest = (): Array<{ title: string; content: string
   }
   
   // 2) 输入框 @ 引用：只包含 URL 和自定义文档（主PRD 不应该出现在这里）
-  if (selectedRefDocs.value.length > 0) {
-    for (const doc of selectedRefDocs.value) {
+  if (selected && selected.length > 0) {
+    for (const doc of selected) {
       // 只添加 URL 和自定义文档，排除主PRD相关文档
       if (doc.kind === 'url' || doc.kind === 'custom') {
         // 排除主PRD（通过ID判断）
@@ -1684,13 +1704,6 @@ const buildAdditionalPrdsForRequest = (): Array<{ title: string; content: string
           result.push({ title: doc.title, content: doc.content });
         }
       }
-    }
-  }
-  
-  // 3) 本次发送/弹窗选择的引用（一次性，优先级最高）
-  if (pendingAdditionalPrds.value.length > 0) {
-    for (const picked of pendingAdditionalPrds.value) {
-      result.push(picked);
     }
   }
   
@@ -1706,6 +1719,26 @@ const buildAdditionalPrdsForRequest = (): Array<{ title: string; content: string
 
   // 控制数量，避免 token 爆炸
   return deduped.slice(0, 6);
+};
+
+/**
+ * 根据“@ 引用”构建本次 ask/prdAgent/testCaseAgent 的主文本（params.text / text）
+ * 规则（按你的要求）：
+ * - 如果用户在输入框用 @ 选择了文档：把“选中的文档内容”作为 text
+ * - 输入框文本永远作为 instruction
+ * - 如果没有 @ 引用：text 使用当前步骤默认上下文（由调用方传入 fallback）
+ */
+const buildPrimaryTextFromAtSelection = (selected: RefDoc[], fallback: string): string => {
+  if (!selected || selected.length === 0) return fallback;
+  const blocks: string[] = [];
+  for (const d of selected) {
+    const content = (d.content || '').trim();
+    if (!content) continue;
+    // 用标题分段，便于模型理解来源
+    blocks.push(`## ${d.title}\n\n${content}`);
+  }
+  const merged = blocks.join('\n\n---\n\n').trim();
+  return merged || fallback;
 };
 
 // 监听输入框：当末尾出现 @xxx 时弹出候选列表（按标题检索）
@@ -1964,28 +1997,68 @@ const sendUnifiedMessage = async () => {
   const msg = unifiedInput.value.trim();
   unifiedInput.value = '';
 
-  // 固化本次发送需要的引用文档（避免发送中用户继续操作导致引用变化）
-  pendingAdditionalPrds.value = buildAdditionalPrdsForRequest();
-  // 发送后默认清空引用（避免误带到下一次对话）
+  // 固化本次发送需要的“@引用/弹窗引用”（避免发送中用户继续操作导致引用变化）
+  const frozenSelected = [...selectedRefDocs.value];
+  const frozenPickedOnce = [...pendingAdditionalPrds.value];
+  const frozenAdditionalPrds = buildAdditionalPrdsForRequest({
+    selected: frozenSelected,
+    pickedOnce: frozenPickedOnce,
+  });
+  // 发送后清空 UI 选中态（但不影响本次已冻结的请求参数）
   clearAllRefDocs();
   clearAtPicker();
   
   if (userRole.value === 'pm' || userRole.value === 'dev') {
     // PM/DEV角色：使用chatAgent
+    // message = 输入框文本；additionalPrds = 冻结的引用文档列表
     chatOnlyInput.value = msg;
-    await sendChatOnlyMessage();
+    // sendChatOnlyMessage 内部会重新 buildAdditionalPrdsForRequest，这里直接复用冻结结果避免丢引用
+    await (async () => {
+      if (!chatOnlyInput.value.trim() || isProcessing.value) return;
+      if (!userRole.value || !isChatOnlyRole.value) return;
+
+      const userText = chatOnlyInput.value.trim();
+      chatOnlyInput.value = '';
+
+      messages.value.push({ role: 'user', content: userText });
+      const aiMsg: Message = { role: 'ai', content: '' };
+      messages.value.push(aiMsg);
+      scrollChatOnlyToBottom();
+
+      isProcessing.value = true;
+      statusText.value = 'AI 正在思考...';
+
+      try {
+        const role = userRole.value === 'pm' ? 'pm' : 'dev';
+        const result = await chatAgent({
+          sessionId: chatOnlySessionId.value,
+          role,
+          message: userText,
+          additionalPrds: frozenAdditionalPrds,
+        });
+
+        if (result.status === 'success') aiMsg.content = result.reply || '（无回复）';
+        else aiMsg.content = result.reply || 'Error: Unknown error.';
+      } catch (e: any) {
+        aiMsg.content = `Error: ${e?.message || e}`;
+      } finally {
+        isProcessing.value = false;
+        statusText.value = '';
+        scrollChatOnlyToBottom();
+      }
+    })();
   } else if (userRole.value === 'qa') {
     // QA角色：根据当前步骤调用不同的agent
     const step = projectState.currentStep;
     if (['setup', 'analyzing', 'content_review', 'optimizing', 'prd_review'].includes(step)) {
       prdAgentInput.value = msg;
-      await sendPrdAgentMessage();
+      await sendPrdAgentMessage(frozenSelected, frozenAdditionalPrds);
     } else if (['test_point', 'test_case'].includes(step)) {
       testCaseAgentInput.value = msg;
-      await sendTestCaseAgentMessage();
+      await sendTestCaseAgentMessage(frozenSelected, frozenAdditionalPrds);
     } else if (step === 'auto_test') {
       uiAgentInput.value = msg;
-      await sendUiAgentMessage();
+      await sendUiAgentMessage(frozenSelected, frozenAdditionalPrds);
     }
   }
 };
@@ -3733,7 +3806,7 @@ const shouldExecutePlan = (input: string): boolean => {
     return UI_EXECUTE_PLAN_KEYWORDS.some(k => s.includes(k.toLowerCase()));
 };
 
-const sendUiAgentMessage = async () => {
+const sendUiAgentMessage = async (frozenSelected?: RefDoc[], frozenAdditionalPrds?: Array<{ title: string; content: string }>) => {
     if (!uiAgentInput.value || isProcessing.value) return;
 
     // 1. 获取当前标签页 URL
@@ -3756,12 +3829,13 @@ const sendUiAgentMessage = async () => {
         // 若用户明确要“执行测试计划/生成报告”，并且右侧计划区有内容，则强制把右侧内容作为 plan 传入
         // 注意：右侧在 auto_test 步骤里通过 activeMainDocContent 绑定 plan/report；这里仅取 plan（避免把 report 误当 plan）
         let planToSend = projectState.documents.uiPlan || '';
-        const additionalPrdsToSend = buildAdditionalPrdsForRequest();
-        pendingAdditionalPrds.value = [];
+        const additionalPrdsToSend = frozenAdditionalPrds ?? buildAdditionalPrdsForRequest();
 
         if (shouldExecutePlan(userInput)) {
-            // 如果用户显式引用了文档，则优先把“第一个引用文档”作为 plan 执行
-            if (additionalPrdsToSend.length > 0) {
+            // 如果用户显式用 @ 引用文档：优先用第一个选中文档作为 plan 执行
+            if (frozenSelected && frozenSelected.length > 0) {
+                planToSend = (frozenSelected[0].content || '').trim() || planToSend;
+            } else if (additionalPrdsToSend.length > 0) {
                 planToSend = additionalPrdsToSend[0].content;
             } else {
                 const rightPlan = (uiViewType.value === 'plan' ? (activeMainDocContent.value || '') : (projectState.documents.uiPlan || '')).trim();
@@ -4160,7 +4234,7 @@ const getCurrentTabContent = (): { content: string; type: string } => {
     }
 };
 
-const sendPrdAgentMessage = async () => {
+const sendPrdAgentMessage = async (frozenSelected?: RefDoc[], frozenAdditionalPrds?: Array<{ title: string; content: string }>) => {
     if (!prdAgentInput.value || isProcessing.value) return;
     
     const userInput = prdAgentInput.value;
@@ -4234,13 +4308,19 @@ const sendPrdAgentMessage = async () => {
         
         if (shouldUseAskOptimize) {
             statusText.value = "AI 正在优化需求文档...";
-            
+            const selected = frozenSelected ?? selectedRefDocs.value;
+            const additionalPrdParams = frozenAdditionalPrds ?? buildAdditionalPrdsForRequest();
+            // 规则：若用户用 @ 选择了文档，则把选中文档作为 params.text；否则用当前上下文
+            const askText = buildPrimaryTextFromAtSelection(selected, contextText);
+
             const aiRes = await ask({
                 code: 'plugin_test_testprd',
                 type: 'testprd',
                 sessionId: projectState.assets.sessionId || `prd-optimize-${Date.now()}`,
+                instruction: userInput, // 输入框文字作为 instruction（后端会放进 [补充说明]）
+                additionalPrds: additionalPrdParams,
                 params: {
-                    text: contextText,
+                    text: askText,
                     pictureKeyList: cdnUrls,
                     isImageSolve: true,
                     isImageByte64: true
@@ -4294,7 +4374,7 @@ const sendPrdAgentMessage = async () => {
                 pictureKeyList: cdnUrls,
             isImageSolve: true,
             isImageByte64: true,
-            additionalPrds: buildAdditionalPrdsForRequest()
+            additionalPrds: frozenAdditionalPrds ?? buildAdditionalPrdsForRequest()
         });
         pendingAdditionalPrds.value = [];
         
@@ -4371,7 +4451,7 @@ const undoPrdEdit = (msgIndex: number) => {
 
 const testCaseAgentSessionId = ref(`testcase-session-${Date.now()}`);
 
-const sendTestCaseAgentMessage = async () => {
+const sendTestCaseAgentMessage = async (frozenSelected?: RefDoc[], frozenAdditionalPrds?: Array<{ title: string; content: string }>) => {
     if (!testCaseAgentInput.value || isProcessing.value) return;
     
     const userInput = testCaseAgentInput.value;
@@ -4415,12 +4495,18 @@ const sendTestCaseAgentMessage = async () => {
             statusText.value = "AI 正在生成测试用例...";
             
             // 2. 调用 ask 接口生成测试用例（带图片上下文）
+            const additionalPrdParams = frozenAdditionalPrds ?? buildAdditionalPrdsForRequest();
+            const selected = frozenSelected ?? selectedRefDocs.value;
+            const askText = buildPrimaryTextFromAtSelection(selected, extractResult.content);
+
             const aiRes = await ask({
                 code: 'plugin_test_testcase',
                 type: 'testcase',
                 sessionId: `url-testcase-${Date.now()}`,
+                instruction: userInput, // 输入框文字作为 instruction（后端会放进 [补充说明]）
+                additionalPrds: additionalPrdParams,
                 params: {
-                    text: extractResult.content,
+                    text: askText,
                     pictureKeyList: extractResult.cdnUrls || (extractResult.cdnUrl ? [extractResult.cdnUrl] : []),  // 携带截图 CDN URL 列表
                     isImageSolve: true,
                     isImageByte64: true
@@ -4470,7 +4556,7 @@ const sendTestCaseAgentMessage = async () => {
                 sessionId: testCaseAgentSessionId.value,
                 text: targetContent,
                 instruction: userInput,  // 输入框文字作为 instruction
-                additionalPrds: buildAdditionalPrdsForRequest()
+                additionalPrds: frozenAdditionalPrds ?? buildAdditionalPrdsForRequest()
             });
             pendingAdditionalPrds.value = [];
             

@@ -642,6 +642,7 @@ export const ask = async (
       [key: string]: any;
     };
     sessionId?: string;
+    instruction?: string; // 用户输入的补充说明（后端会放进 [补充说明] 标签）
     onMessage?: (text: string) => void;
     additionalPrds?: Array<{ title: string; content: string }>;  // 辅助PRD列表
   }
@@ -651,7 +652,8 @@ export const ask = async (
     sessionId,
     code: options.code || "plugin_test_testprd",
     type: options.type || "testprd",
-    params: options.params
+    params: options.params,
+    instruction: (options.instruction || '').trim() || undefined,
   };
 
   // 添加辅助PRD参数（如果有）
