@@ -1,26 +1,94 @@
 export default defineBackground(() => {
   console.log('Solvely MVP Background Script Loaded');
 
-  // ================= 上传配置（内置默认值） =================
+  // ================= 上传配置（通过 UID 动态获取 Token） =================
   const UPLOAD_CFG_STORAGE_KEY = 'SOLVELY_UPLOAD_CONFIG';
   const DEFAULT_UPLOAD_BASE = 'https://dev-webserver.solvely.ai';
-  const DEFAULT_UPLOAD_TOKEN = '***REDACTED_TOKEN***';
-  const DEFAULT_PLUGIN_UUID = '';
+  // UID 永不过期，Token 通过 UID 动态获取
+  const DEFAULT_UID = '46zOZIQ0VAQor8eAV7siSf4Ltyg2';
+  const DEFAULT_PLUGIN_UUID = '6ba22fd6-8a60-4cf4-b313-08f06fb984d5';
 
+  /**
+   * 通过 UID 获取最新的 Token
+   * 接口：https://dev-webserver.solvely.ai/token?uid=xxx
+   * 返回值就是 Token 字符串
+   */
+  const fetchTokenByUid = async (base: string, uid: string): Promise<string> => {
+    const url = `${base.replace(/\/$/, '')}/token?uid=${encodeURIComponent(uid)}`;
+    console.log(`[Token] 正在通过 UID 获取 Token: ${url}`);
+    
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'accept': 'application/json, text/plain, */*',
+        'content-type': 'application/json',
+      }
+    });
+    
+    if (!res.ok) {
+      throw new Error(`获取 Token 失败: ${res.status} ${res.statusText}`);
+    }
+    
+    const token = await res.text();
+    if (!token || token.length < 50) {
+      throw new Error('获取到的 Token 无效');
+    }
+    
+    console.log(`[Token] 获取成功，长度: ${token.length}`);
+    return token.trim();
+  };
+
+  /**
+   * 初始化上传配置
+   * 1. 存储 UID（永不过期）
+   * 2. 首次启动时获取 Token
+   */
   const ensureUploadConfig = async () => {
     try {
       const res = await browser.storage.local.get(UPLOAD_CFG_STORAGE_KEY);
       const cfg = (res?.[UPLOAD_CFG_STORAGE_KEY] || {}) as any;
-      if (!cfg?.token) {
-        await browser.storage.local.set({
-          [UPLOAD_CFG_STORAGE_KEY]: {
-            base: DEFAULT_UPLOAD_BASE,
-            token: DEFAULT_UPLOAD_TOKEN,
-            pluginUuid: DEFAULT_PLUGIN_UUID,
-          },
-        });
+      
+      // 确保 UID 存在
+      const uid = cfg?.uid || DEFAULT_UID;
+      const base = cfg?.base || DEFAULT_UPLOAD_BASE;
+      const pluginUuid = cfg?.pluginUuid || DEFAULT_PLUGIN_UUID;
+      
+      // 如果没有 Token 或者 Token 过期（每次启动时刷新）
+      let token = cfg?.token || '';
+      const tokenLastUpdate = cfg?.tokenLastUpdate || 0;
+      const now = Date.now();
+      
+      // Token 有效期检查：超过 7 天则重新获取
+      const TOKEN_REFRESH_INTERVAL = 7 * 24 * 60 * 60 * 1000; // 7 天
+      
+      if (!token || (now - tokenLastUpdate) > TOKEN_REFRESH_INTERVAL) {
+        console.log('[Token] Token 为空或已过期，重新获取...');
+        try {
+          token = await fetchTokenByUid(base, uid);
+        } catch (e: any) {
+          console.error('[Token] 获取失败:', e.message);
+          // 如果获取失败但有旧 token，继续使用旧的
+          if (!token) {
+            console.warn('[Token] 无可用 Token，上传功能可能不可用');
+          }
+        }
       }
-    } catch (e) {}
+      
+      // 保存配置
+      await browser.storage.local.set({
+        [UPLOAD_CFG_STORAGE_KEY]: {
+          base,
+          uid,
+          token,
+          tokenLastUpdate: token ? now : tokenLastUpdate,
+          pluginUuid,
+        },
+      });
+      
+      console.log(`[配置] 上传服务初始化完成 | UID: ${uid.slice(0, 8)}...`);
+    } catch (e: any) {
+      console.error('[配置] 初始化失败:', e.message);
+    }
   };
 
   ensureUploadConfig();

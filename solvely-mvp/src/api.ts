@@ -19,39 +19,108 @@ console.log(`   地址: ${AGENT_URL}`);
 
 // ================= 依赖 webserver 上传接口：uploadurl / uploadurl/file =================
 const UPLOAD_CFG_STORAGE_KEY = 'SOLVELY_UPLOAD_CONFIG';
+const DEFAULT_UID = '46zOZIQ0VAQor8eAV7siSf4Ltyg2';
+const DEFAULT_UPLOAD_BASE = 'https://dev-webserver.solvely.ai';
+const DEFAULT_PLUGIN_UUID = '6ba22fd6-8a60-4cf4-b313-08f06fb984d5';
 
 type UploadConfig = {
     base?: string;
+    uid?: string;
     token?: string;
+    tokenLastUpdate?: number;
     pluginUuid?: string;
 };
 
-const getUploadConfig = async (): Promise<Required<UploadConfig>> => {
+/**
+ * 通过 UID 获取最新的 Token
+ * Token 有效期约 1 个月，通过此接口可随时刷新
+ */
+const fetchTokenByUid = async (base: string, uid: string): Promise<string> => {
+    const url = `${base.replace(/\/$/, '')}/token?uid=${encodeURIComponent(uid)}`;
+    console.log(`[Token] 正在刷新 Token...`);
+    
+    const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+            'accept': 'application/json, text/plain, */*',
+            'content-type': 'application/json',
+        }
+    });
+    
+    if (!res.ok) {
+        throw new Error(`获取 Token 失败: ${res.status} ${res.statusText}`);
+    }
+    
+    const token = await res.text();
+    if (!token || token.length < 50) {
+        throw new Error('获取到的 Token 无效');
+    }
+    
+    console.log(`[Token] 刷新成功`);
+    return token.trim();
+};
+
+/**
+ * 保存新的 Token 到 storage
+ */
+const saveToken = async (token: string) => {
+    try {
+        const stored = await browser.storage.local.get(UPLOAD_CFG_STORAGE_KEY);
+        const cfg = (stored?.[UPLOAD_CFG_STORAGE_KEY] || {}) as UploadConfig;
+        await browser.storage.local.set({
+            [UPLOAD_CFG_STORAGE_KEY]: {
+                ...cfg,
+                token,
+                tokenLastUpdate: Date.now(),
+            },
+        });
+    } catch (e) {
+        console.warn('[Token] 保存失败:', e);
+    }
+};
+
+/**
+ * 获取上传配置（自动刷新过期 Token）
+ */
+const getUploadConfig = async (): Promise<Required<{ base: string; token: string; pluginUuid: string; uid: string }>> => {
     const envBase = (import.meta as any).env?.VITE_SOLVELY_UPLOAD_BASE as string | undefined;
-    const envToken = (import.meta as any).env?.VITE_SOLVELY_AUTH_TOKEN as string | undefined;
+    const envUid = (import.meta as any).env?.VITE_SOLVELY_UID as string | undefined;
     const envUuid = (import.meta as any).env?.VITE_SOLVELY_PLUGIN_UUID as string | undefined;
 
-    // 优先环境变量（构建期注入）
-    if (envToken) {
-        return {
-            base: (envBase || 'https://dev-webserver.solvely.ai').trim(),
-            token: envToken.trim(),
-            pluginUuid: (envUuid || '').trim(),
-        };
-    }
-
-    // fallback：从 chrome.storage.local 读取（运行时可配置）
+    // 从 storage 读取配置
     const stored = await browser.storage.local.get(UPLOAD_CFG_STORAGE_KEY);
     const cfg = (stored?.[UPLOAD_CFG_STORAGE_KEY] || {}) as UploadConfig;
 
-    const base = (cfg.base || envBase || 'https://dev-webserver.solvely.ai').trim();
-    const token = (cfg.token || '').trim();
-    const pluginUuid = (cfg.pluginUuid || envUuid || '').trim();
+    const base = (cfg.base || envBase || DEFAULT_UPLOAD_BASE).trim();
+    const uid = (cfg.uid || envUid || DEFAULT_UID).trim();
+    const pluginUuid = (cfg.pluginUuid || envUuid || DEFAULT_PLUGIN_UUID).trim();
+    let token = (cfg.token || '').trim();
+    const tokenLastUpdate = cfg.tokenLastUpdate || 0;
+
+    // Token 有效期检查：超过 7 天则刷新
+    const TOKEN_REFRESH_INTERVAL = 7 * 24 * 60 * 60 * 1000; // 7 天
+    const now = Date.now();
+
+    if (!token || (now - tokenLastUpdate) > TOKEN_REFRESH_INTERVAL) {
+        console.log('[Token] Token 为空或已过期，自动刷新...');
+        try {
+            token = await fetchTokenByUid(base, uid);
+            await saveToken(token);
+        } catch (e: any) {
+            console.error('[Token] 刷新失败:', e.message);
+            if (!token) {
+                throw new Error('Error: 无法获取有效 Token，请检查网络连接');
+            }
+            // 如果有旧 token，尝试继续使用
+            console.warn('[Token] 使用旧 Token 继续尝试...');
+        }
+    }
 
     if (!token) {
-        throw new Error('Error: Upload auth token is not configured. Please set it in extension settings.');
+        throw new Error('Error: Upload auth token is not available.');
     }
-    return { base, token, pluginUuid };
+    
+    return { base, token, pluginUuid, uid };
 };
 
 const randomSuffix = () => Math.random().toString(36).slice(2, 10);
