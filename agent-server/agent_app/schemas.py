@@ -56,6 +56,7 @@ class AskRequest(BaseModel):
     code: str = "plugin_test_testprd"
     type: str = "testprd"  # testprd | testpoint | testcase | prdagent
     params: Dict[str, Any]
+    instruction: Optional[str] = None  # 用户输入的补充说明（用于 [补充说明] 标签）
     additionalPrds: Optional[List[AdditionalPrdItem]] = None  # 辅助PRD列表
 
 
