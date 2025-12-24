@@ -456,6 +456,12 @@ export default defineContentScript({
 
     // Listen for messages
     browser.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
+      // PING：用于检测 content script 是否已注入并就绪
+      if (message.type === 'PING') {
+        sendResponse({ ok: true, url: window.location.href });
+        return false;
+      }
+
       if (message.type === 'GET_DOM') {
         const result = convertDOMToMarkdown(document.body, { 
             checkSelectors: true, 
