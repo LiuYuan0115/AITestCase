@@ -882,6 +882,7 @@ import { postRetrieve, ask, uploadImage, prdAgent, clearPrdSession, testCaseAgen
 import MindMapPreview from '@/components/MindMapPreview.vue';
 import { getLocalAgentUrl } from '@/utils/agentUrl';
 import { browser } from 'wxt/browser';
+import { ensureConnection, sendMessageToContent, getActiveTab, isInjectableTab } from '@/utils/connectionHelper';
 
 // 角色头像（占位资源，可用你的图一/二/三替换同名文件）
 import pmAvatarUrl from '@/assets/roles/pm.svg?url';
@@ -2303,13 +2304,15 @@ const startChatOnlyFullPageAnalysis = async () => {
   addMessage('user', '📸 一键提取当前页面内容');
   
   try {
-    // 获取当前标签页
+    // 确保与页面的连接已建立（自动注入 content script）
+    statusText.value = '正在连接页面...';
+    const tabId = await ensureConnection();
+    
+    // 获取当前标签页信息
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id || !tab?.url) {
+    if (!tab?.url) {
       throw new Error('无法获取当前页面');
     }
-    
-    const tabId = tab.id;
     
     // 直接使用当前标签页，不创建新标签页
     addMessage('ai', `📄 正在提取当前页面: ${tab.url}`);
@@ -2870,13 +2873,14 @@ const startAnalysis = async () => {
   try {
     isProcessing.value = true;
     progress.value = 0;
-    statusText.value = "初始化...";
+    statusText.value = "正在连接页面...";
     addMessage('user', '开始分析页面...');
     projectState.currentStep = 'analyzing';
 
+    // 确保与页面的连接已建立（自动注入 content script）
+    const tabId = await ensureConnection();
+    
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-    const tabId = tabs[0]?.id;
-    if (!tabId) throw new Error("No active tab");
 
     // 1. Capture Full Page & DOM (Combined Step)
     const captureResult = await captureFullPageAndDOM(tabId);
