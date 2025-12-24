@@ -2050,6 +2050,14 @@ const sendUnifiedMessage = async () => {
   } else if (userRole.value === 'qa') {
     // QA角色：根据当前步骤调用不同的agent
     const step = projectState.currentStep;
+    // 特殊分流：URL + “生成测试用例” → 强制走 testcase 链路（避免被当前步骤误导到 PRD 分支）
+    const hasUrlInInput = URL_REGEX.test(msg);
+    if (hasUrlInInput && isGenerateTestCaseRequest(msg)) {
+      testCaseAgentInput.value = msg;
+      await sendTestCaseAgentMessage(frozenSelected, frozenAdditionalPrds);
+      return;
+    }
+
     if (['setup', 'analyzing', 'content_review', 'optimizing', 'prd_review'].includes(step)) {
       prdAgentInput.value = msg;
       await sendPrdAgentMessage(frozenSelected, frozenAdditionalPrds);
@@ -4199,6 +4207,16 @@ const isOptimizePrdRequest = (input: string): boolean => {
     const optimizeKeywords = ['优化', '整理', '完善', '优化需求', '优化prd', '优化文档', '整理结构', '规范化'];
     const lowerInput = input.toLowerCase();
     return optimizeKeywords.some(k => lowerInput.includes(k));
+};
+
+// 检测是否为"生成测试用例"类请求（用于 URL + 文本输入的分流）
+const isGenerateTestCaseRequest = (input: string): boolean => {
+    const keywords = [
+        '生成测试用例', '生成用例', '测试用例', '写测试用例', '出用例',
+        'generate testcase', 'testcase'
+    ];
+    const lowerInput = (input || '').toLowerCase();
+    return keywords.some(k => lowerInput.includes(k));
 };
 
 // 检测是否为修改类命令（删除、修改、优化、更新等）
