@@ -1,50 +1,126 @@
-import { getLocalAgentUrl } from '@/utils/agentUrl';
+import { getAgentUrl, buildHeaders, isRemoteMode } from '@/utils/agentUrl';
 import { generateFileMD5 } from '@/utils/md5';
 import { browser } from 'wxt/browser';
 
-// ================= 本地模式（只使用本地 agent-server） =================
+// ================= Agent 服务配置（支持远程/本地切换） =================
 // 说明：
-// - 所有能力统一走本地 agent-server（默认 http://localhost:8000）
-// - 网页提取链路需要把“页面图片 + 拼接长截图”上传换取 cdnUrl
+// - 通过 .env 中的 VITE_USE_REMOTE 控制使用远程或本地
+// - 远程模式自动携带 X-Api-Key
+// - 本地模式走 localhost:8000
 
-// 智能体服务器地址（强制本地模式：仅允许 localhost/127.0.0.1）
-const LOCAL_AGENT_URL = getLocalAgentUrl();
+// 智能体服务器地址
+const AGENT_URL = getAgentUrl();
+
+// 打印当前模式（便于调试）
+const currentMode = isRemoteMode();
+console.log(`%c🔌 API 配置`, 'font-weight: bold; color: #5D6AB4;');
+console.log(`   模式: ${currentMode ? '🌐 远程（正式包）' : '🏠 本地（开发包）'}`);
+console.log(`   地址: ${AGENT_URL}`);
 
 // ================= 依赖 webserver 上传接口：uploadurl / uploadurl/file =================
 const UPLOAD_CFG_STORAGE_KEY = 'SOLVELY_UPLOAD_CONFIG';
+const DEFAULT_UID = '46zOZIQ0VAQor8eAV7siSf4Ltyg2';
+const DEFAULT_UPLOAD_BASE = 'https://dev-webserver.solvely.ai';
+const DEFAULT_PLUGIN_UUID = '6ba22fd6-8a60-4cf4-b313-08f06fb984d5';
 
 type UploadConfig = {
     base?: string;
+    uid?: string;
     token?: string;
+    tokenLastUpdate?: number;
     pluginUuid?: string;
 };
 
-const getUploadConfig = async (): Promise<Required<UploadConfig>> => {
+/**
+ * 通过 UID 获取最新的 Token
+ * Token 有效期约 1 个月，通过此接口可随时刷新
+ */
+const fetchTokenByUid = async (base: string, uid: string): Promise<string> => {
+    const url = `${base.replace(/\/$/, '')}/token?uid=${encodeURIComponent(uid)}`;
+    console.log(`[Token] 正在刷新 Token...`);
+    
+    const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+            'accept': 'application/json, text/plain, */*',
+            'content-type': 'application/json',
+        }
+    });
+    
+    if (!res.ok) {
+        throw new Error(`获取 Token 失败: ${res.status} ${res.statusText}`);
+    }
+    
+    const token = await res.text();
+    if (!token || token.length < 50) {
+        throw new Error('获取到的 Token 无效');
+    }
+    
+    console.log(`[Token] 刷新成功`);
+    return token.trim();
+};
+
+/**
+ * 保存新的 Token 到 storage
+ */
+const saveToken = async (token: string) => {
+    try {
+        const stored = await browser.storage.local.get(UPLOAD_CFG_STORAGE_KEY);
+        const cfg = (stored?.[UPLOAD_CFG_STORAGE_KEY] || {}) as UploadConfig;
+        await browser.storage.local.set({
+            [UPLOAD_CFG_STORAGE_KEY]: {
+                ...cfg,
+                token,
+                tokenLastUpdate: Date.now(),
+            },
+        });
+    } catch (e) {
+        console.warn('[Token] 保存失败:', e);
+    }
+};
+
+/**
+ * 获取上传配置（自动刷新过期 Token）
+ */
+const getUploadConfig = async (): Promise<Required<{ base: string; token: string; pluginUuid: string; uid: string }>> => {
     const envBase = (import.meta as any).env?.VITE_SOLVELY_UPLOAD_BASE as string | undefined;
-    const envToken = (import.meta as any).env?.VITE_SOLVELY_AUTH_TOKEN as string | undefined;
+    const envUid = (import.meta as any).env?.VITE_SOLVELY_UID as string | undefined;
     const envUuid = (import.meta as any).env?.VITE_SOLVELY_PLUGIN_UUID as string | undefined;
 
-    // 优先环境变量（构建期注入）
-    if (envToken) {
-        return {
-            base: (envBase || 'https://dev-webserver.solvely.ai').trim(),
-            token: envToken.trim(),
-            pluginUuid: (envUuid || '').trim(),
-        };
-    }
-
-    // fallback：从 chrome.storage.local 读取（运行时可配置）
+    // 从 storage 读取配置
     const stored = await browser.storage.local.get(UPLOAD_CFG_STORAGE_KEY);
     const cfg = (stored?.[UPLOAD_CFG_STORAGE_KEY] || {}) as UploadConfig;
 
-    const base = (cfg.base || envBase || 'https://dev-webserver.solvely.ai').trim();
-    const token = (cfg.token || '').trim();
-    const pluginUuid = (cfg.pluginUuid || envUuid || '').trim();
+    const base = (cfg.base || envBase || DEFAULT_UPLOAD_BASE).trim();
+    const uid = (cfg.uid || envUid || DEFAULT_UID).trim();
+    const pluginUuid = (cfg.pluginUuid || envUuid || DEFAULT_PLUGIN_UUID).trim();
+    let token = (cfg.token || '').trim();
+    const tokenLastUpdate = cfg.tokenLastUpdate || 0;
+
+    // Token 有效期检查：超过 7 天则刷新
+    const TOKEN_REFRESH_INTERVAL = 7 * 24 * 60 * 60 * 1000; // 7 天
+    const now = Date.now();
+
+    if (!token || (now - tokenLastUpdate) > TOKEN_REFRESH_INTERVAL) {
+        console.log('[Token] Token 为空或已过期，自动刷新...');
+        try {
+            token = await fetchTokenByUid(base, uid);
+            await saveToken(token);
+        } catch (e: any) {
+            console.error('[Token] 刷新失败:', e.message);
+            if (!token) {
+                throw new Error('Error: 无法获取有效 Token，请检查网络连接');
+            }
+            // 如果有旧 token，尝试继续使用
+            console.warn('[Token] 使用旧 Token 继续尝试...');
+        }
+    }
 
     if (!token) {
-        throw new Error('Error: Upload auth token is not configured. Please set it in extension settings.');
+        throw new Error('Error: Upload auth token is not available.');
     }
-    return { base, token, pluginUuid };
+    
+    return { base, token, pluginUuid, uid };
 };
 
 const randomSuffix = () => Math.random().toString(36).slice(2, 10);
@@ -227,9 +303,9 @@ export const prdAgent = async (options: PrdAgentOptions): Promise<PrdAgentRespon
     
     // 只使用本地 Agent（按需求移除远程回退）
     try {
-        const localRes = await fetch(`${LOCAL_AGENT_URL}/api/prd`, {
+        const localRes = await fetch(`${AGENT_URL}/api/prd`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: buildHeaders(),
             body: JSON.stringify({
                 sessionId,
                 code: 'plugin_test_testprd',
@@ -265,7 +341,7 @@ export const prdAgent = async (options: PrdAgentOptions): Promise<PrdAgentRespon
  */
 export const clearPrdSession = async (sessionId: string): Promise<void> => {
     try {
-        await fetch(`${LOCAL_AGENT_URL}/api/session/${sessionId}`, {
+        await fetch(`${AGENT_URL}/api/session/${sessionId}`, {
             method: 'DELETE'
         });
         console.log(`🗑️ 会话已清除: ${sessionId}`);
@@ -298,9 +374,9 @@ export const testCaseAgent = async (options: TestCaseAgentOptions): Promise<Test
 
     // 1. 尝试本地 Agent
     try {
-        const localRes = await fetch(`${LOCAL_AGENT_URL}/api/testcase`, {
+        const localRes = await fetch(`${AGENT_URL}/api/testcase`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: buildHeaders(),
             body: JSON.stringify({
                 sessionId,
                 code: 'plugin_test_testcase',
@@ -352,7 +428,7 @@ ${text.slice(0, 6000)}
 
 export const clearTestCaseSession = async (sessionId: string): Promise<void> => {
     try {
-        await fetch(`${LOCAL_AGENT_URL}/api/session/${sessionId}`, { method: 'DELETE' });
+        await fetch(`${AGENT_URL}/api/session/${sessionId}`, { method: 'DELETE' });
     } catch (e) {}
 };
 
@@ -412,15 +488,15 @@ interface ChatAgentResponse {
 export const chatAgent = async (options: ChatAgentOptions): Promise<ChatAgentResponse> => {
     const { sessionId, role, message, additionalPrds } = options;
     try {
-        const res = await fetch(`${LOCAL_AGENT_URL}/api/chat`, {
+        const res = await fetch(`${AGENT_URL}/api/chat`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: buildHeaders(),
             body: JSON.stringify({ sessionId, role, message, additionalPrds: additionalPrds && additionalPrds.length > 0 ? additionalPrds : undefined })
         });
         if (!res.ok) {
             if (res.status === 404) {
                 // 错误信息必须为英文
-                throw new Error(`Local agent endpoint not found: ${LOCAL_AGENT_URL}/api/chat. Please update and restart agent-server.`);
+                throw new Error(`Local agent endpoint not found: ${AGENT_URL}/api/chat. Please update and restart agent-server.`);
             }
             throw new Error(`Server Error: ${res.status} ${res.statusText}`);
         }
@@ -446,9 +522,9 @@ export const uiAgent = async (options: UiAgentOptions): Promise<UiAgentResponse>
     console.log(`   - 模式: ${headless ? '无头' : '有头'}`);
 
     try {
-        const localRes = await fetch(`${LOCAL_AGENT_URL}/api/ui_agent`, {
+        const localRes = await fetch(`${AGENT_URL}/api/ui_agent`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: buildHeaders(),
             body: JSON.stringify({
                 sessionId,
                 code: 'plugin_test_uinocode',
@@ -487,7 +563,7 @@ export const uiAgent = async (options: UiAgentOptions): Promise<UiAgentResponse>
  */
 export const getUiScreenshots = async (): Promise<ScreenshotsResponse> => {
     try {
-        const res = await fetch(`${LOCAL_AGENT_URL}/api/ui_agent/screenshots`);
+        const res = await fetch(`${AGENT_URL}/api/ui_agent/screenshots`);
         if (res.ok) {
             return await res.json();
         }
@@ -503,7 +579,7 @@ export const getUiScreenshots = async (): Promise<ScreenshotsResponse> => {
  */
 export const clearUiScreenshots = async (): Promise<void> => {
     try {
-        await fetch(`${LOCAL_AGENT_URL}/api/ui_agent/screenshots`, { method: 'DELETE' });
+        await fetch(`${AGENT_URL}/api/ui_agent/screenshots`, { method: 'DELETE' });
         console.log('🗑️ 截图已清空');
     } catch (e) {
         console.log('⚠️ 清空截图失败');
@@ -512,7 +588,7 @@ export const clearUiScreenshots = async (): Promise<void> => {
 
 export const clearUiSession = async (sessionId: string): Promise<void> => {
     try {
-        await fetch(`${LOCAL_AGENT_URL}/api/session/${sessionId}`, { method: 'DELETE' });
+        await fetch(`${AGENT_URL}/api/session/${sessionId}`, { method: 'DELETE' });
         console.log(`🗑️ UI 会话已清除: ${sessionId}`);
     } catch (e) {
         console.log('⚠️ 清除 UI 会话失败');
@@ -532,9 +608,9 @@ export const runSimpleTest = async (prompt: string, url: string): Promise<Simple
     console.log(`🔧 简单自动化测试 | 指令: ${prompt}`);
     
     try {
-        const res = await fetch(`${LOCAL_AGENT_URL}/api/run_test`, {
+        const res = await fetch(`${AGENT_URL}/api/run_test`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: buildHeaders(),
             body: JSON.stringify({ prompt, url })
         });
         
@@ -566,6 +642,7 @@ export const ask = async (
       [key: string]: any;
     };
     sessionId?: string;
+    instruction?: string; // 用户输入的补充说明（后端会放进 [补充说明] 标签）
     onMessage?: (text: string) => void;
     additionalPrds?: Array<{ title: string; content: string }>;  // 辅助PRD列表
   }
@@ -575,7 +652,8 @@ export const ask = async (
     sessionId,
     code: options.code || "plugin_test_testprd",
     type: options.type || "testprd",
-    params: options.params
+    params: options.params,
+    instruction: (options.instruction || '').trim() || undefined,
   };
 
   // 添加辅助PRD参数（如果有）
@@ -583,9 +661,81 @@ export const ask = async (
     body.additionalPrds = options.additionalPrds;
   }
 
-  const response = await fetch(`${LOCAL_AGENT_URL}/api/ask`, {
+  // ================= 远程连接排查日志（关键：请求体大小/字段长度） =================
+  // 说明：curl 成功但插件失败时，最常见原因是“插件请求体过大”，服务端/网关会直接断开连接，
+  // 浏览器侧表现为 net::ERR_CONNECTION_CLOSED / TypeError: Failed to fetch。
+  const stringifySafe = (obj: any) => {
+    try {
+      return JSON.stringify(obj);
+    } catch (e) {
+      return '';
+    }
+  };
+
+  const safeLen = (s: any) => (typeof s === 'string' ? s.length : 0);
+  const safeArrLen = (a: any) => (Array.isArray(a) ? a.length : 0);
+
+  const rawText = body?.params?.text;
+  const rawPics = body?.params?.pictureKeyList;
+  const rawAdditional = body?.additionalPrds;
+  const payloadStr0 = stringifySafe(body);
+
+  console.log(`🧭 [ask] url=${AGENT_URL}/api/ask`);
+  console.log(`   - mode=${isRemoteMode() ? 'remote' : 'local'}`);
+  console.log(`   - bytes=${payloadStr0 ? payloadStr0.length : -1}`);
+  console.log(`   - textLen=${safeLen(rawText)}`);
+  console.log(`   - pictureKeyList=${safeArrLen(rawPics)}`);
+  console.log(`   - additionalPrds=${safeArrLen(rawAdditional)}`);
+  if (Array.isArray(rawAdditional) && rawAdditional.length > 0) {
+    const preview = rawAdditional.slice(0, 5).map((d: any) => ({
+      title: d?.title,
+      contentLen: safeLen(d?.content),
+    }));
+    console.log(`   - additionalPrdsPreview(<=5)=`, preview);
+  }
+
+  // 远程模式下做一个“超大请求”兜底：避免直接断链无响应（本地不限制，方便调试）
+  // Cloud Run / 代理层通常对请求体有大小限制，过大时会直接断开连接。
+  const MAX_REMOTE_BYTES = 900_000; // 约 0.9MB：足够覆盖绝大多数文本场景，避免超大文档导致断链
+  const MAX_REMOTE_TEXT = 120_000;  // text 最大 12 万字符（按需可调）
+  const MAX_REMOTE_ADDITIONAL = 6;  // 最多携带 6 个辅助文档
+  const MAX_REMOTE_ADDITIONAL_TEXT = 60_000; // 每个辅助文档最多 6 万字符
+
+  if (isRemoteMode()) {
+    // 1) 优先截断字段，再计算一次 bytes
+    if (typeof body?.params?.text === 'string' && body.params.text.length > MAX_REMOTE_TEXT) {
+      console.warn(`⚠️ [ask] remote text too large: ${body.params.text.length}, truncate to ${MAX_REMOTE_TEXT}`);
+      body.params.text = body.params.text.slice(0, MAX_REMOTE_TEXT);
+    }
+    if (Array.isArray(body?.additionalPrds) && body.additionalPrds.length > MAX_REMOTE_ADDITIONAL) {
+      console.warn(`⚠️ [ask] remote additionalPrds too many: ${body.additionalPrds.length}, keep first ${MAX_REMOTE_ADDITIONAL}`);
+      body.additionalPrds = body.additionalPrds.slice(0, MAX_REMOTE_ADDITIONAL);
+    }
+    if (Array.isArray(body?.additionalPrds)) {
+      body.additionalPrds = body.additionalPrds.map((d: any) => {
+        const title = d?.title || '';
+        const content = typeof d?.content === 'string' ? d.content : '';
+        if (content.length > MAX_REMOTE_ADDITIONAL_TEXT) {
+          return { ...d, title, content: content.slice(0, MAX_REMOTE_ADDITIONAL_TEXT) };
+        }
+        return { ...d, title, content };
+      });
+    }
+
+    const payloadStr1 = stringifySafe(body);
+    if (payloadStr1 && payloadStr1.length > MAX_REMOTE_BYTES) {
+      // 2) 仍然过大：直接抛出可读错误，避免浏览器只看到“Failed to fetch”
+      const errMsg =
+        `Error: Remote request payload too large (${payloadStr1.length} bytes). ` +
+        `Please reduce PRD/reference content or use fewer documents, then retry.`;
+      console.error(`❌ [ask] ${errMsg}`);
+      throw new Error(errMsg);
+    }
+  }
+
+  const response = await fetch(`${AGENT_URL}/api/ask`, {
      method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: buildHeaders(),
      body: JSON.stringify(body)
   });
 

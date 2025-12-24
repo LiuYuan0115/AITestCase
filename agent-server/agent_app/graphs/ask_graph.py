@@ -124,7 +124,7 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
             print(f"Warning: Failed to summarize history: {e}")
             return ""
 
-    def _build_tagged_input(ask_type: str, main_text: str, additional_prds: List[AdditionalPrdItem], cfg: AskTypeConfig) -> str:
+    def _build_tagged_input(ask_type: str, main_text: str, additional_prds: List[AdditionalPrdItem], cfg: AskTypeConfig, instruction: str = "") -> str:
         """
         根据 ask_type 构建带标签的输入文本，匹配各个 prompt 要求的格式
         
@@ -157,6 +157,15 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
             else:
                 # 其他文档作为补充说明
                 other_docs.append(f"### {title}\n{content}")
+
+        # instruction：作为用户补充说明，统一进入 [补充说明] 标签（优先放在最前面）
+        inst = (instruction or "").strip()
+        if inst:
+            # 控制 instruction 长度，避免爆上下文
+            max_inst = max(2000, cfg.max_input_chars // 10)
+            if len(inst) > max_inst:
+                inst = inst[:max_inst] + "\n\n... (补充说明过长，已截断) ..."
+            other_docs.insert(0, f"### 用户输入\n{inst}")
         
         # 根据 ask_type 构建带标签的文本
         parts: List[str] = []
@@ -242,7 +251,8 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
         additional_prds = additional_prds_raw
         
         # 使用带标签的格式构建输入文本（匹配各 prompt 要求）
-        full_text = _build_tagged_input(ask_type, text, additional_prds, cfg)
+        instruction = (state.get("instruction") or "").strip()
+        full_text = _build_tagged_input(ask_type, text, additional_prds, cfg, instruction=instruction)
         
         # ========== 日志输出：构建后的带标签格式 ==========
         print(f"📝 构建后的带标签格式 (总长度: {len(full_text)} 字符):")
