@@ -250,6 +250,7 @@ def create_app() -> FastAPI:
         ask_type = (request.type or "testprd").strip().lower()
         params = request.params or {}
         text = (params.get("text") or "").strip()
+        instruction = (request.instruction or "").strip()
         
         # 处理辅助PRD列表
         additional_prds = []
@@ -265,7 +266,8 @@ def create_app() -> FastAPI:
                 "type": ask_type, 
                 "text": text, 
                 "code": request.code,
-                "additionalPrds": additional_prds
+                "additionalPrds": additional_prds,
+                "instruction": instruction,
             })
             return {"status": "success", "sessionId": session_id, "answer": out.get("answer", "")}
         except Exception as e:
