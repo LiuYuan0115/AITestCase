@@ -153,8 +153,8 @@
             </button>
             <button class="action-btn hints-btn" @click="showHintsPopup = !showHintsPopup" title="快捷提示词">
               💡 提示
-            </button>
-          </div>
+              </button>
+            </div>
           
           <!-- 提示词弹窗 -->
           <div v-if="showHintsPopup" class="hints-popup">
@@ -325,7 +325,7 @@
           <div class="doc-list-header">
             <span>📚 文档列表</span>
             <button class="doc-list-close" @click="showDocList = false">×</button>
-          </div>
+        </div>
           <div class="doc-list-items">
             <!-- QA角色的主文档 -->
             <template v-if="userRole === 'qa'">
@@ -382,10 +382,10 @@
                 <div class="doc-info">
                   <div class="doc-title">{{ doc.title || 'URL文档' }}</div>
                   <div class="doc-meta">URL · 可编辑</div>
-                </div>
+          </div>
                 <button v-if="doc.status === 'success'" class="doc-set-main" @click.stop="setAsMainPrd(doc.id)" title="设为主PRD">⭐</button>
                 <button class="doc-delete" @click.stop="removeUrlDoc(doc.id)" title="删除">×</button>
-              </div>
+        </div>
             </template>
             
             <!-- 辅助PRD列表（通用） -->
@@ -703,18 +703,18 @@
             <button class="extract-remove" @click="removeAdditionalPrd(prd.id)">×</button>
           </div>
           <div class="extract-input-row">
-            <input 
+              <input 
               v-model="newPrdUrl"
               type="text"
               placeholder="输入PRD链接..."
-              class="input-field"
-              style="flex:1;"
+                class="input-field" 
+                style="flex:1;" 
               @keydown.enter="addAdditionalPrd"
             />
             <button class="btn-add-prd" @click="addAdditionalPrd" :disabled="!newPrdUrl.trim()">+</button>
+            </div>
           </div>
-        </div>
-        
+
         <div class="extract-divider"></div>
         
         <!-- Figma区域 -->
@@ -739,7 +739,7 @@
             <button class="btn-add-prd" @click="addFigmaDoc" :disabled="!newFigmaUrl.trim()">+</button>
           </div>
         </div>
-        
+
         <div class="extract-divider"></div>
         
         <!-- URL区域（排除已设为主PRD的） -->
@@ -752,17 +752,17 @@
             <span class="extract-url">{{ doc.title || doc.url.slice(0, 30) }}</span>
             <button v-if="doc.status === 'success'" class="extract-set-main" @click="setAsMainPrd(doc.id)" title="设为主PRD">⭐</button>
             <button class="extract-remove" @click="removeUrlDoc(doc.id)">×</button>
-          </div>
+                </div>
           <div class="extract-input-row">
-            <input 
+                    <input 
               v-model="extractModalUrlInput"
               type="text"
               placeholder="输入URL链接..."
-              class="input-field"
-              style="flex:1;"
+                        class="input-field" 
+                        style="flex:1;" 
               @keydown.enter="extractModalUrl"
-              :disabled="isProcessing"
-            />
+                        :disabled="isProcessing" 
+                    />
             <button class="btn-add-prd" @click="extractModalUrl" :disabled="!extractModalUrlInput.trim() || isProcessing">+</button>
           </div>
         </div>
@@ -774,9 +774,9 @@
         </button>
         <button @click="showExtractModal = false" class="btn-secondary" style="flex:1;">
           跳过
-        </button>
-      </div>
-    </div>
+                    </button>
+                </div>
+                </div>
     
     <!-- 辅助优化弹窗（通用） -->
     <div v-if="showAdditionalPrdPanel || showFigmaPanel" class="assist-modal-overlay" @click.self="showAdditionalPrdPanel = false; showFigmaPanel = false"></div>
@@ -784,7 +784,7 @@
       <div class="assist-panel-title">
         <span>📎 添加参考资料</span>
         <button class="assist-panel-close" @click="showAdditionalPrdPanel = false; showFigmaPanel = false">×</button>
-      </div>
+                    </div>
       
       <!-- 辅助PRD区域 -->
       <div v-if="showAdditionalPrdPanel" class="assist-prd-section">
@@ -795,9 +795,9 @@
               {{ prd.status === 'loading' ? '⏳' : prd.status === 'success' ? '✅' : '❌' }}
             </span>
             <span class="prd-url">{{ prd.url.substring(0, 40) }}{{ prd.url.length > 40 ? '...' : '' }}</span>
-          </div>
+                </div>
           <button class="prd-remove" @click="removeAdditionalPrd(prd.id)">×</button>
-        </div>
+                    </div>
         <div class="add-prd-row">
           <input 
             v-model="newPrdUrl"
@@ -808,9 +808,9 @@
             @keydown.enter="addAdditionalPrd"
           />
           <button class="btn-add-prd" @click="addAdditionalPrd" :disabled="!newPrdUrl.trim()">+</button>
-        </div>
-      </div>
-      
+                </div>
+            </div>
+            
       <!-- Figma 区域 -->
       <div v-if="showFigmaPanel" class="assist-figma-section">
         <div class="section-label">🎨 Figma 设计链接</div>
@@ -834,15 +834,15 @@
           />
           <button class="btn-add-prd" @click="addFigmaDoc" :disabled="!newFigmaUrl.trim()">+</button>
         </div>
-      </div>
+            </div>
             
       <div class="assist-actions" style="margin-top: 12px;">
         <button @click="showAdditionalPrdPanel = false; showFigmaPanel = false" class="btn-secondary" style="flex:1;">
           完成
-        </button>
-      </div>
-    </div>
-            
+                </button>
+            </div>
+        </div>
+        
     <!-- 截图弹窗（QA自动化测试用） -->
         <div v-if="showScreenshotModal" class="screenshot-modal-overlay" @click.self="showScreenshotModal = false">
             <div class="screenshot-modal">
@@ -2960,7 +2960,7 @@ const startAnalysis = async () => {
 
     // 确保与页面的连接已建立（自动注入 content script）
     const tabId = await ensureConnection();
-    
+
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
 
     // 1. Capture Full Page & DOM (Combined Step)
