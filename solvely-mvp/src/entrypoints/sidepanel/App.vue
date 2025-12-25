@@ -4043,7 +4043,7 @@ const extractContentFromUrlWithFullAnalysis = async (url: string): Promise<Extra
         // 2. 等待页面加载完成
         statusText.value = "等待页面加载...";
         await new Promise<void>((resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error('页面加载超时 (60s)')), 60000);
+            const timeout = setTimeout(() => reject(new Error('页面加载超时 (45s)')), 45000);
             const listener = (updatedTabId: number, changeInfo: any) => {
                 if (updatedTabId === tabId && changeInfo.status === 'complete') {
                     browser.tabs.onUpdated.removeListener(listener);
