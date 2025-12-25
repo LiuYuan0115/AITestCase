@@ -129,12 +129,14 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
         根据 ask_type 构建带标签的输入文本，匹配各个 prompt 要求的格式
         
         - testprd: [主PRD]...[/主PRD] + [辅助PRD]...[/辅助PRD] + [Figma交互补充]...[/Figma交互补充] + [补充说明]...[/补充说明]
-        - testcase/testpoint: [优化后PRD]...[/优化后PRD] + [辅助PRD]...[/辅助PRD] + [Figma交互补充]...[/Figma交互补充] + [补充说明]...[/补充说明]
+        - testpoint: [优化后PRD]...[/优化后PRD] + [辅助PRD]...[/辅助PRD] + [Figma交互补充]...[/Figma交互补充] + [补充说明]...[/补充说明]
+        - testcase: [优化后PRD]...[/优化后PRD] + [辅助PRD]...[/辅助PRD] + [Figma交互补充]...[/Figma交互补充] + [测试点]...[/测试点] + [补充说明]...[/补充说明]
         - figma: 直接传文本（包含 Figma URL）
         """
         # 分类辅助文档（根据标题前缀识别类型）
         aux_prds: List[str] = []       # 辅助PRD
         figma_docs: List[str] = []     # Figma交互补充
+        testpoint_docs: List[str] = [] # 测试点（用于 testcase 阶段的覆盖约束）
         other_docs: List[str] = []     # 补充说明/其他
         
         max_per_doc = cfg.max_input_chars // (len(additional_prds) + 1) if additional_prds else cfg.max_input_chars
@@ -154,6 +156,10 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
             elif "[辅助prd]" in title_lower or "辅助prd" in title_lower:
                 clean_title = re.sub(r"^\[辅助PRD\]\s*", "", title, flags=re.IGNORECASE).strip() or title
                 aux_prds.append(f"### {clean_title}\n{content}")
+            elif "[测试点]" in title_lower or "测试点" in title_lower or "testpoint" in title_lower:
+                # 测试点文档：用于 testcase 阶段，作为覆盖清单/约束输入
+                clean_title = re.sub(r"^\[测试点\]\s*", "", title, flags=re.IGNORECASE).strip() or title
+                testpoint_docs.append(f"### {clean_title}\n{content}")
             else:
                 # 其他文档作为补充说明
                 other_docs.append(f"### {title}\n{content}")
@@ -196,6 +202,10 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
             
             if figma_docs:
                 parts.append(f"\n[Figma交互补充]\n" + "\n\n".join(figma_docs) + "\n[/Figma交互补充]")
+
+            # 仅在 testcase 阶段注入测试点标签段，避免 testpoint 自己生成时“自引用”
+            if ask_type == "testcase" and testpoint_docs:
+                parts.append(f"\n[测试点]\n" + "\n\n".join(testpoint_docs) + "\n[/测试点]")
             
             if other_docs:
                 parts.append(f"\n[补充说明]\n" + "\n\n".join(other_docs) + "\n[/补充说明]")
