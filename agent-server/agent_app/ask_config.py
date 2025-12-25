@@ -83,7 +83,7 @@ _DEFAULT_CONFIGS: Dict[str, AskTypeConfig] = {
         max_tokens=int(os.getenv("ASK_TESTPOINT_MAX_TOKENS", "50000")),
         thinking_budget=int(os.getenv("ASK_TESTPOINT_THINKING_BUDGET", "20000")),
         include_thoughts=os.getenv("ASK_TESTPOINT_INCLUDE_THOUGHTS", "false").lower() == "true",
-        prompt_file="ask_testcase.md",  # testpoint 复用 testcase prompt
+        prompt_file="ask_testpoint.md",  # testpoint 使用专用 prompt（支持更明确的“测试点”输出约束）
         use_session_history=True,
         max_history_rounds=10,
         max_input_chars=100000,
