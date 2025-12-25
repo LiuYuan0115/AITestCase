@@ -2,8 +2,11 @@
 FastAPI 应用工厂：集中初始化依赖，并挂载路由
 """
 
+import os
 from fastapi import FastAPI, Body
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
 from agent_app.config import build_openai_client, build_anthropic_client, get_model_for
 from agent_app.session_store import SessionStore
@@ -26,6 +29,30 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # ==============================
+    # 应用内鉴权（X-Api-Key）
+    #
+    # 说明：
+    # - 线上通常会有网关/平台层鉴权，但为了本地/线上行为一致，这里再加一层应用内校验
+    # - 仅当环境变量配置了 AGENT_API_KEY 时才启用（避免影响本地开发）
+    # - 覆盖范围：/api/* 以及 /health
+    # ==============================
+    @app.middleware("http")
+    async def _api_key_guard(request: Request, call_next):
+        expected_key = (os.getenv("AGENT_API_KEY") or "").strip()
+        if expected_key:
+            path = request.url.path or ""
+            need_check = path.startswith("/api/") or path == "/health"
+            if need_check:
+                got_key = (request.headers.get("x-api-key") or "").strip()
+                if got_key != expected_key:
+                    # 保持与前置鉴权错误风格一致，便于前端统一处理
+                    return JSONResponse(
+                        status_code=401,
+                        content={"error": "Unauthorized", "message": "Missing or Invalid X-Api-Key"},
+                    )
+        return await call_next(request)
 
     openai_client = build_openai_client()
     anthropic_client = build_anthropic_client()
