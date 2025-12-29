@@ -189,7 +189,7 @@ export default defineBackground(() => {
     if (message.type === 'OPEN_SIDE_PANEL') {
       if (sender.tab?.id) {
         (browser.sidePanel as any).open({ tabId: sender.tab.id }).catch((err: any) => {
-          console.error("无法打开侧边栏", err);
+            console.error("无法打开侧边栏", err);
         });
       }
       return;
