@@ -1,0 +1,46 @@
+{
+  "name": "markmap-toolbar",
+  "version": "0.17.2",
+  "description": "Extensible toolbar for markmap",
+  "author": "Gerald <gera2ld@live.com>",
+  "license": "MIT",
+  "scripts": {
+    "clean": "del-cli dist",
+    "build:types": "tsc",
+    "build:js": "vite build && TARGET=es vite build",
+    "build": "run-s clean build:*",
+    "prepublishOnly": "run-s build"
+  },
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "unpkg": "dist/index.js",
+  "jsdelivr": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "homepage": "https://github.com/markmap/markmap/packages/markmap-toolbar#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/markmap/markmap.git"
+  },
+  "bugs": {
+    "url": "https://github.com/markmap/markmap/issues"
+  },
+  "typings": "dist/index.d.ts",
+  "peerDependencies": {
+    "markmap-common": "*"
+  },
+  "devDependencies": {
+    "markmap-common": "0.17.1",
+    "markmap-view": "0.17.2"
+  },
+  "dependencies": {
+    "@babel/runtime": "^7.22.6",
+    "@gera2ld/jsx-dom": "^2.2.2"
+  },
+  "gitHead": "bbeec32d0efeea4e36755b1909a5993187264487"
+}

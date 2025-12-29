@@ -1,0 +1,36 @@
+{
+    "name": "@types/webextension-polyfill",
+    "version": "0.12.4",
+    "description": "TypeScript definitions for webextension-polyfill",
+    "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/webextension-polyfill",
+    "license": "MIT",
+    "contributors": [
+        {
+            "name": "Santo Pfingsten",
+            "githubUsername": "Lusito",
+            "url": "https://github.com/Lusito"
+        },
+        {
+            "name": "Matt N.",
+            "githubUsername": "mnoorenberghe",
+            "url": "https://github.com/mnoorenberghe"
+        },
+        {
+            "name": "Josh Berry",
+            "githubUsername": "josh-berry",
+            "url": "https://github.com/josh-berry"
+        }
+    ],
+    "main": "",
+    "types": "index.d.ts",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "directory": "types/webextension-polyfill"
+    },
+    "scripts": {},
+    "dependencies": {},
+    "peerDependencies": {},
+    "typesPublisherContentHash": "a431603d0e24fbed69b063dc1e02aea38cb148e6ec5ed7d806d2bc8c9a0d0fef",
+    "typeScriptVersion": "5.2"
+}

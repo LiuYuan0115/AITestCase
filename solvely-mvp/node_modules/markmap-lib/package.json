@@ -1,0 +1,94 @@
+{
+  "name": "markmap-lib",
+  "version": "0.16.1",
+  "description": "Visualize your Markdown as mindmaps with Markmap",
+  "author": "Gerald <gera2ld@live.com>",
+  "license": "MIT",
+  "scripts": {
+    "clean": "del-cli dist",
+    "build:types": "tsc",
+    "build:js": "vite build && TARGET=nodeLight vite build && TARGET=browserEs vite build && TARGET=browserJs vite build",
+    "build": "run-s clean build:*",
+    "test": "jest test"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "sideEffects": false,
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "unpkg": "dist/browser/index.iife.js",
+  "jsdelivr": "dist/browser/index.iife.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": "./dist/browser/index.mjs",
+      "require": "./dist/index.js",
+      "default": "./dist/index.mjs"
+    },
+    "./plugins": {
+      "types": "./dist/plugins/index.d.ts",
+      "require": "./dist/plugins.js",
+      "default": "./dist/plugins.mjs"
+    },
+    "./no-plugins": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.no-plugins.js",
+      "default": "./dist/index.no-plugins.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "markdown",
+    "markmap",
+    "mindmap"
+  ],
+  "homepage": "https://github.com/markmap/markmap/packages/markmap-lib#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/markmap/markmap.git"
+  },
+  "bugs": {
+    "url": "https://github.com/markmap/markmap/issues"
+  },
+  "devDependencies": {
+    "@highlightjs/cdn-assets": "^11.8.0",
+    "@types/remarkable": "^2.0.3",
+    "markmap-common": "0.16.0",
+    "webfontloader": "^1.6.28"
+  },
+  "dependencies": {
+    "@babel/runtime": "^7.22.6",
+    "highlight.js": "^11.8.0",
+    "js-yaml": "^4.1.0",
+    "katex": "^0.16.8",
+    "markmap-html-parser": "0.16.1",
+    "markmap-view": "0.16.0",
+    "prismjs": "^1.29.0",
+    "remarkable": "^2.0.1",
+    "remarkable-katex": "^1.2.1"
+  },
+  "peerDependencies": {
+    "markmap-common": "*"
+  },
+  "jest": {
+    "transform": {
+      "\\.ts$": [
+        "babel-jest",
+        {
+          "rootMode": "upward"
+        }
+      ],
+      "\\.svg$": "<rootDir>/scripts/file-transform.js"
+    },
+    "moduleNameMapper": {
+      "^(.*\\.svg)\\?raw$": "$1"
+    }
+  },
+  "gitHead": "f10ad62ef03e02a1843484cca51521f48989fab7"
+}

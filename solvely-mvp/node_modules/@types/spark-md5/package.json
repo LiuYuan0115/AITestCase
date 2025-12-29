@@ -1,0 +1,31 @@
+{
+    "name": "@types/spark-md5",
+    "version": "3.0.5",
+    "description": "TypeScript definitions for spark-md5",
+    "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/spark-md5",
+    "license": "MIT",
+    "contributors": [
+        {
+            "name": "Bastien Moulia",
+            "githubUsername": "bastienmoulia",
+            "url": "https://github.com/bastienmoulia"
+        },
+        {
+            "name": "Florian Keller",
+            "githubUsername": "ffflorian",
+            "url": "https://github.com/ffflorian"
+        }
+    ],
+    "main": "",
+    "types": "index.d.ts",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "directory": "types/spark-md5"
+    },
+    "scripts": {},
+    "dependencies": {},
+    "peerDependencies": {},
+    "typesPublisherContentHash": "aa28f1d952d43ffa5f781923412309c1e9128bd39f9f77e7ffac97f63d7caf09",
+    "typeScriptVersion": "4.8"
+}

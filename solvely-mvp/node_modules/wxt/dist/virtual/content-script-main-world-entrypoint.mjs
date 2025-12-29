@@ -1,0 +1,33 @@
+import definition from 'virtual:user-content-script-main-world-entrypoint';
+import { initPlugins } from 'virtual:wxt-plugins';
+
+function print(method, ...args) {
+  if (import.meta.env.MODE === "production") return;
+  if (typeof args[0] === "string") {
+    const message = args.shift();
+    method(`[wxt] ${message}`, ...args);
+  } else {
+    method("[wxt]", ...args);
+  }
+}
+const logger = {
+  debug: (...args) => print(console.debug, ...args),
+  log: (...args) => print(console.log, ...args),
+  warn: (...args) => print(console.warn, ...args),
+  error: (...args) => print(console.error, ...args)
+};
+
+const result = (async () => {
+  try {
+    initPlugins();
+    return await definition.main();
+  } catch (err) {
+    logger.error(
+      `The content script "${import.meta.env.ENTRYPOINT}" crashed on startup!`,
+      err
+    );
+    throw err;
+  }
+})();
+
+export { result as default };

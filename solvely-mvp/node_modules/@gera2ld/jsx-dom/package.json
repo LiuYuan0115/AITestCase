@@ -1,0 +1,52 @@
+{
+  "name": "@gera2ld/jsx-dom",
+  "version": "2.2.2",
+  "description": "Use JSX for HTML elements.",
+  "author": "Gerald <i@gerald.top>",
+  "license": "ISC",
+  "keywords": [
+    "jsx",
+    "dom"
+  ],
+  "repository": "git@github.com:gera2ld/jsx-dom.git",
+  "typings": "types/index.d.ts",
+  "unpkg": "dist/index.js",
+  "jsdelivr": "dist/index.js",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "files": [
+    "dist",
+    "types",
+    "jsx-runtime.js",
+    "jsx-runtime.d.ts"
+  ],
+  "devDependencies": {
+    "@babel/plugin-transform-react-jsx": "^7.21.5",
+    "@gera2ld/plaid": "~2.5.6",
+    "@gera2ld/plaid-common-ts": "~2.5.1",
+    "@gera2ld/plaid-rollup": "~2.5.6",
+    "@gera2ld/plaid-test": "^2.5.8",
+    "del-cli": "^5.0.0",
+    "eslint-config-prettier": "^8.8.0",
+    "eslint-plugin-prettier": "^4.2.1",
+    "husky": "^8.0.3",
+    "jest-environment-jsdom": "^29.5.0",
+    "prettier": "^2.8.8"
+  },
+  "dependencies": {
+    "@babel/runtime": "^7.21.5"
+  },
+  "scripts": {
+    "dev": "rollup -wc rollup.conf.js",
+    "build:types": "tsc -p tsconfig.prod.json",
+    "build:js": "rollup -c rollup.conf.js",
+    "build": "run-s lint test clean build:*",
+    "lint": "eslint --ext .ts,.tsx .",
+    "clean": "del-cli dist types",
+    "test": "cross-env BABEL_ENV=test jest test"
+  }
+}
