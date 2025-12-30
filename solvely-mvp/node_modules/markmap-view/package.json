@@ -1,0 +1,54 @@
+{
+  "name": "markmap-view",
+  "version": "0.16.0",
+  "description": "View markmaps in browser",
+  "author": "Gerald <gera2ld@live.com>",
+  "license": "MIT",
+  "keywords": [
+    "markmap",
+    "markdown",
+    "mindmap"
+  ],
+  "homepage": "https://github.com/markmap/markmap/packages/markmap-view#readme",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/markmap/markmap.git"
+  },
+  "scripts": {
+    "clean": "del-cli dist",
+    "build:types": "tsc",
+    "build:js": "vite build && TARGET=es vite build",
+    "build": "run-s clean build:*"
+  },
+  "bugs": {
+    "url": "https://github.com/markmap/markmap/issues"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "unpkg": "dist/browser/index.js",
+  "jsdelivr": "dist/browser/index.js",
+  "files": [
+    "dist"
+  ],
+  "typings": "dist/index.d.ts",
+  "dependencies": {
+    "@babel/runtime": "^7.22.6",
+    "@gera2ld/jsx-dom": "^2.2.2",
+    "@types/d3": "^7.4.0",
+    "d3": "^7.8.5",
+    "d3-flextree": "^2.1.2"
+  },
+  "devDependencies": {
+    "@types/d3-flextree": "^2.1.1",
+    "markmap-common": "0.16.0"
+  },
+  "peerDependencies": {
+    "markmap-common": "*"
+  },
+  "gitHead": "caf3f840ad39c240ba522bfea83c57de62c6cac4"
+}

@@ -1,0 +1,77 @@
+{
+  "name": "@1natsu/wait-element",
+  "description": "Detect the appearance of an element in the browser DOM",
+  "version": "4.1.2",
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "author": "1natsu",
+  "contributors": [
+    "1natsu"
+  ],
+  "bugs": {
+    "url": "https://github.com/1natsu172/wait-element/issues",
+    "email": "1natsu172@users.noreply.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/1natsu172/wait-element"
+  },
+  "homepage": "https://github.com/1natsu172/wait-element",
+  "keywords": [
+    "DOM",
+    "MutationObserver",
+    "Promise",
+    "element",
+    "selector",
+    "querySelector",
+    "detect",
+    "wait",
+    "await",
+    "check",
+    "exist",
+    "appearance"
+  ],
+  "browserslist": [
+    "fully supports abortcontroller",
+    "fully supports mutationobserver"
+  ],
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs"
+    },
+    "./detectors": {
+      "import": "./dist/detectors.mjs"
+    }
+  },
+  "main": "./dist/index.mjs",
+  "typings": "./dist/index.d.ts",
+  "dependencies": {
+    "defu": "^6.1.4",
+    "many-keys-map": "^2.0.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "@types/jsdom": "21.1.7",
+    "@vitest/coverage-v8": "2.1.8",
+    "@vitest/ui": "2.1.8",
+    "jsdom": "25.0.1",
+    "typescript": "5.7.2",
+    "unbuild": "2.0.0",
+    "vitest": "2.1.8"
+  },
+  "scripts": {
+    "test": "vitest",
+    "test-ci": "vitest run",
+    "coverage": "vitest --coverage --ui",
+    "biome": "biome check --write ./src",
+    "build": "unbuild",
+    "prerelease": "unbuild",
+    "release": "pnpm dlx np --test-script=test-ci"
+  }
+}
