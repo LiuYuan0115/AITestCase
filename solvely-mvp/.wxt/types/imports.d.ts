@@ -27,7 +27,6 @@ declare global {
   const effectScope: typeof import('vue')['effectScope']
   const ensureConnection: typeof import('/Users/mac/Documents/code/PluginCode/solvely-mvp/src/utils/connectionHelper')['ensureConnection']
   const fakeBrowser: typeof import('wxt/testing')['fakeBrowser']
-  const generateFileMD5: typeof import('/Users/mac/Documents/code/PluginCode/solvely-mvp/src/utils/md5')['generateFileMD5']
   const getActiveTab: typeof import('/Users/mac/Documents/code/PluginCode/solvely-mvp/src/utils/connectionHelper')['getActiveTab']
   const getAgentUrl: typeof import('/Users/mac/Documents/code/PluginCode/solvely-mvp/src/utils/agentUrl')['getAgentUrl']
   const getCurrentInstance: typeof import('vue')['getCurrentInstance']
@@ -45,7 +44,6 @@ declare global {
   const isRef: typeof import('vue')['isRef']
   const isRemoteMode: typeof import('/Users/mac/Documents/code/PluginCode/solvely-mvp/src/utils/agentUrl')['isRemoteMode']
   const markRaw: typeof import('vue')['markRaw']
-  const mergeTextSegments: typeof import('/Users/mac/Documents/code/PluginCode/solvely-mvp/src/utils/textUtils')['mergeTextSegments']
   const nextTick: typeof import('vue')['nextTick']
   const onActivated: typeof import('vue')['onActivated']
   const onBeforeMount: typeof import('vue')['onBeforeMount']
@@ -134,7 +132,6 @@ declare module 'vue' {
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
     readonly ensureConnection: UnwrapRef<typeof import('/Users/mac/Documents/code/PluginCode/solvely-mvp/src/utils/connectionHelper')['ensureConnection']>
     readonly fakeBrowser: UnwrapRef<typeof import('wxt/testing')['fakeBrowser']>
-    readonly generateFileMD5: UnwrapRef<typeof import('/Users/mac/Documents/code/PluginCode/solvely-mvp/src/utils/md5')['generateFileMD5']>
     readonly getActiveTab: UnwrapRef<typeof import('/Users/mac/Documents/code/PluginCode/solvely-mvp/src/utils/connectionHelper')['getActiveTab']>
     readonly getAgentUrl: UnwrapRef<typeof import('/Users/mac/Documents/code/PluginCode/solvely-mvp/src/utils/agentUrl')['getAgentUrl']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
@@ -152,7 +149,6 @@ declare module 'vue' {
     readonly isRef: UnwrapRef<typeof import('vue')['isRef']>
     readonly isRemoteMode: UnwrapRef<typeof import('/Users/mac/Documents/code/PluginCode/solvely-mvp/src/utils/agentUrl')['isRemoteMode']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
-    readonly mergeTextSegments: UnwrapRef<typeof import('/Users/mac/Documents/code/PluginCode/solvely-mvp/src/utils/textUtils')['mergeTextSegments']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
     readonly onActivated: UnwrapRef<typeof import('vue')['onActivated']>
     readonly onBeforeMount: UnwrapRef<typeof import('vue')['onBeforeMount']>
