@@ -11,7 +11,8 @@ Ask 接口 LangGraph
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, TypedDict, Optional
+from typing import Any, Dict, List, TypedDict, Optional, Tuple
+import os
 import re
 
 from langgraph.graph import StateGraph, END
@@ -58,6 +59,21 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
         half = max_chars // 2
         return text[:half] + "\n\n... (内容过长，中间部分已省略) ...\n\n" + text[-half:]
 
+    # ---------------------------------------------------------------------
+    # 性能开关（通过环境变量控制）
+    # ---------------------------------------------------------------------
+    # 调试日志开关：默认关闭，避免 IO 拖慢响应
+    _ASK_DEBUG = (os.getenv("ASK_DEBUG") or "").strip().lower() in ("1", "true", "yes")
+    # 允许用 LLM 做历史摘要（会多一次模型调用，默认关闭以降低延迟）
+    _ASK_USE_LLM_SUMMARY = (os.getenv("ASK_USE_LLM_SUMMARY") or "").strip().lower() in ("1", "true", "yes")
+    # testprd 输出修复（可能多一次模型调用）；默认开启，但只在强信号（丢图）或极端缩水时触发
+    _ASK_ENABLE_REPAIR = (os.getenv("ASK_ENABLE_REPAIR") or "1").strip().lower() in ("1", "true", "yes")
+
+    def _log(msg: str) -> None:
+        """调试日志输出（仅当 ASK_DEBUG=1 时打印）"""
+        if _ASK_DEBUG:
+            print(msg)
+
     def _call_anthropic(messages: List[Dict], model: str, max_tokens: int, temperature: float) -> str:
         """调用 Anthropic API（使用流式响应避免超时）"""
         if not anthropic_client:
@@ -73,17 +89,44 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
                 chat_messages.append({"role": msg["role"], "content": msg["content"]})
         
         # 使用流式响应避免 10 分钟超时限制
-        full_response = ""
+        chunks: List[str] = []
         with anthropic_client.messages.stream(
             model=model,
             max_tokens=max_tokens,
             system=system_content.strip() if system_content else None,
             messages=chat_messages,
+            temperature=temperature,
         ) as stream:
             for text in stream.text_stream:
-                full_response += text
+                chunks.append(text)
         
-        return full_response
+        return "".join(chunks)
+
+    def _call_openai(messages: List[Dict[str, Any]], model: str, max_tokens: int, temperature: float, thinking_budget: int = 0, include_thoughts: bool = False) -> str:
+        """调用 OpenAI Chat Completions（同步）"""
+        request_params: Dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if thinking_budget and thinking_budget > 0:
+            request_params["extra_body"] = {
+                "thinkingConfig": {
+                    "includeThoughts": include_thoughts,
+                    "thinkingBudget": thinking_budget,
+                }
+            }
+        try:
+            resp = openai_client.chat.completions.create(**request_params)
+            return (resp.choices[0].message.content or "").strip()
+        except Exception:
+            # 兼容不支持 extra_body 的网关/模型
+            if "extra_body" in request_params:
+                del request_params["extra_body"]
+                resp = openai_client.chat.completions.create(**request_params)
+                return (resp.choices[0].message.content or "").strip()
+            raise
 
     def _summarize_history(history: List[Dict[str, Any]], model: str) -> str:
         """将历史对话压缩为摘要（超出上下文时使用）"""
@@ -111,18 +154,50 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
         try:
             if is_anthropic_model(model) and anthropic_client:
                 return _call_anthropic(summary_prompt, model, 500, 0)
-            else:
-                resp = openai_client.chat.completions.create(
-                    model=model,
-                    messages=summary_prompt,
-                    max_tokens=500,
-                    temperature=0,
-                )
-                return resp.choices[0].message.content.strip()
+            return _call_openai(summary_prompt, model, 500, 0)
         except Exception as e:
             # 摘要失败时返回空，避免阻塞主流程
-            print(f"Warning: Failed to summarize history: {e}")
+            _log(f"Warning: Failed to summarize history: {e}")
             return ""
+
+    def _shrink_history(history: List[Dict[str, Any]], cfg: AskTypeConfig, reserved_for_current: int) -> Tuple[List[Dict[str, Any]], bool]:
+        """不额外调用 LLM 的情况下，快速压缩历史：
+        1) 保留最近 N 轮
+        2) 单条消息过长则截断
+        3) 总量仍超则从最早开始丢弃
+        """
+        if not history:
+            return history, False
+
+        changed = False
+        # 1) 先按轮数裁剪
+        if cfg.max_history_rounds and cfg.max_history_rounds > 0:
+            keep = cfg.max_history_rounds * 2
+            if len(history) > keep:
+                history = history[-keep:]
+                changed = True
+
+        # 2) 单条消息长度截断
+        per_msg_cap = max(2000, int(cfg.max_input_chars * 0.08))
+        shrunk: List[Dict[str, Any]] = []
+        for m in history:
+            c = (m.get("content") or "")
+            if len(c) > per_msg_cap:
+                m = dict(m)
+                m["content"] = c[:per_msg_cap] + "\n\n... (历史消息过长，已截断) ..."
+                changed = True
+            shrunk.append(m)
+        history = shrunk
+
+        # 3) 按总量裁剪（给当前 user 输入预留空间）
+        budget = max(2000, cfg.max_input_chars - reserved_for_current)
+        total = sum(len(m.get("content", "")) for m in history)
+        while history and total > budget:
+            removed = history.pop(0)
+            total -= len(removed.get("content", ""))
+            changed = True
+
+        return history, changed
 
     def _build_tagged_input(ask_type: str, main_text: str, additional_prds: List[AdditionalPrdItem], cfg: AskTypeConfig, instruction: str = "") -> str:
         """
@@ -203,7 +278,7 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
             if figma_docs:
                 parts.append(f"\n[Figma交互补充]\n" + "\n\n".join(figma_docs) + "\n[/Figma交互补充]")
 
-            # 仅在 testcase 阶段注入测试点标签段，避免 testpoint 自己生成时“自引用”
+            # 仅在 testcase 阶段注入测试点标签段，避免 testpoint 自己生成时"自引用"
             if ask_type == "testcase" and testpoint_docs:
                 parts.append(f"\n[测试点]\n" + "\n\n".join(testpoint_docs) + "\n[/测试点]")
             
@@ -227,23 +302,22 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
         cfg = get_ask_config(ask_type)
         state["config"] = cfg
 
-        # ========== 日志输出：接收到的原始参数 ==========
-        print("\n" + "="*80)
-        print(f"🔵 [ASK Graph] 流程: {ask_type.upper()}")
-        print("="*80)
-        print(f"📥 接收到的原始参数:")
-        print(f"   - type: {ask_type}")
-        print(f"   - sessionId: {state.get('sessionId', 'N/A')}")
+        # ========== 调试日志（默认关闭，避免 IO 拖慢） ==========
         text_raw = state.get("text", "") or ""
-        print(f"   - text 长度: {len(text_raw)} 字符")
         additional_prds_raw = state.get("additionalPrds") or []
-        print(f"   - additionalPrds 数量: {len(additional_prds_raw)}")
-        if additional_prds_raw:
+        _log("\n" + "=" * 80)
+        _log(f"🔵 [ASK Graph] 流程: {ask_type.upper()}")
+        _log("=" * 80)
+        _log("📥 接收到的原始参数:")
+        _log(f"   - type: {ask_type}")
+        _log(f"   - sessionId: {state.get('sessionId', 'N/A')}")
+        _log(f"   - text 长度: {len(text_raw)} 字符")
+        _log(f"   - additionalPrds 数量: {len(additional_prds_raw)}")
+        if _ASK_DEBUG and additional_prds_raw:
             for i, prd in enumerate(additional_prds_raw, 1):
                 title = prd.get("title", f"文档{i}")
                 content_len = len(prd.get("content", "") or "")
-                print(f"      [{i}] {title} ({content_len} 字符)")
-        print()
+                _log(f"      [{i}] {title} ({content_len} 字符)")
 
         # 获取系统 prompt
         try:
@@ -255,7 +329,7 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
         text = text_raw
         if len(text) > cfg.max_input_chars:
             text = _truncate_text(text, cfg.max_input_chars)
-            print(f"⚠️  主文本已截断: {len(text_raw)} → {len(text)} 字符")
+            _log(f"⚠️  主文本已截断: {len(text_raw)} → {len(text)} 字符")
         
         # 处理辅助PRD（如果有）
         additional_prds = additional_prds_raw
@@ -264,17 +338,16 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
         instruction = (state.get("instruction") or "").strip()
         full_text = _build_tagged_input(ask_type, text, additional_prds, cfg, instruction=instruction)
         
-        # ========== 日志输出：构建后的带标签格式 ==========
-        print(f"📝 构建后的带标签格式 (总长度: {len(full_text)} 字符):")
-        print("-"*80)
-        # 显示前800字符预览
-        preview_len = 800
-        preview_text = full_text[:preview_len]
-        if len(full_text) > preview_len:
-            preview_text += f"\n\n... (还有 {len(full_text) - preview_len} 字符未显示) ..."
-        print(preview_text)
-        print("-"*80)
-        print()
+        # ========== 调试日志：构建后的带标签格式预览 ==========
+        if _ASK_DEBUG:
+            _log(f"📝 构建后的带标签格式 (总长度: {len(full_text)} 字符):")
+            _log("-" * 80)
+            preview_len = 800
+            preview_text = full_text[:preview_len]
+            if len(full_text) > preview_len:
+                preview_text += f"\n\n... (还有 {len(full_text) - preview_len} 字符未显示) ..."
+            _log(preview_text)
+            _log("-" * 80)
         
         # 保存本次实际用于推理的文本（用于后续校验/修复）
         state["effectiveText"] = full_text
@@ -297,51 +370,47 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
         history_count = 0
         if cfg.use_session_history and session_store:
             session_id = state.get("sessionId", "")
-            history = session_store.get(session_id)
+            history = session_store.get(session_id) or []
 
             if history:
-                # 只保留最近 N 轮（1轮=用户+助手），避免历史污染与上下文膨胀
-                if cfg.max_history_rounds and cfg.max_history_rounds > 0:
-                    keep = cfg.max_history_rounds * 2
-                    history = history[-keep:]
-                # 检查是否需要总结压缩
                 total_chars = sum(len(m.get("content", "")) for m in history)
-                if cfg.summarize_on_overflow and total_chars > cfg.max_input_chars // 2:
-                    # 超出阈值，做总结处理
-                    summary = _summarize_history(history, openai_client, cfg.model)
+                # 只有在超阈值 且 开启 LLM 摘要 时才调用 LLM；否则走"无 LLM 的快速压缩"
+                if cfg.summarize_on_overflow and total_chars > cfg.max_input_chars // 2 and _ASK_USE_LLM_SUMMARY:
+                    summary = _summarize_history(history, cfg.model)
                     if summary:
-                        messages.append({
-                            "role": "system",
-                            "content": f"[历史对话摘要]\n{summary}",
-                        })
-                        history_count = 1  # 摘要算1条
+                        messages.append({"role": "system", "content": f"[历史对话摘要]\n{summary}"})
+                        history_count = 1
                 else:
-                    # 未超出，直接加入历史
-                    messages.extend(history)
-                    history_count = len(history)
+                    # 默认走快速压缩，不额外调用 LLM
+                    shrunk, changed = _shrink_history(history, cfg, reserved_for_current=len(full_text))
+                    if changed:
+                        messages.append({"role": "system", "content": "[历史对话已截断] 仅保留最近部分上下文以降低延迟。"})
+                    messages.extend(shrunk)
+                    history_count = len(shrunk)
 
         # 加入当前用户输入（含主PRD + 辅助PRD）
         messages.append({"role": "user", "content": full_text})
 
-        # ========== 日志输出：最终发送给 LLM 的消息列表 ==========
-        print(f"📤 最终发送给 LLM 的消息列表:")
-        print("-"*80)
-        print(f"   消息总数: {len(messages)}")
-        print(f"   - System messages: {len([m for m in messages if m['role'] == 'system'])}")
-        if history_count > 0:
-            print(f"   - History messages: {history_count}")
-        print(f"   - User message: 1")
-        print()
-        for i, msg in enumerate(messages, 1):
-            role = msg.get("role", "unknown")
-            content = msg.get("content", "")
-            content_len = len(content)
-            content_preview = content[:200].replace("\n", "\\n")
-            if len(content) > 200:
-                content_preview += "..."
-            print(f"   [{i}] role: {role:8s} | 长度: {content_len:6d} 字符")
-            print(f"      预览: {content_preview}")
-        print("="*80 + "\n")
+        # ========== 调试日志：最终消息列表 ==========
+        if _ASK_DEBUG:
+            _log("📤 最终发送给 LLM 的消息列表:")
+            _log("-" * 80)
+            _log(f"   消息总数: {len(messages)}")
+            _log(f"   - System messages: {len([m for m in messages if m['role'] == 'system'])}")
+            if history_count > 0:
+                _log(f"   - History messages: {history_count}")
+            _log("   - User message: 1")
+            _log("")
+            for i, msg in enumerate(messages, 1):
+                role = msg.get("role", "unknown")
+                content0 = msg.get("content", "")
+                content_len = len(content0)
+                content_preview = content0[:200].replace("\n", "\\n")
+                if len(content0) > 200:
+                    content_preview += "..."
+                _log(f"   [{i}] role: {role:8s} | 长度: {content_len:6d} 字符")
+                _log(f"      预览: {content_preview}")
+            _log("=" * 80 + "\n")
 
         state["messages"] = messages
         return state
@@ -466,17 +535,18 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
         # 自动去掉 ```markdown 包裹（兜底处理）
         content = _strip_markdown_fence(content)
 
-        # testprd：校验“丢图/明显缩水”，必要时触发一次修复重试
+        # testprd：校验"丢图/明显缩水"，必要时触发一次修复重试
         ask_type = (state.get("type") or "testprd").strip().lower()
         if ask_type == "testprd":
             cfg = state.get("config") or get_ask_config("testprd")
             input_text = state.get("effectiveText") or state.get("text") or ""
             missing_urls = _find_missing_image_urls(input_text, content)
             ratio = (len(content) / max(1, len(input_text))) if input_text else 1.0
-            too_short = bool(input_text) and ratio < 0.65
+            # 仅将"极端缩水"视为修复信号；避免因输出略短而额外触发一次模型调用（会显著拉慢响应）
+            too_short = bool(input_text) and ratio < 0.35
 
-            if missing_urls or too_short:
-                # 用缺失图片的上下文片段做“最小修复输入”，避免再次塞入全文导致上下文爆炸
+            if _ASK_ENABLE_REPAIR and (missing_urls or too_short):
+                # 用缺失图片的上下文片段做"最小修复输入"，避免再次塞入全文导致上下文爆炸
                 snippets = _build_missing_context_snippets(input_text, missing_urls)
                 rules: List[str] = []
                 if missing_urls:
@@ -491,7 +561,7 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
                         "role": "system",
                         "content": (
                             "你是 PRD 优化结果的修复器。必须严格遵守强约束：不得删减信息点、不得丢图、"
-                            "新增内容必须以“新增补充：”标亮。输出必须为纯 Markdown，不要使用代码块。"
+                            "新增内容必须以"新增补充："标亮。输出必须为纯 Markdown，不要使用代码块。"
                         ),
                     },
                     {
@@ -507,21 +577,18 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
                     },
                 ]
 
-                request_params: Dict[str, Any] = {
-                    "model": cfg.model,
-                    "messages": repair_messages,
-                    "temperature": 0,
-                    "max_tokens": cfg.max_tokens,
-                }
                 try:
-                    resp2 = openai_client.chat.completions.create(**request_params)
-                    repaired = (resp2.choices[0].message.content or "").strip()
+                    # 修复：根据模型类型选择正确的 provider
+                    if is_anthropic_model(cfg.model) and anthropic_client:
+                        repaired = _call_anthropic(repair_messages, cfg.model, cfg.max_tokens, 0).strip()
+                    else:
+                        repaired = _call_openai(repair_messages, cfg.model, cfg.max_tokens, 0).strip()
                     repaired = _strip_markdown_fence(repaired)
                     if repaired:
                         content = repaired
                 except Exception as e:
                     # 修复失败不阻塞主流程
-                    print(f"Warning: testprd repair failed: {e}")
+                    _log(f"Warning: testprd repair failed: {e}")
 
         state["answer"] = content or "处理完成"
 
