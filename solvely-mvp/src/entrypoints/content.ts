@@ -468,8 +468,8 @@ export default defineContentScript({
             onlyInViewport: message.onlyInViewport || false 
         })
         
-        sendResponse({
-            markdown: result.markdown,
+             sendResponse({
+                 markdown: result.markdown,
             images: [] // No longer extracting images from DOM
         });
         return false;
