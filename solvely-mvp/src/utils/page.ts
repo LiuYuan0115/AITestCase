@@ -134,9 +134,9 @@ export function convertDOMToMarkdown(rootNode: Node, options: { checkSelectors?:
   const result = processNode(targetNode, context)
   const markdown = result.replace(/\n{3,}/g, '\n\n').trim()
 
-  return {
-    markdown,
-  }
+    return {
+        markdown,
+      }
 }
 
 function isElementInViewport(el: Element): boolean {
@@ -655,7 +655,7 @@ function processHtmlTableAsList(tableEl: Element, context: ProcessContext): stri
     if (rows.length === 0) {
         const text = tableEl.textContent?.trim() || '';
         return text ? `\n${text}\n` : '';
-    }
+            }
 
     const parsed: string[][] = [];
     for (const row of rows) {
