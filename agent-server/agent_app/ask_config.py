@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Any
+from functools import lru_cache
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,8 +21,9 @@ load_dotenv()
 PROMPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "prompts")
 
 
+@lru_cache(maxsize=64)
 def _load_prompt_file(filename: str) -> str:
-    """从 prompts 目录加载 prompt 文件"""
+    """从 prompts 目录加载 prompt 文件（带缓存，减少磁盘 IO）"""
     filepath = os.path.join(PROMPTS_DIR, filename)
     if os.path.exists(filepath):
         with open(filepath, "r", encoding="utf-8") as f:
@@ -69,7 +71,7 @@ _DEFAULT_CONFIGS: Dict[str, AskTypeConfig] = {
         model=os.getenv("ASK_TESTPRD_MODEL", "anthropic/claude-sonnet-4"),
         temperature=float(os.getenv("ASK_TESTPRD_TEMPERATURE", "0")),
         max_tokens=int(os.getenv("ASK_TESTPRD_MAX_TOKENS", "10000")),
-        thinking_budget=int(os.getenv("ASK_TESTPRD_THINKING_BUDGET", "20000")),
+        thinking_budget=int(os.getenv("ASK_TESTPRD_THINKING_BUDGET", "5000")),
         include_thoughts=os.getenv("ASK_TESTPRD_INCLUDE_THOUGHTS", "false").lower() == "true",
         prompt_file="ask_testprd.md",
         use_session_history=True,
@@ -80,10 +82,10 @@ _DEFAULT_CONFIGS: Dict[str, AskTypeConfig] = {
     "testpoint": AskTypeConfig(
         model=os.getenv("ASK_TESTPOINT_MODEL", "anthropic/claude-sonnet-4"),
         temperature=float(os.getenv("ASK_TESTPOINT_TEMPERATURE", "0")),
-        max_tokens=int(os.getenv("ASK_TESTPOINT_MAX_TOKENS", "50000")),
-        thinking_budget=int(os.getenv("ASK_TESTPOINT_THINKING_BUDGET", "20000")),
+        max_tokens=int(os.getenv("ASK_TESTPOINT_MAX_TOKENS", "10000")),
+        thinking_budget=int(os.getenv("ASK_TESTPOINT_THINKING_BUDGET", "5000")),
         include_thoughts=os.getenv("ASK_TESTPOINT_INCLUDE_THOUGHTS", "false").lower() == "true",
-        prompt_file="ask_testpoint.md",  # testpoint 使用专用 prompt（支持更明确的“测试点”输出约束）
+        prompt_file="ask_testpoint.md",  # testpoint 使用专用 prompt（支持更明确的"测试点"输出约束）
         use_session_history=True,
         max_history_rounds=10,
         max_input_chars=100000,
@@ -92,8 +94,8 @@ _DEFAULT_CONFIGS: Dict[str, AskTypeConfig] = {
     "testcase": AskTypeConfig(
         model=os.getenv("ASK_TESTCASE_MODEL", "anthropic/claude-sonnet-4"),
         temperature=float(os.getenv("ASK_TESTCASE_TEMPERATURE", "0")),
-        max_tokens=int(os.getenv("ASK_TESTCASE_MAX_TOKENS", "30000")),
-        thinking_budget=int(os.getenv("ASK_TESTCASE_THINKING_BUDGET", "20000")),
+        max_tokens=int(os.getenv("ASK_TESTCASE_MAX_TOKENS", "20000")),
+        thinking_budget=int(os.getenv("ASK_TESTCASE_THINKING_BUDGET", "5000")),
         include_thoughts=os.getenv("ASK_TESTCASE_INCLUDE_THOUGHTS", "false").lower() == "true",
         prompt_file="ask_testcase.md",
         use_session_history=True,
@@ -104,13 +106,13 @@ _DEFAULT_CONFIGS: Dict[str, AskTypeConfig] = {
     "figma": AskTypeConfig(
         model=os.getenv("ASK_FIGMA_MODEL", "anthropic/claude-sonnet-4"),
         temperature=float(os.getenv("ASK_FIGMA_TEMPERATURE", "0")),
-        max_tokens=int(os.getenv("ASK_FIGMA_MAX_TOKENS", "8000")),
-        thinking_budget=int(os.getenv("ASK_FIGMA_THINKING_BUDGET", "10000")),
+        max_tokens=int(os.getenv("ASK_FIGMA_MAX_TOKENS", "4000")),
+        thinking_budget=int(os.getenv("ASK_FIGMA_THINKING_BUDGET", "2000")),
         include_thoughts=os.getenv("ASK_FIGMA_INCLUDE_THOUGHTS", "false").lower() == "true",
         prompt_file="ask_figma.md",
         use_session_history=False,  # Figma解析不需要历史
         max_history_rounds=0,
-        max_input_chars=50000,
+        max_input_chars=5000,
         summarize_on_overflow=False,
     ),
 }
@@ -163,4 +165,3 @@ def get_all_configs_summary() -> Dict[str, Any]:
             "summarize_on_overflow": cfg.summarize_on_overflow,
         }
     return summary
-
