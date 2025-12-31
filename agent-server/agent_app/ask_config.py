@@ -42,7 +42,7 @@ class AskTypeConfig:
     model: str = "anthropic/claude-sonnet-4"
     temperature: float = 0.0
     max_tokens: int = 50000
-    thinking_budget: int = 20000  # thinkingConfig.thinkingBudget
+    thinking_budget: int = 2000  # thinkingConfig.thinkingBudget
     include_thoughts: bool = False  # thinkingConfig.includeThoughts
 
     # Prompt 配置
@@ -52,7 +52,7 @@ class AskTypeConfig:
     # 上下文配置
     use_session_history: bool = True  # 是否带会话历史
     max_history_rounds: int = 10  # 最大保留轮数
-    max_input_chars: int = 100000  # 输入文本最大字符数（超出截断）
+    max_input_chars: int = 50000  # 输入文本最大字符数（超出截断）
     summarize_on_overflow: bool = True  # 超出上下文时是否总结处理
 
     def get_prompt(self) -> str:
@@ -71,12 +71,12 @@ _DEFAULT_CONFIGS: Dict[str, AskTypeConfig] = {
         model=os.getenv("ASK_TESTPRD_MODEL", "anthropic/claude-sonnet-4"),
         temperature=float(os.getenv("ASK_TESTPRD_TEMPERATURE", "0")),
         max_tokens=int(os.getenv("ASK_TESTPRD_MAX_TOKENS", "10000")),
-        thinking_budget=int(os.getenv("ASK_TESTPRD_THINKING_BUDGET", "5000")),
+        thinking_budget=int(os.getenv("ASK_TESTPRD_THINKING_BUDGET", "2000")),
         include_thoughts=os.getenv("ASK_TESTPRD_INCLUDE_THOUGHTS", "false").lower() == "true",
         prompt_file="ask_testprd.md",
         use_session_history=True,
         max_history_rounds=10,
-        max_input_chars=100000,
+        max_input_chars=20000,
         summarize_on_overflow=True,
     ),
     "testpoint": AskTypeConfig(
@@ -88,7 +88,7 @@ _DEFAULT_CONFIGS: Dict[str, AskTypeConfig] = {
         prompt_file="ask_testpoint.md",  # testpoint 使用专用 prompt（支持更明确的"测试点"输出约束）
         use_session_history=True,
         max_history_rounds=10,
-        max_input_chars=100000,
+        max_input_chars=20000,
         summarize_on_overflow=True,
     ),
     "testcase": AskTypeConfig(
@@ -100,7 +100,7 @@ _DEFAULT_CONFIGS: Dict[str, AskTypeConfig] = {
         prompt_file="ask_testcase.md",
         use_session_history=True,
         max_history_rounds=10,
-        max_input_chars=100000,
+        max_input_chars=20000,
         summarize_on_overflow=True,
     ),
     "figma": AskTypeConfig(
@@ -127,7 +127,7 @@ _FALLBACK_CONFIG = AskTypeConfig(
     prompt_text="你是一个智能助手。必须使用中文回复，输出 Markdown。",
     use_session_history=True,
     max_history_rounds=10,
-    max_input_chars=100000,
+    max_input_chars=20000,
     summarize_on_overflow=True,
 )
 
