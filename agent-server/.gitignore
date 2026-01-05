@@ -20,16 +20,33 @@ venv/
 ENV/
 env/
 .venv/
+*.egg-info/
+.eggs/
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
 
-# IDE
+# IDE 和编辑器
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
 
 # 日志
 *.log
 agent.log
+*.log.*
 
 # 截图（测试生成）
 screenshots/
@@ -37,13 +54,37 @@ screenshots/
 *.jpg
 *.jpeg
 *.webp
+screenshot_*.png
 
 # macOS
 .DS_Store
 .AppleDouble
 .LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
 
 # 临时文件
 *.tmp
 *.temp
+*.cache
+.cache/
 
+# 数据库文件（如果有）
+*.db
+*.sqlite
+*.sqlite3
+
+# 临时 HTML
+image_gallery.html

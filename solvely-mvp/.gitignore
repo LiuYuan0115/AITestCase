@@ -12,36 +12,72 @@
 
 # 依赖
 node_modules/
+.pnp
+.pnp.js
 
 # 构建输出
 .output/
 dist/
+build/
 *.zip
+*.tar.gz
+*.tgz
 
-# WXT
+# WXT 生成文件
 .wxt/
+AITestCase@*
 
-# IDE
+# IDE 和编辑器
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
 
 # 日志
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
+pnpm-debug.log*
 
 # 临时文件
 *.tmp
 *.temp
+*.cache
+.cache/
 
 # TypeScript
 *.tsbuildinfo
+*.js.map
+*.css.map
+coverage/
+.nyc_output/
 
+# 测试文件
+screenshots/
+*.test.js.snap
