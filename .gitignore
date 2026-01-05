@@ -14,50 +14,98 @@
 **/node_modules/
 **/venv/
 **/__pycache__/
+**/.pnp
+**/.pnp.js
 
 # 构建产物
 **/.output/
 **/dist/
+**/build/
 **/*.zip
+**/*.tar.gz
+**/*.tgz
 
-# WXT
+# WXT 生成文件
 **/.wxt/
+**/AITestCase@*
 
-# IDE
+# IDE 和编辑器
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
 
 # macOS
 .DS_Store
 .AppleDouble
 .LSOverride
 ._*
+.Spotlight-V100
+.Trashes
 
-# 日志
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# 日志文件
 *.log
 **/agent.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+pnpm-debug.log*
 
 # 临时文件
 *.tmp
 *.temp
+*.cache
+.cache/
 
-# 测试截图
-**/screenshots/*.png
-**/screenshots/*.jpg
+# 测试截图和文件
+**/screenshots/
+screenshot_*.png
+**/screenshot_*.png
+**/screenshot_*.jpg
 
 # Python
 *.py[cod]
 *$py.class
 *.so
+.Python
+*.egg-info/
+.eggs/
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
 
-# 临时截图文件
-screenshot_*.png
-**/screenshot_*.png
+# TypeScript / JavaScript
+*.tsbuildinfo
+*.js.map
+*.css.map
+coverage/
+.nyc_output/
 
 # 临时 HTML
 image_gallery.html
 
 # 子目录 .idea
 **/.idea/
+
+# 包管理器锁文件（可选，根据团队需求决定）
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
