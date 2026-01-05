@@ -300,6 +300,7 @@
               <button @click="projectState.currentStep = 'test_case'" class="btn-secondary step-action-btn">← 返回测试用例</button>
               <button @click="showScreenshots" class="btn-secondary step-action-btn">📸 查看截图</button>
               <button v-if="projectState.documents.uiPlan" @click="toggleUiDoc('plan')" class="btn-secondary step-action-btn">📋 测试计划</button>
+              <button v-if="projectState.documents.uiPlanJson" @click="toggleUiDoc('plan_json')" class="btn-secondary step-action-btn">🧩 Plan JSON</button>
               <button v-if="projectState.documents.uiReport" @click="toggleUiDoc('report')" class="btn-secondary step-action-btn">📊 测试报告</button>
               <!-- 有头/无头模式切换 -->
               <button 
@@ -310,6 +311,33 @@
               >
                 {{ isHeadlessMode ? '👻 无头' : '🖥️ 有头' }}
               </button>
+              <!-- 工作流模式切换：direct vs closed_loop -->
+              <button
+                @click="uiWorkflowMode = (uiWorkflowMode === 'closed_loop' ? 'direct' : 'closed_loop')"
+                class="btn-mode-toggle step-action-btn"
+                :class="{ 'headless': uiWorkflowMode === 'direct' }"
+                :title="uiWorkflowMode === 'closed_loop' ? '闭环模式：自然语言→Plan JSON→执行→报告' : '直接模式：模型边想边操作工具'"
+              >
+                {{ uiWorkflowMode === 'closed_loop' ? '🔁 闭环' : '🎮 直接' }}
+              </button>
+              <template v-if="uiWorkflowMode === 'closed_loop'">
+                <button
+                  @click="uiAutoHeal = !uiAutoHeal"
+                  class="btn-mode-toggle step-action-btn"
+                  :class="{ 'headless': !uiAutoHeal }"
+                  :title="uiAutoHeal ? '自愈开启：失败时自动修正 Plan 并重试' : '自愈关闭：失败后不自动修复'"
+                >
+                  {{ uiAutoHeal ? '🩹 自愈' : '🧯 不自愈' }}
+                </button>
+                <button
+                  @click="uiMaxHealRounds = Math.min(3, uiMaxHealRounds + 1)"
+                  @contextmenu.prevent="uiMaxHealRounds = Math.max(0, uiMaxHealRounds - 1)"
+                  class="btn-mode-toggle step-action-btn"
+                  :title="'最大自愈轮数：' + uiMaxHealRounds + '（左键+1，右键-1，0=不重试）'"
+                >
+                  ♻️ {{ uiMaxHealRounds }}
+                </button>
+              </template>
             </template>
           </div>
           </div>
@@ -911,6 +939,7 @@ interface ProjectState {
     testCases: string;
     uiPlan: string;
     uiReport: string;
+    uiPlanJson: string;      // 可执行 Plan JSON（闭环模式返回，可直接回放）
   };
 }
 
@@ -944,7 +973,7 @@ const projectState = reactive<ProjectState>({
   currentStep: '',
   inputs: { figmaUrl: '' },
   assets: { screenshotUrl: '', domMarkdown: '', cdnUrl: '', cdnUrls: [], sessionId: '' },
-  documents: { prd: '', optimizedPrd: '', testPoints: '', testCases: '', uiPlan: '', uiReport: '' }
+  documents: { prd: '', optimizedPrd: '', testPoints: '', testCases: '', uiPlan: '', uiReport: '', uiPlanJson: '' }
 });
 
 // 消息类型扩展：支持撤回操作
@@ -976,6 +1005,9 @@ const testCaseAgentInput = ref(''); // Test Case 智能体输入
 const testCaseHistory = ref<string[]>([]); // Test Case 历史记录
 const uiAgentSessionId = ref(`ui-session-${Date.now()}`);
 const isHeadlessMode = ref(false); // UI自动化测试：有头/无头模式
+const uiWorkflowMode = ref<'direct' | 'closed_loop'>('closed_loop'); // UI自动化工作流模式
+const uiAutoHeal = ref(true); // 闭环模式自愈开关
+const uiMaxHealRounds = ref(1); // 闭环模式最大自愈轮数
 
 // ================= 参考确认弹窗 =================
 const showReferenceConfirmModal = ref(false); // 是否显示参考确认弹窗
@@ -2551,6 +2583,8 @@ const currentDocTitle = computed(() => {
     case 'auto_test': 
       if (uiViewType.value === 'report' && projectState.documents.uiReport) {
         return '📊 UI自动化测试报告';
+      } else if (uiViewType.value === 'plan_json' && projectState.documents.uiPlanJson) {
+        return '🧩 UI自动化 Plan JSON';
       } else if (projectState.documents.uiPlan) {
         return '📋 UI自动化测试计划';
       }
@@ -2567,7 +2601,7 @@ const currentDocContent = computed({
       case 'prd_review': return projectState.documents.prd;
       case 'test_point': return projectState.documents.testPoints;
       case 'test_case': return projectState.documents.testCases;
-      case 'auto_test': return uiViewType.value === 'report' ? projectState.documents.uiReport : projectState.documents.uiPlan;
+      case 'auto_test': return uiViewType.value === 'report' ? projectState.documents.uiReport : (uiViewType.value === 'plan_json' ? projectState.documents.uiPlanJson : projectState.documents.uiPlan);
       default: return '';
     }
   },
@@ -2580,6 +2614,7 @@ const currentDocContent = computed({
       case 'test_case': projectState.documents.testCases = val; break;
       case 'auto_test': 
          if (uiViewType.value === 'report') projectState.documents.uiReport = val;
+         else if (uiViewType.value === 'plan_json') projectState.documents.uiPlanJson = val;
          else projectState.documents.uiPlan = val;
          break;
     }
@@ -2606,14 +2641,20 @@ const editorHeaderTitle = computed(() => {
 });
 
 // 主文档内容（根据 activeMainDocType 获取/设置）
+// 说明：在 QA 的 UI 自动化步骤（auto_test）里，右侧主编辑区需要展示 uiPlan / uiPlanJson / uiReport。
+// 之前只按 activeMainDocType 取 prd/testPoints... 会导致“右侧标题是报告但内容为空”。
 const activeMainDocContent = computed({
   get: () => {
+    // ✅ UI 自动化步骤：强制绑定到 uiViewType 对应的文档内容
+    if (userRole.value === 'qa' && projectState.currentStep === 'auto_test') {
+      return currentDocContent.value;
+    }
+
+    // ✅ 其他步骤：仍按主流程文档 tab 展示
     switch (activeMainDocType.value) {
       case 'prd': 
-        // 原始提取的PRD
         return projectState.documents.prd;
       case 'optimizedPrd':
-        // 优化后的PRD（独立存储）
         return projectState.documents.optimizedPrd;
       case 'testPoints':
         return projectState.documents.testPoints;
@@ -2624,6 +2665,12 @@ const activeMainDocContent = computed({
     }
   },
   set: (val: string) => {
+    // ✅ UI 自动化步骤：写回 uiPlan/uiPlanJson/uiReport
+    if (userRole.value === 'qa' && projectState.currentStep === 'auto_test') {
+      currentDocContent.value = val;
+      return;
+    }
+
     switch (activeMainDocType.value) {
       case 'prd':
         projectState.documents.prd = val;
@@ -3753,13 +3800,13 @@ const forwardToTestCases = () => {
 
 // ================= UI 智能体 (Auto Test) =================
 
-const uiViewType = ref<'plan' | 'report'>('plan');
+const uiViewType = ref<'plan' | 'plan_json' | 'report'>('plan');
 const showScreenshotModal = ref(false);
 const screenshotList = ref<{filename: string; step: string; base64: string}[]>([]);
 const screenshotCount = ref(0);
 const previewingScreenshot = ref<{step: string; base64: string} | null>(null);
 
-const toggleUiDoc = (type: 'plan' | 'report') => {
+const toggleUiDoc = (type: 'plan' | 'plan_json' | 'report') => {
     uiViewType.value = type;
     viewMode.value = 'preview';
 };
@@ -3846,7 +3893,8 @@ const sendUiAgentMessage = async (frozenSelected?: RefDoc[], frozenAdditionalPrd
             } else if (additionalPrdsToSend.length > 0) {
                 planToSend = additionalPrdsToSend[0].content;
             } else {
-                const rightPlan = (uiViewType.value === 'plan' ? (activeMainDocContent.value || '') : (projectState.documents.uiPlan || '')).trim();
+                // 优先使用右侧当前正在查看/编辑的内容（plan 或 plan_json），避免执行时拿到旧计划
+                const rightPlan = (activeMainDocContent.value || projectState.documents.uiPlan || '').trim();
                 if (rightPlan) planToSend = rightPlan;
             }
         }
@@ -3858,6 +3906,9 @@ const sendUiAgentMessage = async (frozenSelected?: RefDoc[], frozenAdditionalPrd
             plan: planToSend,
             report: projectState.documents.uiReport,
             headless: isHeadlessMode.value,
+            workflow: uiWorkflowMode.value,
+            autoHeal: uiWorkflowMode.value === 'closed_loop' ? uiAutoHeal.value : undefined,
+            maxHealRounds: uiWorkflowMode.value === 'closed_loop' ? uiMaxHealRounds.value : undefined,
             additionalPrds: additionalPrdsToSend
         });
 
@@ -3868,8 +3919,18 @@ const sendUiAgentMessage = async (frozenSelected?: RefDoc[], frozenAdditionalPrd
             }
             
             // 更新文档（注意：执行测试计划可能同时返回 plan + report）
-            if (result.type === 'report_generated' && result.report) {
+            if (result.type === 'closed_loop_done' && result.report) {
+                // 闭环模式完成：同时返回 plan 和 report
                 if (result.plan) projectState.documents.uiPlan = result.plan;
+                if (result.planJson) projectState.documents.uiPlanJson = result.planJson;
+                projectState.documents.uiReport = result.report;
+                uiViewType.value = 'report';
+
+                const ssInfo = result.screenshotCount ? `\n\n📸 已捕获 ${result.screenshotCount} 张测试截图，点击左侧"查看截图"按钮查看` : '';
+                addMessage('ai', `✅ **闭环测试完成！**\n\n${result.response}${ssInfo}\n\n*右侧可查看完整报告*`);
+            } else if (result.type === 'report_generated' && result.report) {
+                if (result.plan) projectState.documents.uiPlan = result.plan;
+                if (result.planJson) projectState.documents.uiPlanJson = result.planJson;
                 projectState.documents.uiReport = result.report;
                 uiViewType.value = 'report';
 
@@ -3877,6 +3938,7 @@ const sendUiAgentMessage = async (frozenSelected?: RefDoc[], frozenAdditionalPrd
                 addMessage('ai', `✅ **测试报告已生成！**\n\n${result.response}${ssInfo}\n\n*右侧可查看完整报告*`);
             } else if (result.type === 'plan_generated' && result.plan) {
                 projectState.documents.uiPlan = result.plan;
+                if (result.planJson) projectState.documents.uiPlanJson = result.planJson;
                 uiViewType.value = 'plan';
                 addMessage('ai', `✅ **测试计划已生成！**\n\n${result.response}\n\n*右侧可查看完整计划，点击"执行测试"开始自动化测试*`);
             } else if (result.plan) {
@@ -3897,7 +3959,7 @@ const sendUiAgentMessage = async (frozenSelected?: RefDoc[], frozenAdditionalPrd
             }
             
             // 如果生成了新文档，自动切换到预览
-            if (result.type === 'plan_generated' || result.type === 'report_generated') {
+            if (result.type === 'plan_generated' || result.type === 'report_generated' || result.type === 'closed_loop_done') {
                 viewMode.value = 'preview';
             }
             
@@ -4663,7 +4725,7 @@ const reset = async () => {
       
       // 重置状态
       projectState.currentStep = '';
-      projectState.documents = { prd: '', optimizedPrd: '', testPoints: '', testCases: '', uiPlan: '', uiReport: '' };
+      projectState.documents = { prd: '', optimizedPrd: '', testPoints: '', testCases: '', uiPlan: '', uiReport: '', uiPlanJson: '' };
       projectState.assets = { screenshotUrl: '', domMarkdown: '', cdnUrl: '', cdnUrls: [], sessionId: '' };
       messages.value = [];
       projectState.inputs.figmaUrl = '';

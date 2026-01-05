@@ -227,6 +227,12 @@ def create_app() -> FastAPI:
         current_plan = request.params.get("plan", "")
         current_report = request.params.get("report", "")
         headless = request.params.get("headless", False)  # 获取headless参数，默认为False（有头模式）
+        # workflow: direct（LLM 直接工具操控）| closed_loop（自然语言->Plan JSON->Runner->Report）
+        workflow = (request.params.get("workflow") or request.params.get("mode") or "direct").strip().lower()
+        auto_heal = bool(request.params.get("autoHeal", True))
+        max_heal_rounds = int(request.params.get("maxHealRounds", 1) or 1)
+        max_turns = int(request.params.get("maxTurns", 15) or 15)
+        auto_continue = bool(request.params.get("autoContinue", False))
         additional_prds = [{"title": p.title, "content": p.content} for p in (request.additionalPrds or [])]
 
         try:
@@ -237,7 +243,11 @@ def create_app() -> FastAPI:
                 "plan": current_plan,
                 "report": current_report,
                 "headless": headless,
-                "maxTurns": 15,
+                "maxTurns": max_turns,
+                "workflow": workflow,
+                "autoHeal": auto_heal,
+                "maxHealRounds": max_heal_rounds,
+                "autoContinue": auto_continue,
                 "additionalPrds": additional_prds,
             }
             out = ui_graph.invoke(state)
@@ -252,6 +262,8 @@ def create_app() -> FastAPI:
                 "response": out.get("finalResponse", ""),
                 "plan": out.get("finalPlan"),
                 "report": out.get("finalReport"),
+                # 可选：返回可执行 Plan JSON，便于前端展示/导出/回放
+                "planJson": out.get("planJson"),
                 "screenshotCount": int(out.get("screenshotCount", 0)),
             }
         except Exception as e:
