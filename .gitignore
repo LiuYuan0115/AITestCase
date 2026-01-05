@@ -102,6 +102,9 @@ coverage/
 # 临时 HTML
 image_gallery.html
 
+# 方案文档目录（不提交到代码库）
+方案/
+
 # 子目录 .idea
 **/.idea/
 

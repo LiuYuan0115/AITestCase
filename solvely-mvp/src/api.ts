@@ -441,15 +441,21 @@ interface UiAgentOptions {
     plan?: string;
     report?: string;
     headless?: boolean; // 有头/无头模式
+    maxTurns?: number; // 最多执行轮数（默认 15，用于多轮自愈场景）
+    autoContinue?: boolean; // 是否允许多轮自愈（默认 false，单轮执行后释放浏览器）
+    workflow?: 'direct' | 'closed_loop'; // 工作流模式：direct=直接工具操控，closed_loop=闭环模板（自然语言->Plan JSON->Runner->Report）
+    autoHeal?: boolean; // 是否启用自愈（默认 true，仅在 closed_loop 模式下有效）
+    maxHealRounds?: number; // 最大自愈轮数（默认 1，仅在 closed_loop 模式下有效）
     additionalPrds?: Array<{ title: string; content: string }>; // 辅助参考文档列表（可多选）
 }
 
 interface UiAgentResponse {
     status: 'success' | 'error';
     sessionId: string;
-    type: 'query' | 'plan_generated' | 'report_generated';
+    type: 'query' | 'plan_generated' | 'report_generated' | 'closed_loop_done';
     response: string;
     plan?: string;
+    planJson?: string; // 可执行 Plan JSON（闭环模式返回，可直接回放）
     report?: string;
     screenshotCount?: number;
 }
@@ -515,13 +521,56 @@ export const chatAgent = async (options: ChatAgentOptions): Promise<ChatAgentRes
  * 3. 分析/问答 - 回答用户关于测试的问题
  */
 export const uiAgent = async (options: UiAgentOptions): Promise<UiAgentResponse> => {
-    const { sessionId, instruction, url, plan, report, headless = false, additionalPrds } = options;
+    const { sessionId, instruction, url, plan, report, headless = false, maxTurns, autoContinue, workflow, autoHeal, maxHealRounds, additionalPrds } = options;
     console.log(`🤖 UI Agent 请求 | Session: ${sessionId}`);
     console.log(`   - 指令: ${instruction}`);
     console.log(`   - URL: ${url}`);
     console.log(`   - 模式: ${headless ? '无头' : '有头'}`);
+    if (maxTurns !== undefined) {
+        console.log(`   - 最大轮数: ${maxTurns}`);
+    }
+    if (autoContinue !== undefined) {
+        console.log(`   - 多轮自愈: ${autoContinue ? '开启' : '关闭'}`);
+    }
+    if (workflow) {
+        console.log(`   - 工作流: ${workflow}`);
+    }
+    if (workflow === 'closed_loop') {
+        if (autoHeal !== undefined) {
+            console.log(`   - 自愈: ${autoHeal ? '开启' : '关闭'}`);
+        }
+        if (maxHealRounds !== undefined) {
+            console.log(`   - 最大自愈轮数: ${maxHealRounds}`);
+        }
+    }
 
     try {
+        const params: Record<string, any> = { 
+            url: url || '',
+            plan: plan || '',
+            report: report || '',
+            headless: headless
+        };
+        
+        // 只在显式传入时才添加这些参数（后端有默认值）
+        if (maxTurns !== undefined) {
+            params.maxTurns = maxTurns;
+        }
+        if (autoContinue !== undefined) {
+            params.autoContinue = autoContinue;
+        }
+        if (workflow) {
+            params.workflow = workflow;
+        }
+        if (workflow === 'closed_loop') {
+            if (autoHeal !== undefined) {
+                params.autoHeal = autoHeal;
+            }
+            if (maxHealRounds !== undefined) {
+                params.maxHealRounds = maxHealRounds;
+            }
+        }
+
         const localRes = await fetch(`${AGENT_URL}/api/ui_agent`, {
             method: 'POST',
             headers: buildHeaders(),
@@ -529,12 +578,7 @@ export const uiAgent = async (options: UiAgentOptions): Promise<UiAgentResponse>
                 sessionId,
                 code: 'plugin_test_uinocode',
                 type: 'uinocode',
-                params: { 
-                    url: url || '',
-                    plan: plan || '',
-                    report: report || '',
-                    headless: headless
-                },
+                params,
                 additionalPrds: additionalPrds && additionalPrds.length > 0 ? additionalPrds : undefined,
                 instruction
             })

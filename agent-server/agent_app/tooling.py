@@ -150,6 +150,7 @@ ui_agent_tools_schema = [
                             "navigate",
                             "click",
                             "fill",
+                            "press",
                             "get_content",
                             "screenshot",
                             "evaluate",
@@ -171,6 +172,10 @@ ui_agent_tools_schema = [
                     "text": {
                         "type": "string",
                         "description": "fill 操作要输入的文本"
+                    },
+                    "key": {
+                        "type": "string",
+                        "description": "press 操作要按下的键（如 Enter、Tab、ArrowDown）。若未提供，可复用 text/value 字段"
                     },
                     "option": {
                         "type": "string",

@@ -40,6 +40,8 @@ class UiState(TypedDict, total=False):
     instruction: str
     url: str
     plan: str
+    # 可执行 Plan JSON（闭环模式优先使用，不一定展示给用户）
+    planJson: str
     report: str
     headless: bool
     additionalPrds: List[Dict[str, str]]  # 辅助参考文档列表（可多选）
@@ -73,6 +75,15 @@ class UiState(TypedDict, total=False):
     hadToolExecution: bool
     # 是否允许一次请求内多轮继续（默认 False：执行一轮即 finalize，确保释放浏览器控制）
     autoContinue: bool
+    # workflow: direct（LLM 直接工具操控）| closed_loop（自然语言->Plan JSON->Runner->Report）
+    workflow: str
+    # 自愈参数（闭环模式）
+    autoHeal: bool
+    maxHealRounds: int
+    healRound: int
+    # 最近一次执行结果（便于生成自愈 prompt / 报告摘要）
+    lastRunStats: Dict[str, Any]
+    lastFailedSummary: str
 
 
 # -----------------------------
@@ -392,6 +403,221 @@ def build_ui_graph(openai_client, model_name: str, session_store, anthropic_clie
             return False
         keywords = ["执行计划", "执行测试计划", "运行计划", "run plan", "execute plan", "按计划执行", "执行测试", "生成报告"]
         return any(k in instruction for k in keywords)
+
+    def _use_closed_loop(state: UiState) -> bool:
+        """是否启用闭环模板：自然语言 -> Plan(JSON) -> Runner -> Report"""
+        workflow = (state.get("workflow") or "").strip().lower()
+        if workflow in {"closed_loop", "plan_runner", "template", "plan", "run"}:
+            return True
+        # 兼容：前端只传 mode
+        if workflow in {"closedloop", "closed"}:
+            return True
+        # 兜底：如果用户明确提到生成计划/执行/报告，则启用闭环
+        instruction = (state.get("instruction") or "").strip().lower()
+        keywords = ["生成计划", "生成测试计划", "plan json", "执行测试", "run", "执行", "生成报告", "runner", "自动化"]
+        return any(k.lower() in instruction for k in keywords)
+
+    def _extract_json_only(text: str) -> str:
+        """从模型输出中提取第一个 JSON 对象；若失败则原样返回"""
+        cand = _extract_first_json_object(text)
+        return (cand or (text or "")).strip()
+
+    def _call_llm_json(system: str, user: str, max_tokens: int = 2000) -> str:
+        """调用 LLM 生成 JSON（只返回 JSON 字符串）。OpenAI/Anthropic 双栈兼容。"""
+        if is_anthropic_model(model_name) and anthropic_client:
+            # Anthropic messages.create（非流式更快更稳，适合 JSON-only）
+            resp = anthropic_client.messages.create(
+                model=model_name,
+                max_tokens=max_tokens,
+                temperature=0,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            )
+            content = getattr(resp, "content", None)
+            if isinstance(content, list):
+                text = "".join([getattr(b, "text", "") if getattr(b, "type", None) == "text" else (b.get("text") if isinstance(b, dict) and b.get("type") == "text" else "") for b in content])
+            else:
+                text = getattr(resp, "text", "") or ""
+            return _extract_json_only(text)
+
+        # OpenAI
+        resp = openai_client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
+        text = (resp.choices[0].message.content or "").strip()
+        return _extract_json_only(text)
+
+    def _plan_json_to_markdown(plan_dict: Dict[str, Any]) -> str:
+        """把可执行 Plan JSON 转成可读的 Markdown 计划（用于前端展示/编辑）"""
+        name = plan_dict.get("name") or plan_dict.get("meta", {}).get("name") or "UI Test Plan"
+        base_url = plan_dict.get("baseUrl") or plan_dict.get("base_url") or plan_dict.get("meta", {}).get("baseUrl")
+        steps = plan_dict.get("steps") or []
+
+        md = f"# UI 自动化测试计划\n\n## 概要\n- **名称**: {name}\n"
+        if base_url:
+            md += f"- **Base URL**: {base_url}\n"
+        md += "\n## 步骤\n\n| ID | Action | Target | Value/Expected | Note |\n|---|---|---|---|---|\n"
+
+        for s in steps:
+            sid = str(s.get("id", ""))
+            action = str(s.get("action") or s.get("action_type") or "").strip()
+            target = s.get("target") or {}
+            t_str = ""
+            if isinstance(target, dict) and target:
+                by = target.get("by")
+                if by == "role":
+                    t_str = f"role:{target.get('role','')},name:{target.get('name','')}"
+                else:
+                    t_str = f"{by}:{target.get('value') or target.get('text') or target.get('selector') or ''}" if by else str(target)
+            value = s.get("value") or s.get("text") or s.get("option") or s.get("assert_value") or s.get("expected") or ""
+            note = s.get("note") or s.get("step_name") or ""
+            md += f"| {sid} | {action} | {t_str} | {str(value)[:60]} | {str(note)[:40]} |\n"
+        md += "\n\n> 说明：推荐优先使用 `testid:` / `extid:` / `role:` 选择器以提升稳定性。\n"
+        return md
+
+    def _build_plan_prompt(state: UiState) -> str:
+        """Planner Prompt：自然语言 -> 可执行 Plan JSON"""
+        # 控制输入大小，避免 token 浪费
+        page_info = (state.get("pageInfo") or "")[:2000]
+        a11y = (state.get("pageAccessibility") or "")[:8000]
+        refs = state.get("additionalPrds") or []
+        ref_text = ""
+        if refs:
+            ref_text = "\n\n# Reference Documents\n" + "\n\n".join(
+                [f"## {r.get('title','Reference')}\n{(r.get('content') or '')[:1200]}" for r in refs[:5]]
+            )
+
+        return f"""You are a senior QA automation engineer.
+
+Task:
+Convert the user's natural-language intent into an EXECUTABLE UI automation Plan JSON for Playwright runner.
+
+Constraints:
+1) Output JSON only. No markdown, no explanations.
+2) Schema (top-level): {{"name": string, "baseUrl"?: string, "steps": Step[]}}
+3) Step schema:
+   - id: string
+   - action: one of [navigate, click, fill, hover, select, assert, wait, screenshot, evaluate]
+   - url?: string (for navigate)
+   - target?: {{by: one of [testid, extid, role, aria, label, placeholder, text, css], role?: string, name?: string, exact?: bool, value?: string}}
+   - value?: string (for fill/select)
+   - assert_type?: one of [url_contains, url_equals, text_visible, element_visible, element_hidden, element_count]
+   - assert_value?: string|number
+   - wait_time?: number (ms)
+   - step_name?: string
+4) Prefer stable selectors: testid/extid > role/name > label/placeholder > text > css.
+5) If the user's request is ambiguous, create the smallest reasonable plan that navigates, locates key element(s), and asserts a visible success signal.
+
+Current page context:
+{page_info}
+{a11y}
+{ref_text}
+
+User request:
+{state.get('instruction','')}
+"""
+
+    def generate_plan(state: UiState) -> UiState:
+        """闭环：自然语言 -> Plan(JSON) + Markdown"""
+        try:
+            _refresh_page_context(state)
+            prompt = _build_plan_prompt(state)
+            plan_json = _call_llm_json(
+                system="Output JSON only.",
+                user=prompt,
+                max_tokens=2500,
+            )
+            # validate
+            plan_dict = json.loads(plan_json)
+            # ensure minimal fields
+            if not isinstance(plan_dict, dict) or "steps" not in plan_dict:
+                raise ValueError("Invalid plan JSON: missing 'steps'")
+            # parse with runner to ensure compatibility
+            _ = parse_plan_json(json.dumps(plan_dict, ensure_ascii=False))
+
+            state["planJson"] = json.dumps(plan_dict, ensure_ascii=False)
+            state["plan"] = _plan_json_to_markdown(plan_dict)
+            state["finalPlan"] = state["plan"]
+            state["finalType"] = "plan_generated"
+            state["finalResponse"] = "OK: Plan JSON generated."
+            state["toolResults"] = (state.get("toolResults") or []) + ["OK: plan generated (closed_loop)."]
+            return state
+
+        except Exception as e:
+            state["finalType"] = "query"
+            state["finalResponse"] = f"Error: generate_plan failed: {type(e).__name__}: {str(e)}"
+            return state
+
+    def heal_plan(state: UiState) -> UiState:
+        """闭环自愈：根据失败信息修正 Plan JSON"""
+        try:
+            heal_round = int(state.get("healRound", 0)) + 1
+            state["healRound"] = heal_round
+            _refresh_page_context(state)
+            current_json = (state.get("planJson") or "").strip()
+            failed_summary = (state.get("lastFailedSummary") or "").strip()
+            if not current_json:
+                raise ValueError("Missing planJson for healing")
+
+            prompt = f"""You are fixing a flaky UI automation plan.
+
+Return a FULL corrected Plan JSON only.
+
+Current Plan JSON:
+{current_json}
+
+Failure summary:
+{failed_summary}
+
+Current page context:
+{(state.get('pageInfo') or '')[:1500]}
+{(state.get('pageAccessibility') or '')[:8000]}
+
+Rules:
+1) Output JSON only.
+2) Prefer more robust selectors (testid/extid/role/name/placeholder).
+3) Add minimal wait/assert steps if necessary.
+"""
+            new_plan_json = _call_llm_json(
+                system="Output JSON only.",
+                user=prompt,
+                max_tokens=2500,
+            )
+            plan_dict = json.loads(new_plan_json)
+            _ = parse_plan_json(json.dumps(plan_dict, ensure_ascii=False))
+
+            state["planJson"] = json.dumps(plan_dict, ensure_ascii=False)
+            state["plan"] = _plan_json_to_markdown(plan_dict)
+            state["finalPlan"] = state["plan"]
+            state["toolResults"] = (state.get("toolResults") or []) + [f"OK: plan healed (round {heal_round})."]
+            return state
+        except Exception as e:
+            state["toolResults"] = (state.get("toolResults") or []) + [f"Error: heal_plan failed: {type(e).__name__}: {str(e)}"]
+            return state
+
+    def post_report(state: UiState) -> UiState:
+        """闭环：执行后统一生成报告输出（finalResponse/plan/report 对齐）"""
+        stats = state.get("lastRunStats") or {}
+        passed = stats.get("passed")
+        total = stats.get("total")
+        failed = stats.get("failed")
+        plan_name = stats.get("plan_name")
+        heal_round = int(state.get("healRound", 0))
+
+        if plan_name and total is not None:
+            state["finalType"] = "closed_loop_done"
+            state["finalResponse"] = (
+                f"OK: Executed plan '{plan_name}'. Passed {passed}/{total}, failed {failed}."
+                + (f" (auto-heal rounds: {heal_round})" if heal_round else "")
+            )
+        # 同步对外字段
+        state["finalPlan"] = state.get("finalPlan") or state.get("plan")
+        state["finalReport"] = state.get("finalReport") or state.get("report")
+        return state
 
     def _looks_like_json_plan(text: str) -> bool:
         s = (text or "").strip()
@@ -749,6 +975,13 @@ Markdown plan:
                     loc.fill(value or "", timeout=timeout_ms)
                     return f"✅ Filled: selector={selector}, value={value}"
 
+                if action_type == "press":
+                    key = args.get("key") or value
+                    if not key:
+                        raise ValueError("press requires 'key' (e.g., Enter)")
+                    loc.press(str(key), timeout=timeout_ms)
+                    return f"✅ Pressed: selector={selector}, key={key}"
+
                 if action_type == "select":
                     loc.select_option(value, timeout=timeout_ms)
                     return f"✅ Selected: selector={selector}, value={value}"
@@ -786,6 +1019,13 @@ Markdown plan:
     def init_state(state: UiState) -> UiState:
         state["turn"] = 0
         state["maxTurns"] = int(state.get("maxTurns", 15))
+        # workflow & self-heal defaults
+        state["workflow"] = (state.get("workflow") or "direct").strip().lower()
+        state["autoHeal"] = bool(state.get("autoHeal", True))
+        state["maxHealRounds"] = int(state.get("maxHealRounds", 1) or 1)
+        state["healRound"] = int(state.get("healRound", 0) or 0)
+        state["lastRunStats"] = state.get("lastRunStats") or {}
+        state["lastFailedSummary"] = state.get("lastFailedSummary") or ""
         # 默认单轮：避免一次请求里长时间占用/操控浏览器
         state["autoContinue"] = bool(state.get("autoContinue", False))
         state["finalType"] = "query"
@@ -1019,22 +1259,49 @@ Markdown plan:
         try:
             page = state.get("page")
             raw_plan = (state.get("plan") or "").strip()
+            raw_plan_json = (state.get("planJson") or "").strip()
             if not page:
                 state["finalType"] = "query"
                 state["finalResponse"] = "Error: No active page for executing plan."
                 return state
-            if not raw_plan:
+            if not raw_plan and not raw_plan_json:
                 state["finalType"] = "query"
                 state["finalResponse"] = "Error: Plan is empty."
                 return state
-            plan_json = raw_plan if _looks_like_json_plan(raw_plan) else _convert_markdown_plan_to_json(raw_plan)
+            # 优先使用闭环生成的 planJson；否则兼容旧逻辑（plan 可能是 Markdown 或 JSON）
+            if raw_plan_json:
+                plan_json = raw_plan_json
+            else:
+                plan_json = raw_plan if _looks_like_json_plan(raw_plan) else _convert_markdown_plan_to_json(raw_plan)
             plan_obj = parse_plan_json(plan_json)
             runner = UiRunner(page, headless=bool(state.get("headless", False)), max_retries=2)
             report = runner.run_plan(plan_obj)
+            report_md = report.to_markdown()
             state["finalType"] = "report_generated"
-            state["finalReport"] = report.to_markdown()
-            # 回填：保留用户传入的 plan（便于前端继续编辑/复用）
-            state["finalPlan"] = raw_plan
+            state["finalReport"] = report_md
+            state["report"] = report_md
+            # 回填：闭环优先返回 Markdown 计划（更适合前端展示/编辑）；同时保留可执行 JSON 供回放
+            if raw_plan_json:
+                state["planJson"] = plan_json
+            state["finalPlan"] = state.get("finalPlan") or raw_plan
+            state["lastRunStats"] = {
+                "plan_name": plan_obj.name,
+                "total": report.total_steps,
+                "passed": report.passed_steps,
+                "failed": report.failed_steps,
+            }
+            # 汇总失败信息（用于自愈）
+            if report.failed_steps:
+                failed_lines = []
+                for r in report.results:
+                    if not r.success:
+                        failed_lines.append(
+                            f"- step {r.step_id}: {r.message} (screenshot: {r.screenshot or 'N/A'})"
+                        )
+                state["lastFailedSummary"] = "\n".join(failed_lines)[:5000]
+            else:
+                state["lastFailedSummary"] = ""
+
             state["finalResponse"] = f"OK: Executed plan '{plan_obj.name}'. Passed {report.passed_steps}/{report.total_steps}, failed {report.failed_steps}."
             return state
         except Exception as e:
@@ -1174,6 +1441,9 @@ Markdown plan:
     g.add_node("init_state", init_state)
     g.add_node("connect_browser", connect_browser)
     g.add_node("build_prompt", build_prompt)
+    g.add_node("generate_plan", generate_plan)
+    g.add_node("heal_plan", heal_plan)
+    g.add_node("post_report", post_report)
     g.add_node("execute_plan", execute_plan)
     g.add_node("llm_step", llm_step)
     g.add_node("tool_step", tool_step)
@@ -1182,17 +1452,46 @@ Markdown plan:
 
     g.set_entry_point("init_state")
     g.add_edge("init_state", "connect_browser")
-    g.add_edge("connect_browser", "build_prompt")
-    # build_prompt 后：若明确要求执行计划，则走 runner，否则走 llm
+    # connect_browser 后：闭环模式直接生成 Plan；否则走原来的 build_prompt（工具直控）
+    g.add_conditional_edges(
+        "connect_browser",
+        lambda s: "generate_plan" if _use_closed_loop(s) else "build_prompt",
+        {"generate_plan": "generate_plan", "build_prompt": "build_prompt"},
+    )
+
+    # direct 模式：build_prompt 后若明确要求执行现有 plan，则走 runner，否则走 llm
     g.add_conditional_edges(
         "build_prompt",
         lambda s: "execute_plan" if _should_execute_plan(s) else "llm_step",
         {"execute_plan": "execute_plan", "llm_step": "llm_step"},
     )
+
+    # closed_loop 模式：生成计划后直接执行
+    g.add_edge("generate_plan", "execute_plan")
+
+    def route_after_execute_plan(state: UiState) -> str:
+        if not _use_closed_loop(state):
+            return "finalize"
+        # auto-heal：仅在失败时触发，最多 N 轮
+        try:
+            stats = state.get("lastRunStats") or {}
+            failed = int(stats.get("failed", 0) or 0)
+        except Exception:
+            failed = 0
+        can_heal = bool(state.get("autoHeal", True)) and int(state.get("healRound", 0)) < int(state.get("maxHealRounds", 1))
+        return "heal_plan" if (failed > 0 and can_heal) else "post_report"
+
+    g.add_conditional_edges(
+        "execute_plan",
+        route_after_execute_plan,
+        {"heal_plan": "heal_plan", "post_report": "post_report", "finalize": "finalize"},
+    )
+
+    g.add_edge("heal_plan", "execute_plan")
+    g.add_edge("post_report", "finalize")
     g.add_conditional_edges("llm_step", route_after_llm, {"tool_step": "tool_step", "finalize": "finalize", "finalize_timeout": "finalize_timeout"})
     # tool_step 后默认直接 finalize，避免一次请求持续操控浏览器
     g.add_conditional_edges("tool_step", route_after_tool, {"build_prompt": "build_prompt", "finalize": "finalize"})
-    g.add_edge("execute_plan", "finalize")
     g.add_edge("finalize", END)
     g.add_edge("finalize_timeout", END)
 

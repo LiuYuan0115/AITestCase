@@ -102,13 +102,43 @@ cd solvely-mvp
 
 # 安装依赖（首次）
 npm install
+```
 
-# 开发模式（自动构建并监听文件变化）
+#### 模式说明
+
+**开发模式**（使用本地 Agent 服务）：
+```bash
 npm run dev
+```
+- 自动构建并监听文件变化
+- 使用 `.env` 配置（`VITE_USE_REMOTE=false`，连接本地 `http://localhost:8000`）
+- 适合日常开发调试
 
-# 或生产构建
+**生产模式**（使用远程 Agent 服务）：
+```bash
 npm run build
 ```
+- 生产构建，输出到 `.output/chrome-mv3`
+- 使用 `.env.production` 配置（`VITE_USE_REMOTE=true`，连接远程服务）
+- 适合部署到生产环境
+
+**UI 自动化模式**（本地 Agent + 生产构建）：
+```bash
+# 1. 启动 Chrome 调试模式（必需）
+cd agent-server
+./run_chrome.sh
+
+# 2. 启动 Agent 服务（必需）
+./run_agent.sh
+
+# 3. 前端生产构建（使用本地服务）
+cd ../solvely-mvp
+npm run build
+# 注意：需要确保 .env.production 中 VITE_USE_REMOTE=false
+```
+- 使用生产构建，但连接本地 Agent 服务
+- 需要 Chrome 以调试模式运行（Port 9222）
+- 适合 UI 自动化测试场景
 
 **构建输出目录**: `solvely-mvp/.output/chrome-mv3`
 
@@ -396,12 +426,38 @@ ASK_TESTCASE_THINKING_BUDGET=2000
 ASK_TESTCASE_TEMPERATURE=0
 ```
 
-### 前端 (.env)
+### 前端环境变量
 
+#### 开发模式 (.env)
 ```env
 # 本地 Agent 服务地址（可选，默认 http://localhost:8000）
 VITE_LOCAL_AGENT_URL=http://localhost:8000
+
+# 是否使用远程服务（开发模式默认 false，使用本地）
+VITE_USE_REMOTE=false
 ```
+
+#### 生产模式 (.env.production)
+```env
+# 远程 Agent 服务地址（生产模式使用）
+VITE_REMOTE_AGENT_URL=https://your-remote-api.com
+VITE_REMOTE_API_KEY=your_api_key_here
+
+# 是否使用远程服务（生产模式默认 true，使用远程）
+VITE_USE_REMOTE=true
+```
+
+#### UI 自动化模式 (.env.production)
+```env
+# UI 自动化模式：生产构建但使用本地服务
+VITE_LOCAL_AGENT_URL=http://localhost:8000
+VITE_USE_REMOTE=false  # 强制使用本地，覆盖默认行为
+```
+
+**说明**：
+- `npm run dev`：自动使用本地服务（忽略 `VITE_USE_REMOTE`）
+- `npm run build`：默认使用远程服务（`VITE_USE_REMOTE=true`）
+- UI 自动化模式：`npm run build` + `.env.production` 中设置 `VITE_USE_REMOTE=false` → 生产构建但连接本地服务
 
 ---
 
@@ -580,10 +636,3 @@ git push origin develop
 
 ---
 
-## 👥 贡献者
-
-- QA Team
-
-## 📄 License
-
-Private - Internal Use Only
