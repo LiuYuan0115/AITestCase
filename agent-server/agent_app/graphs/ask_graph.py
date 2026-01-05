@@ -561,7 +561,7 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
                         "role": "system",
                         "content": (
                             "你是 PRD 优化结果的修复器。必须严格遵守强约束：不得删减信息点、不得丢图、"
-                            "新增内容必须以"新增补充："标亮。输出必须为纯 Markdown，不要使用代码块。"
+                            "新增内容必须以\"新增补充：\"标亮。输出必须为纯 Markdown，不要使用代码块。"
                         ),
                     },
                     {
