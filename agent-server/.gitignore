@@ -6,6 +6,9 @@
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
+# 注意：.env.example 可以提交（模板文件，不含敏感信息）
 
 # Python
 __pycache__/
