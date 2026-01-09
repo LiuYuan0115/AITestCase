@@ -6,15 +6,17 @@ metadata:
   annotations:
     # 告诉 Cloud Run，ingress (入口流量) 应该由哪个容器处理
     run.googleapis.com/invoker-iam-disabled: "true"
+    run.googleapis.com/minScale: '0'
+    run.googleapis.com/maxScale: '2'
 spec:
   template:
     metadata:
       annotations:
         # 这里指定 nginx 容器作为流量入口
         run.googleapis.com/container-dependencies: '{"app":["nginx"]}'
-        # 自动扩缩容设置 (0 ~ 10)
+        # 自动扩缩容设置 (0 ~ 2)
         autoscaling.knative.dev/minScale: "0"
-        autoscaling.knative.dev/maxScale: "10"
+        autoscaling.knative.dev/maxScale: "2"
         # 开启 CPU 启动加速
         run.googleapis.com/startup-cpu-boost: "true"
     spec:
