@@ -46,9 +46,30 @@ spec:
             - name: OPENAI_API_KEY
               value: "-" # 部署时候需要写入密钥
             - name: OPENAI_BASE_URL
-              value: "https://zenmux.ai/api/v1"
-            - name: DEFAULT_MODEL
-              value: "openai/gpt-4o"
+              value: "https://zenmux.ai/api/anthropic"
+            - name: DEFAULT_MODEL # 模型配置（全部使用 anthropic/claude-haiku-4.5）
+              value: "anthropic/claude-haiku-4.5"
+            - name: MODEL_PRD
+              value: "anthropic/claude-haiku-4.5"
+            - name: MODEL_TESTCASE
+              value: "anthropic/claude-haiku-4.5"
+            - name: MODEL_UI
+              value: "anthropic/claude-haiku-4.5"
+            - name: MODEL_CHAT
+              value: "anthropic/claude-haiku-4.5"
+            - name: MODEL_ASK
+              value: "anthropic/claude-haiku-4.5"
+            # Ask 接口模型配置
+            - name: ASK_TESTPRD_MODEL
+              value: "anthropic/claude-haiku-4.5"
+            - name: ASK_TESTPOINT_MODEL
+              value: "anthropic/claude-haiku-4.5"
+            - name: ASK_TESTCASE_MODEL
+              value: "anthropic/claude-haiku-4.5"
+            - name: ASK_FIGMA_MODEL
+              value: "anthropic/claude-haiku-4.5"
+            - name: ASK_DEFAULT_MODEL
+              value: "anthropic/claude-haiku-4.5"
           resources:
             limits:
               cpu: "1000m"    # 0.5 核
