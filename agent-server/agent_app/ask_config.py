@@ -76,7 +76,7 @@ _DEFAULT_CONFIGS: Dict[str, AskTypeConfig] = {
         prompt_file="ask_testprd.md",
         use_session_history=True,
         max_history_rounds=10,
-        max_input_chars=20000,
+        max_input_chars=int(os.getenv("ASK_TESTPRD_MAX_INPUT_CHARS", "80000")),  # 增加到10万字符，支持大PRD
         summarize_on_overflow=True,
     ),
     "testpoint": AskTypeConfig(
@@ -88,7 +88,7 @@ _DEFAULT_CONFIGS: Dict[str, AskTypeConfig] = {
         prompt_file="ask_testpoint.md",  # testpoint 使用专用 prompt（支持更明确的"测试点"输出约束）
         use_session_history=True,
         max_history_rounds=10,
-        max_input_chars=20000,
+        max_input_chars=40000,
         summarize_on_overflow=True,
     ),
     "testcase": AskTypeConfig(
@@ -100,7 +100,7 @@ _DEFAULT_CONFIGS: Dict[str, AskTypeConfig] = {
         prompt_file="ask_testcase.md",
         use_session_history=True,
         max_history_rounds=10,
-        max_input_chars=20000,
+        max_input_chars=40000,
         summarize_on_overflow=True,
     ),
     "figma": AskTypeConfig(

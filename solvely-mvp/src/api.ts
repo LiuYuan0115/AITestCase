@@ -475,29 +475,53 @@ interface ScreenshotsResponse {
 
 // ================= PM/DEV Chat-only 接口 =================
 
+// DocRef 类型定义（与后端对齐）
+type DocRefItem = {
+    docId: string;
+    logicalId?: string;
+    title?: string;
+    kind?: 'main' | 'aux' | 'output';
+};
+
 interface ChatAgentOptions {
     sessionId: string;
     role: 'pm' | 'dev';
     message: string;
     additionalPrds?: Array<{ title: string; content: string }>; // 辅助参考文档列表（可多选）
+    docRefs?: DocRefItem[]; // ✅ 新增：文档引用列表（走 DocStore 检索）
 }
 
 interface ChatAgentResponse {
     status: 'success' | 'error';
     sessionId: string;
     reply: string;
+    usedDocRefs?: DocRefItem[]; // ✅ 新增：返回实际使用的文档引用
+    targetLogicalId?: string;   // ✅ 新增：模型决定的目标文档
 }
 
 /**
  * PM/DEV Chat-only（走本地 Agent + LangGraph）
+ * 支持 docRefs 检索上下文（为知识库/RAG 做准备）
  */
 export const chatAgent = async (options: ChatAgentOptions): Promise<ChatAgentResponse> => {
-    const { sessionId, role, message, additionalPrds } = options;
+    const { sessionId, role, message, additionalPrds, docRefs } = options;
     try {
+        const body: any = { sessionId, role, message };
+        
+        // 兼容旧协议：additionalPrds
+        if (additionalPrds && additionalPrds.length > 0) {
+            body.additionalPrds = additionalPrds;
+        }
+        
+        // ✅ 新协议：docRefs（优先使用）
+        if (docRefs && docRefs.length > 0) {
+            body.docRefs = docRefs;
+        }
+        
         const res = await fetch(`${AGENT_URL}/api/chat`, {
             method: 'POST',
             headers: buildHeaders(),
-            body: JSON.stringify({ sessionId, role, message, additionalPrds: additionalPrds && additionalPrds.length > 0 ? additionalPrds : undefined })
+            body: JSON.stringify(body)
         });
         if (!res.ok) {
             if (res.status === 404) {
@@ -689,6 +713,8 @@ export const ask = async (
     instruction?: string; // 用户输入的补充说明（后端会放进 [补充说明] 标签）
     onMessage?: (text: string) => void;
     additionalPrds?: Array<{ title: string; content: string }>;  // 辅助PRD列表
+    docRefs?: Array<{ docId: string; kind?: string; title?: string; hash?: string; logicalId?: string; length?: number; contentType?: string }>; // docRefs-only 链路
+    targetLogicalId?: string; // chat/edit 目标右侧文档 logicalId
   }
 ) => {
   const sessionId = options.sessionId || `mvp-${Date.now()}`;
@@ -699,6 +725,19 @@ export const ask = async (
     params: options.params,
     instruction: (options.instruction || '').trim() || undefined,
   };
+
+  // ✅ docRefs-only
+  if (options.docRefs && options.docRefs.length > 0) {
+    body.docRefs = options.docRefs;
+  }
+
+  // ✅ chat/edit target
+  if (options.targetLogicalId) {
+    body.targetLogicalId = options.targetLogicalId;
+  }
+
+  // 下面继续追加其它字段
+
 
   // 添加辅助PRD参数（如果有）
   if (options.additionalPrds && options.additionalPrds.length > 0) {
@@ -798,5 +837,13 @@ export const ask = async (
     options.onMessage(data.answer || '');
                   }
 
-  return { answer: data.answer || '', sessionId: data.sessionId || sessionId };
+  return {
+    answer: data.answer || '',
+    sessionId: data.sessionId || sessionId,
+    mode: data.mode, // 'analysis' | 'edit'（chat 才有）
+    updatedDocument: data.updatedDocument,
+    editSummary: data.editSummary,
+    generatedDocRef: data.generatedDocRef,
+    usedDocRefs: data.usedDocRefs || [],
+  };
 };

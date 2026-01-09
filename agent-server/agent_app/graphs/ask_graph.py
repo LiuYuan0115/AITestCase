@@ -1,144 +1,352 @@
-"""
-Ask 接口 LangGraph
-
-功能：
-- 支持多类型：testprd / testpoint / testcase
-- 支持会话历史（可配置轮数）
-- 超出上下文时自动总结压缩
-- 模型参数可配置（model, temperature, max_tokens, thinkingConfig）
-- 支持 OpenAI 和 Anthropic 双模型
-"""
-
 from __future__ import annotations
 
-from typing import Any, Dict, List, TypedDict, Optional, Tuple
-import os
+import hashlib
 import re
+import json
+from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 
-from agent_app.ask_config import get_ask_config, AskTypeConfig
-from agent_app.config import is_anthropic_model
+from agent_app.ask_config import AskTypeConfig, get_ask_config
+from agent_app.session_store import SessionStore
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+
+
+class DocRefMiss(RuntimeError):
+    """Raised when a referenced docId is not present in DocStore."""
+    def __init__(self, doc_id: str):
+        super().__init__(f"DOCREF_MISS: {doc_id}")
+        self.code = "DOCREF_MISS"
+        self.docId = doc_id
 
 
 class AdditionalPrdItem(TypedDict):
-    """辅助PRD项"""
     title: str
     content: str
 
 
+class DocRef(TypedDict, total=False):
+    docId: str
+    logicalId: str
+    title: str
+    hash: str
+    kind: str  # main|aux|output
+    length: int
+    contentType: str
+    createdAt: int
+
+
 class AskState(TypedDict, total=False):
+    # request
     sessionId: str
     code: str
     type: str
-    text: str  # 主PRD内容
-    additionalPrds: List[AdditionalPrdItem]  # 辅助PRD列表
+    text: str
+    additionalPrds: List[AdditionalPrdItem]
+    docRefs: List[DocRef]
+    instruction: str
+    targetLogicalId: str  # chat/edit target (optional)
+
+    # runtime
     effectiveText: str
     messages: List[Dict[str, Any]]
     modelMessage: Any
     answer: str
-    config: AskTypeConfig
+    config: Any
+
+    # docstore / optimization
+    cacheKey: str
+    cached: bool
+    usedDocIds: List[str]
+    storedDocRefs: List[DocRef]   # docs newly stored in this call (optional)
+    usedDocRefs: List[DocRef]     # docs used to build prompt (always present)
+    generatedDocRef: Optional[DocRef]
+
+    # chat intent (for *_chat types)
+    chatIntent: str               # analysis | edit
+    updatedDocument: str          # full markdown when edit
+    editSummary: str              # short summary when edit
 
 
-def build_ask_graph(openai_client, model_name: str, session_store=None, anthropic_client=None):
+def build_ask_graph(
+    openai_client,
+    model_name: str,
+    session_store: Optional[SessionStore] = None,
+    anthropic_client=None,
+):
     """
-    构建 Ask Graph
+    Natural language -> docRefs/text -> prompt -> call LLM -> store output -> pointers
 
-    参数：
-    - openai_client: OpenAI SDK 客户端
-    - model_name: 默认模型名（会被 ask_config 覆盖）
-    - session_store: SessionStore 实例（用于会话历史）
-    - anthropic_client: Anthropic SDK 客户端（可选，用于 Claude 模型）
+    Compatibility:
+    - Old: params.text + additionalPrds
+    - New: docRefs-only (params.text can be empty)
     """
+    session_store = session_store or SessionStore(max_rounds=10)
 
+    def is_anthropic_model(model: str) -> bool:
+        return isinstance(model, str) and (model.startswith("anthropic/") or "claude" in model.lower())
+
+    def _strip_markdown_fence(text: str) -> str:
+        if not text:
+            return ""
+        t = text.strip()
+        if t.startswith("```"):
+            t = re.sub(r"^```[a-zA-Z0-9_-]*\s*", "", t)
+            t = re.sub(r"\s*```$", "", t)
+        return t.strip()
+
+    def _extract_json(text: str) -> Optional[dict]:
+        """Extract first JSON object from a model output (tolerate leading/trailing text)."""
+        if not text:
+            return None
+        t = text.strip()
+        i, j = t.find("{"), t.rfind("}")
+        if i == -1 or j == -1 or j <= i:
+            return None
+        try:
+            return json.loads(t[i : j + 1])
+        except Exception:
+            return None
+
+    # -------------------------
+    # Chat intent helpers
+    # -------------------------
+    _EDIT_HINTS = [
+        "修改","改成","替换","删除","删掉","加上","新增","补充","调整","润色","重写","改写","合并","整理",
+        "rewrite","edit","update","remove","delete","add","insert","revise","polish"
+    ]
+    _ANALYSIS_HINTS = ["分析","解释","为什么","怎么","评审","review","风险","建议","对比","有什么问题","关注点"]
+
+    def _quick_intent(user_input: str) -> str:
+        t = (user_input or "").lower()
+        if any(k.lower() in t for k in _EDIT_HINTS):
+            return "edit"
+        if any(k.lower() in t for k in _ANALYSIS_HINTS):
+            return "analysis"
+        return "unknown"
+
+    def _build_chat_messages(
+        stage_type: str, 
+        doc_content: str, 
+        user_input: str,
+        candidates: Optional[List[Dict[str, Any]]] = None,  # ✅ 新增：候选文档列表
+    ) -> List[Dict[str, Any]]:
+        """
+        Build chat messages for analysis/edit.
+        If candidates is provided (multiple main docs), let model choose target.
+        """
+        stage_name = {
+            "prd_chat": "PRD",
+            "testpoint_chat": "测试点",
+            "testcase_chat": "测试用例",
+        }.get(stage_type, "文档")
+
+        # ✅ 多候选模式：让模型选择目标文档
+        if candidates and len(candidates) > 1:
+            candidate_list = "\n".join([
+                f"- logicalId=\"{c.get('logicalId', '')}\" 标题=\"{c.get('title', '')}\" (长度={len(c.get('content', ''))}字符)"
+                for c in candidates
+            ])
+            
+            system = f"""
+你是资深测试/产品文档助手。用户 @ 引用了多个文档，你需要：
+1. 判断用户意图（analysis 或 edit）
+2. 确定用户最可能要操作的目标文档（targetLogicalId）
+
+候选文档列表：
+{candidate_list}
+
+输出必须是严格 JSON（不要 markdown，不要代码块），格式如下：
+
+{{
+  "intent": "analysis" | "edit",
+  "targetLogicalId": "...",           // 必填：你选择的目标文档 logicalId
+  "reply": "...",
+  "editSummary": "...",               // intent=edit 必填
+  "updatedDocument": "..."            // intent=edit 必填，完整 Markdown
+}}
+
+注意：
+- targetLogicalId 必须是候选列表中的某一个，不能自己编造
+- 如果用户指令针对所有文档，也只能选一个作为主要操作目标
+- updatedDocument 必须是"完整文档"，不是 patch
+""".strip()
+
+            # 拼接所有候选文档内容
+            docs_content = ""
+            for i, c in enumerate(candidates, 1):
+                docs_content += f"\n--- 文档{i}: {c.get('logicalId', '')} ({c.get('title', '')}) ---\n"
+                docs_content += (c.get("content") or "")[:8000]  # 每个文档限制8000字符
+                docs_content += "\n"
+
+            user = f"""[候选文档内容]
+{docs_content}
+
+[用户输入]
+{user_input}
+""".strip()
+
+        else:
+            # 单文档模式（原有逻辑）
+            system = f"""
+你是资深测试/产品文档助手。用户在聊天框输入内容，你需要判断用户意图：
+
+- intent=\"analysis\"：用户只是想问问题/要建议/要解释。你只输出 reply，不修改文档。
+- intent=\"edit\"：用户明确要你修改右侧当前{stage_name}文档。你必须输出修改后的完整文档 updatedDocument（Markdown），并给出简短 editSummary。
+
+输出必须是严格 JSON（不要 markdown，不要代码块），格式如下：
+
+{{
+  \"intent\": \"analysis\" | \"edit\",
+  \"reply\": \"...\",
+  \"editSummary\": \"...\",              // intent=edit 必填
+  \"updatedDocument\": \"...\"           // intent=edit 必填，完整 Markdown
+}}
+
+注意：
+- 如果用户输入模糊，但可能会改文档，你可以先 intent=\"analysis\" 追问缺失信息（但 reply 要简短）。
+- updatedDocument 必须是"完整文档"，不是 patch。
+""".strip()
+
+            user = f"""[当前右侧文档]
+{doc_content}
+
+[用户输入]
+{user_input}
+""".strip()
+
+        return [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+
+    def _resolve_target_doc(state: AskState) -> Tuple[str, str]:
+        """Return (target_logical_id, target_doc_content)."""
+        sid = state.get("sessionId", "") or ""
+        target_logical = (state.get("targetLogicalId") or "").strip()
+
+        # 1) targetLogicalId -> pointer -> doc
+        if target_logical and sid:
+            did = session_store.get_pointer(sid, target_logical)
+            if did:
+                doc = session_store.get_doc(did)
+                if doc and (doc.get("content") or ""):
+                    return target_logical, doc["content"]
+
+        # 2) fallback: docRefs kind=main
+        for r in state.get("docRefs") or []:
+            if (r.get("kind") or "").lower() == "main" and r.get("docId"):
+                doc = session_store.get_doc(r["docId"])
+                if doc and (doc.get("content") or ""):
+                    return target_logical or (r.get("logicalId") or ""), doc["content"]
+
+        # 3) fallback: state.text (chat 请求也可以直接携带当前文档内容)
+        text = (state.get("text") or "").strip()
+        if text:
+            return target_logical, text
+
+        return target_logical, ""
+
+    def _resolve_all_main_candidates(state: AskState) -> List[Dict[str, Any]]:
+        """
+        ✅ 新增：获取所有 kind=main 的候选文档（用于多选模式）
+        Returns: [{logicalId, title, content, docId}, ...]
+        """
+        candidates = []
+        for r in state.get("docRefs") or []:
+            if (r.get("kind") or "").lower() != "main":
+                continue
+            doc_id = r.get("docId")
+            if not doc_id:
+                continue
+            doc = session_store.get_doc(doc_id)
+            if not doc or not (doc.get("content") or ""):
+                continue
+            candidates.append({
+                "logicalId": r.get("logicalId") or doc.get("logicalId") or "",
+                "title": r.get("title") or doc.get("title") or "",
+                "content": doc.get("content") or "",
+                "docId": doc_id,
+            })
+        return candidates
     def _truncate_text(text: str, max_chars: int) -> str:
-        """截断输入文本"""
+        if not text:
+            return ""
         if len(text) <= max_chars:
             return text
-        # 保留前后各一半
-        half = max_chars // 2
-        return text[:half] + "\n\n... (内容过长，中间部分已省略) ...\n\n" + text[-half:]
+        return text[:max_chars] + "\n\n...(内容已截断)"
 
-    # ---------------------------------------------------------------------
-    # 性能开关（通过环境变量控制）
-    # ---------------------------------------------------------------------
-    # 调试日志开关：默认关闭，避免 IO 拖慢响应
-    _ASK_DEBUG = (os.getenv("ASK_DEBUG") or "").strip().lower() in ("1", "true", "yes")
-    # 允许用 LLM 做历史摘要（会多一次模型调用，默认关闭以降低延迟）
-    _ASK_USE_LLM_SUMMARY = (os.getenv("ASK_USE_LLM_SUMMARY") or "").strip().lower() in ("1", "true", "yes")
-    # testprd 输出修复（可能多一次模型调用）；默认开启，但只在强信号（丢图）或极端缩水时触发
-    _ASK_ENABLE_REPAIR = (os.getenv("ASK_ENABLE_REPAIR") or "1").strip().lower() in ("1", "true", "yes")
+    def _doc_to_ref(doc: Dict[str, Any], *, kind_override: Optional[str] = None, logical_override: Optional[str] = None) -> DocRef:
+        return {
+            "docId": doc.get("docId", ""),
+            "hash": doc.get("hash", ""),
+            "title": doc.get("title") or "",
+            "kind": kind_override or doc.get("kind") or "",
+            "logicalId": logical_override or doc.get("logicalId") or "",
+            "length": int(doc.get("length") or 0),
+            "contentType": doc.get("contentType") or "text/markdown",
+            "createdAt": int(doc.get("createdAt") or 0),
+        }
 
-    def _log(msg: str) -> None:
-        """调试日志输出（仅当 ASK_DEBUG=1 时打印）"""
-        if _ASK_DEBUG:
-            print(msg)
+    # ---------------- Anthropic call ----------------
 
-    def _call_anthropic(messages: List[Dict], model: str, max_tokens: int, temperature: float) -> str:
-        """调用 Anthropic API（使用流式响应避免超时）"""
+    def _call_anthropic(messages: List[Dict[str, Any]], model: str, max_tokens: int, temperature: float) -> str:
         if not anthropic_client:
-            raise ValueError("Anthropic client not configured")
-        
-        # 分离 system 和 user/assistant 消息
+            raise RuntimeError("Anthropic client not configured")
+
         system_content = ""
-        chat_messages = []
-        for msg in messages:
-            if msg["role"] == "system":
-                system_content += msg["content"] + "\n"
-            else:
-                chat_messages.append({"role": msg["role"], "content": msg["content"]})
-        
-        # 使用流式响应避免 10 分钟超时限制
-        chunks: List[str] = []
-        with anthropic_client.messages.stream(
+        chat_messages: List[Dict[str, str]] = []
+        for m in messages:
+            role = m.get("role")
+            if role == "system":
+                system_content += (m.get("content") or "") + "\n"
+            elif role in ("user", "assistant"):
+                chat_messages.append({"role": role, "content": m.get("content") or ""})
+
+        # Prefer streaming when available; fall back to create
+        if hasattr(anthropic_client, "messages") and hasattr(anthropic_client.messages, "stream"):
+            out = ""
+            with anthropic_client.messages.stream(
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system=system_content.strip() if system_content else None,
+                messages=chat_messages,
+            ) as stream:
+                for t in stream.text_stream:
+                    out += t
+            return out
+
+        # Fallback (non-stream)
+        resp = anthropic_client.messages.create(
             model=model,
             max_tokens=max_tokens,
+            temperature=temperature,
             system=system_content.strip() if system_content else None,
             messages=chat_messages,
-            temperature=temperature,
-        ) as stream:
-            for text in stream.text_stream:
-                chunks.append(text)
-        
-        return "".join(chunks)
-
-    def _call_openai(messages: List[Dict[str, Any]], model: str, max_tokens: int, temperature: float, thinking_budget: int = 0, include_thoughts: bool = False) -> str:
-        """调用 OpenAI Chat Completions（同步）"""
-        request_params: Dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
-        if thinking_budget and thinking_budget > 0:
-            request_params["extra_body"] = {
-                "thinkingConfig": {
-                    "includeThoughts": include_thoughts,
-                    "thinkingBudget": thinking_budget,
-                }
-            }
+        )
+        # Anthropic returns content blocks
         try:
-            resp = openai_client.chat.completions.create(**request_params)
-            return (resp.choices[0].message.content or "").strip()
+            return "".join([b.text for b in resp.content if getattr(b, "type", "") == "text"])
         except Exception:
-            # 兼容不支持 extra_body 的网关/模型
-            if "extra_body" in request_params:
-                del request_params["extra_body"]
-                resp = openai_client.chat.completions.create(**request_params)
-                return (resp.choices[0].message.content or "").strip()
-            raise
+            return str(resp)
+
+    # ---------------- History summarizer ----------------
 
     def _summarize_history(history: List[Dict[str, Any]], model: str) -> str:
-        """将历史对话压缩为摘要（超出上下文时使用）"""
         if not history:
             return ""
-
-        # 构建对话文本
-        conv_text = ""
-        for msg in history:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            conv_text += f"[{role}]: {content[:2000]}\n"
+        conv_lines = []
+        for m in history[-20:]:
+            role = m.get("role", "")
+            content = (m.get("content") or "").strip()
+            if not content:
+                continue
+            conv_lines.append(f"{role}: {content}")
+        conv_text = "\n".join(conv_lines)
 
         summary_prompt = [
             {
@@ -154,462 +362,510 @@ def build_ask_graph(openai_client, model_name: str, session_store=None, anthropi
         try:
             if is_anthropic_model(model) and anthropic_client:
                 return _call_anthropic(summary_prompt, model, 500, 0)
-            return _call_openai(summary_prompt, model, 500, 0)
-        except Exception as e:
-            # 摘要失败时返回空，避免阻塞主流程
-            _log(f"Warning: Failed to summarize history: {e}")
+            resp = openai_client.chat.completions.create(
+                model=model,
+                messages=summary_prompt,
+                max_tokens=500,
+                temperature=0,
+            )
+            return (resp.choices[0].message.content or "").strip()
+        except Exception:
             return ""
 
-    def _shrink_history(history: List[Dict[str, Any]], cfg: AskTypeConfig, reserved_for_current: int) -> Tuple[List[Dict[str, Any]], bool]:
-        """不额外调用 LLM 的情况下，快速压缩历史：
-        1) 保留最近 N 轮
-        2) 单条消息过长则截断
-        3) 总量仍超则从最早开始丢弃
+    # ---------------- DocRefs builder ----------------
+
+    def _build_docrefs_from_request(
+        state: AskState, ask_type: str
+    ) -> Tuple[Optional[str], List[str], List[DocRef], List[DocRef]]:
         """
-        if not history:
-            return history, False
-
-        changed = False
-        # 1) 先按轮数裁剪
-        if cfg.max_history_rounds and cfg.max_history_rounds > 0:
-            keep = cfg.max_history_rounds * 2
-            if len(history) > keep:
-                history = history[-keep:]
-                changed = True
-
-        # 2) 单条消息长度截断
-        per_msg_cap = max(2000, int(cfg.max_input_chars * 0.08))
-        shrunk: List[Dict[str, Any]] = []
-        for m in history:
-            c = (m.get("content") or "")
-            if len(c) > per_msg_cap:
-                m = dict(m)
-                m["content"] = c[:per_msg_cap] + "\n\n... (历史消息过长，已截断) ..."
-                changed = True
-            shrunk.append(m)
-        history = shrunk
-
-        # 3) 按总量裁剪（给当前 user 输入预留空间）
-        budget = max(2000, cfg.max_input_chars - reserved_for_current)
-        total = sum(len(m.get("content", "")) for m in history)
-        while history and total > budget:
-            removed = history.pop(0)
-            total -= len(removed.get("content", ""))
-            changed = True
-
-        return history, changed
-
-    def _build_tagged_input(ask_type: str, main_text: str, additional_prds: List[AdditionalPrdItem], cfg: AskTypeConfig, instruction: str = "") -> str:
+        Returns:
+        - main_doc_id
+        - aux_doc_ids
+        - stored_doc_refs: newly stored in this call (old protocol only)
+        - used_doc_refs: all docs used to build prompt (main+aux)
         """
-        根据 ask_type 构建带标签的输入文本，匹配各个 prompt 要求的格式
-        
-        - testprd: [主PRD]...[/主PRD] + [辅助PRD]...[/辅助PRD] + [Figma交互补充]...[/Figma交互补充] + [补充说明]...[/补充说明]
-        - testpoint: [优化后PRD]...[/优化后PRD] + [辅助PRD]...[/辅助PRD] + [Figma交互补充]...[/Figma交互补充] + [补充说明]...[/补充说明]
-        - testcase: [优化后PRD]...[/优化后PRD] + [辅助PRD]...[/辅助PRD] + [Figma交互补充]...[/Figma交互补充] + [测试点]...[/测试点] + [补充说明]...[/补充说明]
-        - figma: 直接传文本（包含 Figma URL）
-        """
-        # 分类辅助文档（根据标题前缀识别类型）
-        aux_prds: List[str] = []       # 辅助PRD
-        figma_docs: List[str] = []     # Figma交互补充
-        testpoint_docs: List[str] = [] # 测试点（用于 testcase 阶段的覆盖约束）
-        other_docs: List[str] = []     # 补充说明/其他
-        
-        max_per_doc = cfg.max_input_chars // (len(additional_prds) + 1) if additional_prds else cfg.max_input_chars
-        
-        for prd in (additional_prds or []):
-            title = (prd.get("title") or "").strip()
-            content = (prd.get("content") or "").strip()
-            if len(content) > max_per_doc:
-                content = content[:max_per_doc] + "\n\n... (内容过长，已截断) ..."
-            
-            # 根据标题前缀分类
-            title_lower = title.lower()
-            if "[figma" in title_lower or "figma交互" in title_lower or "figma设计" in title_lower:
-                # 去掉标题前缀，保留实际标题
-                clean_title = re.sub(r"^\[Figma[^\]]*\]\s*", "", title, flags=re.IGNORECASE).strip() or title
-                figma_docs.append(f"### {clean_title}\n{content}")
-            elif "[辅助prd]" in title_lower or "辅助prd" in title_lower:
-                clean_title = re.sub(r"^\[辅助PRD\]\s*", "", title, flags=re.IGNORECASE).strip() or title
-                aux_prds.append(f"### {clean_title}\n{content}")
-            elif "[测试点]" in title_lower or "测试点" in title_lower or "testpoint" in title_lower:
-                # 测试点文档：用于 testcase 阶段，作为覆盖清单/约束输入
-                clean_title = re.sub(r"^\[测试点\]\s*", "", title, flags=re.IGNORECASE).strip() or title
-                testpoint_docs.append(f"### {clean_title}\n{content}")
+        session_id = state.get("sessionId", "")
+        stored: List[DocRef] = []
+        used: List[DocRef] = []
+
+        main_doc_id: Optional[str] = None
+        aux_doc_ids: List[str] = []
+
+        # New protocol first: docRefs
+        for r in state.get("docRefs") or []:
+            did = (r or {}).get("docId")
+            if not did:
+                continue
+            doc = session_store.get_doc(did)
+            if not doc:
+                raise DocRefMiss(did)
+            kind = ((r or {}).get("kind") or doc.get("kind") or "").lower()
+            logical = (r or {}).get("logicalId") or doc.get("logicalId") or ""
+            ref = _doc_to_ref(doc, kind_override=kind, logical_override=logical)
+
+            if kind == "main" and not main_doc_id:
+                main_doc_id = did
             else:
-                # 其他文档作为补充说明
-                other_docs.append(f"### {title}\n{content}")
+                if did not in aux_doc_ids:
+                    aux_doc_ids.append(did)
+            used.append(ref)
 
-        # instruction：作为用户补充说明，统一进入 [补充说明] 标签（优先放在最前面）
-        inst = (instruction or "").strip()
-        if inst:
-            # 控制 instruction 长度，避免爆上下文
-            max_inst = max(2000, cfg.max_input_chars // 10)
-            if len(inst) > max_inst:
-                inst = inst[:max_inst] + "\n\n... (补充说明过长，已截断) ..."
-            other_docs.insert(0, f"### 用户输入\n{inst}")
-        
-        # 根据 ask_type 构建带标签的文本
-        parts: List[str] = []
-        
-        if ask_type == "figma":
-            # figma 类型：直接返回原文本（包含 Figma URL 等信息）
-            return main_text
-        
-        elif ask_type == "testprd":
-            # testprd: [主PRD] 标签
-            parts.append(f"[主PRD]\n{main_text}\n[/主PRD]")
-            
-            if aux_prds:
-                parts.append(f"\n[辅助PRD]\n" + "\n\n".join(aux_prds) + "\n[/辅助PRD]")
-            
-            if figma_docs:
-                parts.append(f"\n[Figma交互补充]\n" + "\n\n".join(figma_docs) + "\n[/Figma交互补充]")
-            
-            if other_docs:
-                parts.append(f"\n[补充说明]\n" + "\n\n".join(other_docs) + "\n[/补充说明]")
-        
-        elif ask_type in ("testcase", "testpoint"):
-            # testcase/testpoint: [优化后PRD] 标签
-            parts.append(f"[优化后PRD]\n{main_text}\n[/优化后PRD]")
-            
-            if aux_prds:
-                parts.append(f"\n[辅助PRD]\n" + "\n\n".join(aux_prds) + "\n[/辅助PRD]")
-            
-            if figma_docs:
-                parts.append(f"\n[Figma交互补充]\n" + "\n\n".join(figma_docs) + "\n[/Figma交互补充]")
+        # Old protocol: params.text -> store as main if present
+        text = (state.get("text") or "").strip()
+        if text:
+            # For stage0 compatibility: if testprd and no main yet, treat as raw_prd pointer.
+            logical_id = "raw_prd" if (ask_type == "testprd" and not main_doc_id) else None
+            put = session_store.put_doc(
+                content=text,
+                title=f"[main:{ask_type}]",
+                kind="main",
+                session_id=session_id or None,
+                logical_id=logical_id,
+                content_type="text/markdown",
+                tags=["prd", "raw"] if logical_id == "raw_prd" else None,
+            )
+            did = put["docId"]
+            if not main_doc_id:
+                main_doc_id = did
+            ref = {
+                "docId": did,
+                "hash": put.get("hash", ""),
+                "title": put.get("title") or "",
+                "kind": "main",
+                "logicalId": put.get("logicalId") or logical_id or "",
+                "length": int(put.get("length") or 0),
+                "contentType": put.get("contentType") or "text/markdown",
+                "createdAt": int(put.get("createdAt") or 0),
+            }
+            stored.append(ref)
+            used.append(ref)
 
-            # 仅在 testcase 阶段注入测试点标签段，避免 testpoint 自己生成时"自引用"
-            if ask_type == "testcase" and testpoint_docs:
-                parts.append(f"\n[测试点]\n" + "\n\n".join(testpoint_docs) + "\n[/测试点]")
-            
-            if other_docs:
-                parts.append(f"\n[补充说明]\n" + "\n\n".join(other_docs) + "\n[/补充说明]")
-        
+        # additionalPrds -> store as aux
+        for item in state.get("additionalPrds") or []:
+            title = (item.get("title") or "").strip() or "[aux]"
+            content = item.get("content") or ""
+            if not content.strip():
+                continue
+            put = session_store.put_doc(
+                content=content,
+                title=title,
+                kind="aux",
+                session_id=session_id or None,
+                content_type="text/markdown",
+                tags=["aux"],
+            )
+            did = put["docId"]
+            if did not in aux_doc_ids:
+                aux_doc_ids.append(did)
+            ref = {
+                "docId": did,
+                "hash": put.get("hash", ""),
+                "title": put.get("title") or "",
+                "kind": "aux",
+                "logicalId": put.get("logicalId") or "",
+                "length": int(put.get("length") or 0),
+                "contentType": put.get("contentType") or "text/markdown",
+                "createdAt": int(put.get("createdAt") or 0),
+            }
+            stored.append(ref)
+            used.append(ref)
+
+        # ensure used main+aux order: main first
+        if main_doc_id:
+            main_doc = session_store.get_doc(main_doc_id)
+            if main_doc:
+                main_ref = _doc_to_ref(main_doc, kind_override="main")
+                used = [main_ref] + [r for r in used if r.get("docId") != main_doc_id]
+
+        return main_doc_id, aux_doc_ids, stored, used
+
+    # ---------------- Context builder (budget + retrieve) ----------------
+
+    def _format_doc_context(
+        main_doc_id: Optional[str],
+        aux_doc_ids: List[str],
+        ask_type: str,
+        instruction: str,
+        cfg: Any,
+    ) -> str:
+        query = f"{ask_type} {instruction}".strip()
+        max_total = int(getattr(cfg, "max_input_chars", 100000) or 100000)
+
+        def make_excerpt(doc_id: str, max_chars: int, top_k: int) -> str:
+            doc = session_store.get_doc(doc_id) or {}
+            title = doc.get("title") or ""
+            content = doc.get("content") or ""
+
+            # 如果文档内容小于预算，直接使用完整内容（避免检索导致的信息丢失）
+            if len(content) <= max_chars:
+                if title:
+                    return f"【{title}】\n{content}"
+                return content
+
+            # 文档较大时，尝试检索相关片段
+            retrieved = session_store.retrieve([doc_id], query=query, top_k=top_k)
+            chunks: List[str] = []
+            for _did, ch, _sc in retrieved:
+                if ch:
+                    chunks.append(ch)
+
+            body = ""
+            if chunks:
+                body = "\n\n---\n\n".join(chunks).strip()
+
+            # Fallback: if retrieve returns nothing (or query too strict), use full content
+            if not body and content:
+                body = content
+
+            body = _truncate_text(body, max_chars)
+
+            if title:
+                return f"【{title}】\n{body}"
+            return body
+
+        # budget: main 90%, aux 10% (确保大PRD不被截断)
+        # 如果有辅助文档，主文档分配 80%，否则分配 100%
+        if aux_doc_ids:
+            max_main = int(max_total * 0.80)
         else:
-            # 其他类型：使用通用格式
-            parts.append(main_text)
-            if aux_prds or figma_docs or other_docs:
-                parts.append("\n\n---\n\n## 参考文档\n")
-                parts.extend(aux_prds)
-                parts.extend(figma_docs)
-                parts.extend(other_docs)
-        
-        return "\n".join(parts)
+            max_main = max_total  # 无辅助文档时，主文档可以使用全部预算
+        max_aux_total = max_total - max_main
+        max_aux_each = max(4000, int(max_aux_total / max(1, len(aux_doc_ids) or 1)))
+
+        main_excerpt = make_excerpt(main_doc_id, max_main, top_k=8) if main_doc_id else ""
+        aux_excerpts = [make_excerpt(did, max_aux_each, top_k=4) for did in aux_doc_ids[:8]]
+
+        parts: List[str] = []
+
+        if ask_type == "testprd":
+            parts.append(f"[主PRD]\n{main_excerpt}\n[/主PRD]")
+            if aux_excerpts:
+                parts.append("[辅助PRD]\n" + "\n\n".join(aux_excerpts) + "\n[/辅助PRD]")
+            if instruction:
+                parts.append(f"[补充说明]\n{instruction}\n[/补充说明]")
+        elif ask_type in ("testpoint", "testcase"):
+            parts.append(f"[优化后PRD]\n{main_excerpt}\n[/优化后PRD]")
+            if aux_excerpts:
+                parts.append("[辅助PRD]\n" + "\n\n".join(aux_excerpts) + "\n[/辅助PRD]")
+            if instruction:
+                parts.append(f"[补充说明]\n{instruction}\n[/补充说明]")
+        else:
+            parts.append(main_excerpt)
+            parts.extend(aux_excerpts)
+            if instruction:
+                parts.append(instruction)
+
+        combined = "\n\n".join([p for p in parts if p and p.strip()]).strip()
+        return _truncate_text(combined, max_total)
+
+    # ---------------- Cache key ----------------
+
+    def _compute_cache_key(state: AskState, cfg: Any, main_doc_id: Optional[str], aux_doc_ids: List[str]) -> str:
+        session_id = state.get("sessionId", "")
+        ask_type = (state.get("type") or "testprd").strip().lower()
+        instruction = (state.get("instruction") or "").strip()
+        code = (state.get("code") or "").strip()
+        model = getattr(cfg, "model", None) or model_name
+
+        prompt_text = cfg.get_prompt() if hasattr(cfg, "get_prompt") else ""
+        prompt_hash = _sha256(prompt_text)
+
+        def doc_hash(did: str) -> str:
+            d = session_store.get_doc(did) or {}
+            return (d.get("hash") or "")
+
+        payload = {
+            "v": 3,
+            "session": session_id,
+            "type": ask_type,
+            "code": code,
+            "model": model,
+            "temperature": getattr(cfg, "temperature", None),
+            "max_tokens": getattr(cfg, "max_tokens", None),
+            "promptHash": prompt_hash,
+            "mainHash": doc_hash(main_doc_id) if main_doc_id else "",
+            "auxHashes": [doc_hash(d) for d in aux_doc_ids],
+            "instruction": instruction,
+        }
+        return session_store.make_cache_key(payload)
+
+    # ---------------- Nodes ----------------
 
     def build_prompt(state: AskState) -> AskState:
-        """构建消息列表（含历史上下文）"""
         ask_type = (state.get("type") or "testprd").strip().lower()
-        cfg = get_ask_config(ask_type)
+        cfg: AskTypeConfig = get_ask_config(ask_type)
         state["config"] = cfg
+        # ---------------- chat types: analysis/edit with auto doc update ----------------
+        if ask_type.endswith("_chat"):
+            # chat mode relies on targetLogicalId (preferred) or docRefs(kind=main) to locate right-side doc.
+            user_input = (state.get("instruction") or "").strip()
+            if not user_input:
+                state["answer"] = "请先输入你的问题或修改指令。"
+                state["cached"] = True  # skip call_llm/finalize
+                state["chatIntent"] = "analysis"
+                state["storedDocRefs"] = []
+                state["usedDocRefs"] = state.get("docRefs") or []
+                state["generatedDocRef"] = None
+                return state
 
-        # ========== 调试日志（默认关闭，避免 IO 拖慢） ==========
-        text_raw = state.get("text", "") or ""
-        additional_prds_raw = state.get("additionalPrds") or []
-        _log("\n" + "=" * 80)
-        _log(f"🔵 [ASK Graph] 流程: {ask_type.upper()}")
-        _log("=" * 80)
-        _log("📥 接收到的原始参数:")
-        _log(f"   - type: {ask_type}")
-        _log(f"   - sessionId: {state.get('sessionId', 'N/A')}")
-        _log(f"   - text 长度: {len(text_raw)} 字符")
-        _log(f"   - additionalPrds 数量: {len(additional_prds_raw)}")
-        if _ASK_DEBUG and additional_prds_raw:
-            for i, prd in enumerate(additional_prds_raw, 1):
-                title = prd.get("title", f"文档{i}")
-                content_len = len(prd.get("content", "") or "")
-                _log(f"      [{i}] {title} ({content_len} 字符)")
+            # ✅ 检查是否有多个 main 候选文档（@ 多选模式）
+            main_candidates = _resolve_all_main_candidates(state)
+            
+            if len(main_candidates) > 1:
+                # 多候选模式：让模型选择目标文档
+                state["_chatCandidates"] = main_candidates  # 临时存储，供 call_llm 验证
+                state["chatIntent"] = _quick_intent(user_input)
+                state["messages"] = _build_chat_messages(
+                    ask_type, 
+                    "",  # doc_content 由 candidates 提供
+                    user_input,
+                    candidates=main_candidates,
+                )
+                state["effectiveText"] = user_input
+                state["cacheKey"] = ""
+                state["cached"] = False
+                state["storedDocRefs"] = []
+                state["usedDocRefs"] = state.get("docRefs") or []
+                state["usedDocIds"] = [r.get("docId") for r in (state.get("usedDocRefs") or []) if r.get("docId")]
+                return state
+            else:
+                # 单候选/无候选：走原有逻辑
+                target_logical, doc_content = _resolve_target_doc(state)
+                if not doc_content:
+                    state["answer"] = "Error: 当前右侧文档为空或未入库，请先生成/保存一次后再编辑。"
+                    state["cached"] = True
+                    state["chatIntent"] = "analysis"
+                    state["storedDocRefs"] = []
+                    state["usedDocRefs"] = state.get("docRefs") or []
+                    state["generatedDocRef"] = None
+                    return state
 
-        # 获取系统 prompt
-        try:
-            system_prompt = cfg.get_prompt()
-        except FileNotFoundError as e:
-            system_prompt = str(e)
+                if target_logical:
+                    state["targetLogicalId"] = target_logical
 
-        # 处理主PRD输入文本（截断）
-        text = text_raw
-        if len(text) > cfg.max_input_chars:
-            text = _truncate_text(text, cfg.max_input_chars)
-            _log(f"⚠️  主文本已截断: {len(text_raw)} → {len(text)} 字符")
-        
-        # 处理辅助PRD（如果有）
-        additional_prds = additional_prds_raw
-        
-        # 使用带标签的格式构建输入文本（匹配各 prompt 要求）
+                state["chatIntent"] = _quick_intent(user_input)
+                state["messages"] = _build_chat_messages(ask_type, doc_content, user_input)
+                state["effectiveText"] = user_input
+                # disable cache for chat to avoid stale doc edits
+                state["cacheKey"] = ""
+                state["cached"] = False
+                state["storedDocRefs"] = []
+                state["usedDocRefs"] = state.get("docRefs") or []
+                state["usedDocIds"] = [r.get("docId") for r in (state.get("usedDocRefs") or []) if r.get("docId")]
+                return state
+
+
+        main_doc_id, aux_doc_ids, stored_refs, used_refs = _build_docrefs_from_request(state, ask_type)
+        state["storedDocRefs"] = stored_refs
+        state["usedDocRefs"] = used_refs
+        state["usedDocIds"] = [r.get("docId") for r in used_refs if r.get("docId")]
+
         instruction = (state.get("instruction") or "").strip()
-        full_text = _build_tagged_input(ask_type, text, additional_prds, cfg, instruction=instruction)
-        
-        # ========== 调试日志：构建后的带标签格式预览 ==========
-        if _ASK_DEBUG:
-            _log(f"📝 构建后的带标签格式 (总长度: {len(full_text)} 字符):")
-            _log("-" * 80)
-            preview_len = 800
-            preview_text = full_text[:preview_len]
-            if len(full_text) > preview_len:
-                preview_text += f"\n\n... (还有 {len(full_text) - preview_len} 字符未显示) ..."
-            _log(preview_text)
-            _log("-" * 80)
-        
-        # 保存本次实际用于推理的文本（用于后续校验/修复）
-        state["effectiveText"] = full_text
+        effective = _format_doc_context(main_doc_id, aux_doc_ids, ask_type, instruction, cfg)
+        state["effectiveText"] = effective
 
-        # 构建消息列表
-        messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
-        # testprd：增加硬性提醒，避免历史污染导致删减/丢图
-        if ask_type == "testprd":
-            extra_system_msg = (
-                "硬性规则：仅以本次用户输入的 [主PRD] 标签内的 Markdown 为唯一事实来源。"
-                "不得删减信息点、不得丢失任何图片链接；新增内容必须以【新增补充】标注。"
-                "若历史对话与本次输入冲突，忽略历史对话。"
-            )
-            messages.append({
-                "role": "system",
-                "content": extra_system_msg,
-            })
+        # session history (optional)
+        history_msgs: List[Dict[str, Any]] = []
+        if getattr(cfg, "use_session_history", False):
+            sid = state.get("sessionId", "")
+            history_msgs = session_store.get(sid) if sid else []
 
-        # 加入会话历史（如果启用）
-        history_count = 0
-        if cfg.use_session_history and session_store:
-            session_id = state.get("sessionId", "")
-            history = session_store.get(session_id) or []
+        # summarize on overflow (optional)
+        if history_msgs and getattr(cfg, "summarize_on_overflow", False):
+            approx = sum(len(m.get("content") or "") for m in history_msgs) + len(effective)
+            if approx > int(getattr(cfg, "max_input_chars", 100000) or 100000):
+                summary = _summarize_history(history_msgs, getattr(cfg, "model", model_name) or model_name)
+                history_msgs = [{"role": "system", "content": f"【历史摘要】\n{summary}"}] if summary else []
 
-            if history:
-                total_chars = sum(len(m.get("content", "")) for m in history)
-                # 只有在超阈值 且 开启 LLM 摘要 时才调用 LLM；否则走"无 LLM 的快速压缩"
-                if cfg.summarize_on_overflow and total_chars > cfg.max_input_chars // 2 and _ASK_USE_LLM_SUMMARY:
-                    summary = _summarize_history(history, cfg.model)
-                    if summary:
-                        messages.append({"role": "system", "content": f"[历史对话摘要]\n{summary}"})
-                        history_count = 1
-                else:
-                    # 默认走快速压缩，不额外调用 LLM
-                    shrunk, changed = _shrink_history(history, cfg, reserved_for_current=len(full_text))
-                    if changed:
-                        messages.append({"role": "system", "content": "[历史对话已截断] 仅保留最近部分上下文以降低延迟。"})
-                    messages.extend(shrunk)
-                    history_count = len(shrunk)
+        system_prompt = cfg.get_prompt()
+        state["messages"] = [{"role": "system", "content": system_prompt}, *history_msgs, {"role": "user", "content": effective}]
 
-        # 加入当前用户输入（含主PRD + 辅助PRD）
-        messages.append({"role": "user", "content": full_text})
+        cache_key = _compute_cache_key(state, cfg, main_doc_id, aux_doc_ids)
+        state["cacheKey"] = cache_key
+        cached = session_store.cache_get(cache_key)
+        if cached and isinstance(cached, dict) and cached.get("answer"):
+            state["answer"] = cached.get("answer", "")
+            state["cached"] = True
+            # keep full closed-loop fields
+            if cached.get("storedDocRefs") is not None:
+                state["storedDocRefs"] = cached.get("storedDocRefs") or []
+            if cached.get("usedDocRefs") is not None:
+                state["usedDocRefs"] = cached.get("usedDocRefs") or state.get("usedDocRefs") or []
+            if cached.get("generatedDocRef") is not None:
+                state["generatedDocRef"] = cached.get("generatedDocRef")
+            return state
 
-        # ========== 调试日志：最终消息列表 ==========
-        if _ASK_DEBUG:
-            _log("📤 最终发送给 LLM 的消息列表:")
-            _log("-" * 80)
-            _log(f"   消息总数: {len(messages)}")
-            _log(f"   - System messages: {len([m for m in messages if m['role'] == 'system'])}")
-            if history_count > 0:
-                _log(f"   - History messages: {history_count}")
-            _log("   - User message: 1")
-            _log("")
-            for i, msg in enumerate(messages, 1):
-                role = msg.get("role", "unknown")
-                content0 = msg.get("content", "")
-                content_len = len(content0)
-                content_preview = content0[:200].replace("\n", "\\n")
-                if len(content0) > 200:
-                    content_preview += "..."
-                _log(f"   [{i}] role: {role:8s} | 长度: {content_len:6d} 字符")
-                _log(f"      预览: {content_preview}")
-            _log("=" * 80 + "\n")
-
-        state["messages"] = messages
+        state["cached"] = False
         return state
 
     def call_llm(state: AskState) -> AskState:
-        """调用 LLM（支持 OpenAI 和 Anthropic）"""
-        cfg = state.get("config") or get_ask_config(state.get("type", "testprd"))
-        model = cfg.model
+        if state.get("cached"):
+            return state
 
-        # 判断使用哪个客户端
-        if is_anthropic_model(model) and anthropic_client:
-            # 使用 Anthropic SDK
-            try:
-                content = _call_anthropic(
-                    state["messages"],
-                    model,
-                    cfg.max_tokens,
-                    cfg.temperature
+        cfg: Any = state.get("config") or get_ask_config(state.get("type", "testprd"))
+        model = getattr(cfg, "model", None) or model_name
+        max_tokens = int(getattr(cfg, "max_tokens", 2000) or 2000)
+        temperature = float(getattr(cfg, "temperature", 0) or 0)
+
+        ask_type = (state.get("type") or "testprd").strip().lower()
+
+        try:
+            # call model
+            if is_anthropic_model(model) and anthropic_client:
+                raw_content = _call_anthropic(state["messages"], model, max_tokens, temperature)
+                raw_text = _strip_markdown_fence((raw_content or "").strip())
+            else:
+                resp = openai_client.chat.completions.create(
+                    model=model,
+                    messages=state["messages"],
+                    max_tokens=max_tokens,
+                    temperature=temperature,
                 )
-                # 构造一个兼容的 message 对象
-                class MockMessage:
-                    def __init__(self, c):
-                        self.content = c
-                state["modelMessage"] = MockMessage(content)
-            except Exception as e:
-                raise e
-        else:
-            # 使用 OpenAI SDK
-            request_params: Dict[str, Any] = {
-                "model": model,
-                "messages": state["messages"],
-                "temperature": cfg.temperature,
-                "max_tokens": cfg.max_tokens,
-            }
+                msg = resp.choices[0].message
+                raw_text = _strip_markdown_fence((msg.content or "").strip())
 
-            if cfg.thinking_budget > 0:
-                request_params["extra_body"] = {
-                    "thinkingConfig": {
-                        "includeThoughts": cfg.include_thoughts,
-                        "thinkingBudget": cfg.thinking_budget,
-                    }
-                }
+            # chat: parse strict JSON and (optionally) persist updated doc
+            if ask_type.endswith("_chat"):
+                obj = _extract_json(raw_text) or {}
+                intent = (obj.get("intent") or state.get("chatIntent") or "analysis").strip().lower()
+                reply = (obj.get("reply") or "").strip()
+                
+                # ✅ 多候选模式：从模型响应中获取 targetLogicalId 并验证
+                model_target_logical = (obj.get("targetLogicalId") or "").strip()
+                candidates = state.get("_chatCandidates") or []
+                
+                if model_target_logical and candidates:
+                    # 验证模型返回的 targetLogicalId 在候选列表中
+                    valid_logical_ids = {c.get("logicalId", "") for c in candidates if c.get("logicalId")}
+                    if model_target_logical in valid_logical_ids:
+                        state["targetLogicalId"] = model_target_logical
+                    else:
+                        # 模型返回的 targetLogicalId 不在候选列表中，降级为 analysis
+                        state["chatIntent"] = "analysis"
+                        state["answer"] = f"⚠️ 模型选择的目标文档 '{model_target_logical}' 不在候选列表中。请明确指定要操作的文档。"
+                        return state
 
-            try:
-                resp = openai_client.chat.completions.create(**request_params)
-                state["modelMessage"] = resp.choices[0].message
-            except Exception as e:
-                if "extra_body" in request_params:
-                    del request_params["extra_body"]
-                    resp = openai_client.chat.completions.create(**request_params)
-                    state["modelMessage"] = resp.choices[0].message
+                if intent != "edit":
+                    state["chatIntent"] = "analysis"
+                    # ✅ 返回模型选择的目标文档信息（便于前端显示）
+                    if model_target_logical:
+                        state["targetLogicalId"] = model_target_logical
+                    state["answer"] = reply or raw_text or "OK"
                 else:
-                    raise e
+                    updated = (obj.get("updatedDocument") or "").strip()
+                    summary = (obj.get("editSummary") or "").strip()
+
+                    if not updated:
+                        state["chatIntent"] = "analysis"
+                        state["answer"] = reply or "我理解你想修改文档，但缺少具体修改内容。请再明确要改哪里。"
+                    else:
+                        sid = state.get("sessionId", "") or ""
+                        # ✅ 优先使用模型返回的 targetLogicalId
+                        logical_id = model_target_logical or (state.get("targetLogicalId") or "").strip() or None
+
+                        put = session_store.put_doc(
+                            content=updated,
+                            title=f"[edited:{ask_type}]",
+                            kind="main",
+                            session_id=sid or None,
+                            logical_id=logical_id,
+                            content_type="text/markdown",
+                            tags=["main", "edited", ask_type],
+                        )
+                        doc = session_store.get_doc(put["docId"]) or {}
+                        gen_ref = _doc_to_ref(
+                            doc,
+                            kind_override="main",
+                            logical_override=logical_id or (doc.get("logicalId") or ""),
+                        )
+
+                        state["generatedDocRef"] = gen_ref
+                        state["updatedDocument"] = updated
+                        state["editSummary"] = summary
+                        state["chatIntent"] = "edit"
+                        state["targetLogicalId"] = logical_id or ""
+                        state["answer"] = reply or (summary or "已更新文档。")
+            else:
+                state["answer"] = raw_text or "处理完成"
+        except Exception as e:
+            state["answer"] = f"Error: {str(e)}"
+            return state
+
+        # cache (partial; finalize will add generatedDocRef)
+        ck = state.get("cacheKey", "")
+        if ck:
+            session_store.cache_set(
+                ck,
+                {
+                    "answer": state.get("answer", ""),
+                    "storedDocRefs": state.get("storedDocRefs", []),
+                    "usedDocRefs": state.get("usedDocRefs", []),
+                },
+            )
+
+        # session history (optional)
+        if getattr(cfg, "use_session_history", False):
+            sid = state.get("sessionId", "")
+            if sid:
+                session_store.append(sid, "user", (state.get("effectiveText") or "")[:3000])
+                session_store.append(sid, "assistant", (state.get("answer") or "")[:3000])
 
         return state
-
-    def _strip_markdown_fence(text: str) -> str:
-        """去掉 ```markdown ... ``` 包裹（模型有时会加）"""
-        text = text.strip()
-        # 去掉开头的 ```markdown 或 ```
-        if text.startswith("```markdown"):
-            text = text[len("```markdown"):].lstrip("\n")
-        elif text.startswith("```"):
-            text = text[3:].lstrip("\n")
-        # 去掉结尾的 ```
-        if text.endswith("```"):
-            text = text[:-3].rstrip("\n")
-        return text.strip()
 
     def finalize(state: AskState) -> AskState:
-        """提取回答并更新会话历史"""
-        def _extract_image_urls(md: str) -> List[str]:
-            """
-            从 Markdown/HTML 中提取图片链接：
-            - Markdown: ![alt](url)
-            - HTML: <img ... src="url" ...>
-            """
-            if not md:
-                return []
-            urls: List[str] = []
-            # Markdown 图片
-            for m in re.finditer(r"!\[[^\]]*\]\(([^)\s]+)\)", md):
-                urls.append(m.group(1))
-            # HTML img src
-            for m in re.finditer(r"<img[^>]+src=[\"']([^\"']+)[\"'][^>]*>", md, flags=re.IGNORECASE):
-                urls.append(m.group(1))
-            # 去重保持顺序
-            seen = set()
-            out: List[str] = []
-            for u in urls:
-                if u and u not in seen:
-                    seen.add(u)
-                    out.append(u)
-            return out
-
-        def _find_missing_image_urls(input_md: str, output_md: str) -> List[str]:
-            input_urls = _extract_image_urls(input_md)
-            if not input_urls:
-                return []
-            out = output_md or ""
-            return [u for u in input_urls if u not in out]
-
-        def _build_missing_context_snippets(input_md: str, missing_urls: List[str], window: int = 240) -> str:
-            """
-            为每个缺失 url 提供上下文片段，便于模型补回到正确位置附近
-            """
-            if not input_md or not missing_urls:
-                return ""
-            snippets: List[str] = []
-            for url in missing_urls[:50]:
-                idx = input_md.find(url)
-                if idx < 0:
-                    continue
-                start = max(0, idx - window)
-                end = min(len(input_md), idx + len(url) + window)
-                snippet = input_md[start:end]
-                snippets.append(f"- 缺失图片链接：{url}\n  上下文片段：\n  {snippet}\n")
-            return "\n".join(snippets).strip()
-
-        msg = state.get("modelMessage")
-        content = (getattr(msg, "content", None) or "").strip() if msg else ""
-        # 自动去掉 ```markdown 包裹（兜底处理）
-        content = _strip_markdown_fence(content)
-
-        # testprd：校验"丢图/明显缩水"，必要时触发一次修复重试
         ask_type = (state.get("type") or "testprd").strip().lower()
-        if ask_type == "testprd":
-            cfg = state.get("config") or get_ask_config("testprd")
-            input_text = state.get("effectiveText") or state.get("text") or ""
-            missing_urls = _find_missing_image_urls(input_text, content)
-            ratio = (len(content) / max(1, len(input_text))) if input_text else 1.0
-            # 仅将"极端缩水"视为修复信号；避免因输出略短而额外触发一次模型调用（会显著拉慢响应）
-            too_short = bool(input_text) and ratio < 0.35
+        # Chat types already handled in call_llm (analysis reply or in-place doc update)
+        if ask_type.endswith("_chat"):
+            return state
+        sid = state.get("sessionId", "")
+        answer = state.get("answer") or ""
 
-            if _ASK_ENABLE_REPAIR and (missing_urls or too_short):
-                # 用缺失图片的上下文片段做"最小修复输入"，避免再次塞入全文导致上下文爆炸
-                snippets = _build_missing_context_snippets(input_text, missing_urls)
-                rules: List[str] = []
-                if missing_urls:
-                    rules.append(f"输出缺失 {len(missing_urls)} 个图片链接，必须全部补回。")
-                if too_short:
-                    rules.append(f"输出内容明显缩水（输出/输入≈{ratio:.2f}），不得删减信息点，请补全。")
-                rule_text = "；".join(rules) or "需要修复输出。"
+        logical_map = {
+            "testprd": "optimized_prd_current",
+            "testpoint": "testpoints_current",
+            "testcase": "testcases_current",
+        }
+        logical_id = logical_map.get(ask_type)
 
-                repair_messages: List[Dict[str, Any]] = [
-                    {"role": "system", "content": cfg.get_prompt()},
+        if sid and answer and not answer.startswith("Error:"):
+            put = session_store.put_doc(
+                content=answer,
+                title=f"[output:{ask_type}]",
+                kind="output",
+                session_id=sid,
+                logical_id=logical_id,
+                content_type="text/markdown",
+                tags=["output", ask_type],
+            )
+            # doc record in store contains logicalId; ensure override with mapping
+            doc = session_store.get_doc(put["docId"]) or {}
+            gen_ref = _doc_to_ref(doc, kind_override="output", logical_override=logical_id)
+            state["generatedDocRef"] = gen_ref
+
+            # update cache with generated ref
+            ck = state.get("cacheKey", "")
+            if ck:
+                cached = session_store.cache_get(ck) or {}
+                cached.update(
                     {
-                        "role": "system",
-                        "content": (
-                            "你是 PRD 优化结果的修复器。必须严格遵守强约束：不得删减信息点、不得丢图、"
-                            "新增内容必须以\"新增补充：\"标亮。输出必须为纯 Markdown，不要使用代码块。"
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": (
-                            f"{rule_text}\n\n"
-                            "请在【当前输出】基础上修复为【最终优化后的 PRD】。\n\n"
-                            "[当前输出]\n"
-                            f"{content}\n\n"
-                            "[缺失项的原文上下文片段（必须补回到正确位置附近）]\n"
-                            f"{snippets or '(无上下文片段，但仍需保证不删减信息点并保留全部图片链接)'}\n"
-                        ),
-                    },
-                ]
-
-                try:
-                    # 修复：根据模型类型选择正确的 provider
-                    if is_anthropic_model(cfg.model) and anthropic_client:
-                        repaired = _call_anthropic(repair_messages, cfg.model, cfg.max_tokens, 0).strip()
-                    else:
-                        repaired = _call_openai(repair_messages, cfg.model, cfg.max_tokens, 0).strip()
-                    repaired = _strip_markdown_fence(repaired)
-                    if repaired:
-                        content = repaired
-                except Exception as e:
-                    # 修复失败不阻塞主流程
-                    _log(f"Warning: testprd repair failed: {e}")
-
-        state["answer"] = content or "处理完成"
-
-        # 更新会话历史（如果启用）
-        cfg = state.get("config") or get_ask_config(state.get("type", "testprd"))
-        if cfg.use_session_history and session_store:
-            session_id = state.get("sessionId", "")
-            text = state.get("text", "")
-            if session_id and text:
-                session_store.append(session_id, "user", text[:5000])
-                session_store.append(session_id, "assistant", state["answer"][:5000])
+                        "answer": answer,
+                        "storedDocRefs": state.get("storedDocRefs", []),
+                        "usedDocRefs": state.get("usedDocRefs", []),
+                        "generatedDocRef": gen_ref,
+                    }
+                )
+                session_store.cache_set(ck, cached)
 
         return state
 
-    # 构建图
-    graph = StateGraph(AskState)
-    graph.add_node("build_prompt", build_prompt)
-    graph.add_node("call_llm", call_llm)
-    graph.add_node("finalize", finalize)
-    graph.set_entry_point("build_prompt")
-    graph.add_edge("build_prompt", "call_llm")
-    graph.add_edge("call_llm", "finalize")
-    graph.add_edge("finalize", END)
-    return graph.compile()
+    g = StateGraph(AskState)
+    g.add_node("build_prompt", build_prompt)
+    g.add_node("call_llm", call_llm)
+    g.add_node("finalize", finalize)
+
+    g.set_entry_point("build_prompt")
+    g.add_edge("build_prompt", "call_llm")
+    g.add_edge("call_llm", "finalize")
+    g.add_edge("finalize", END)
+
+    return g.compile()
