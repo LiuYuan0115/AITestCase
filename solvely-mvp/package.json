@@ -2,7 +2,7 @@
   "name": "AITestCase",
   "description": "AI Test Case - Automated PRD & Test Case Analysis",
   "private": true,
-  "version": "0.0.4",
+  "version": "0.0.5",
   "type": "module",
   "scripts": {
     "dev": "wxt",
