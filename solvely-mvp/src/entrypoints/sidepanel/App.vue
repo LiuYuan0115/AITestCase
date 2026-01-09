@@ -134,10 +134,12 @@
                 v-for="doc in filteredRightDocsForAt"
                 :key="doc.id"
                 class="ref-picker-item"
+                :class="{ 'unsaved': !isDocSaved(doc) }"
                 :disabled="selectedRefDocs.some(d => d.id === doc.id)"
                 @mousedown.prevent="addRefDoc(doc)"
               >
                 <span class="ref-picker-title">{{ doc.title }}</span>
+                <span v-if="!isDocSaved(doc)" class="ref-picker-unsaved" title="未入库，引用时将使用内容传输">⚠️</span>
                 <span class="ref-picker-meta">{{ doc.kind }}</span>
               </button>
             </div>
@@ -268,7 +270,10 @@
             <!-- 分析步骤 -->
             <template v-if="['setup', 'analyzing', 'content_review'].includes(projectState.currentStep)">
               <template v-if="!projectState.documents.prd">
-                <!-- 无PRD时，不显示额外按钮（用户可通过"提取当前页"按钮开始） -->
+                <!-- 无PRD时，显示提取按钮 -->
+                <button @click="startFullPageAnalysis" class="btn-primary step-action-btn" :disabled="isProcessing">
+                  📸 提取当前PRD
+                </button>
               </template>
               <template v-else-if="!hasGeneratedPRD">
                 <button @click="startOptimizePRD" class="btn-primary step-action-btn" :disabled="isProcessing">✨ 优化需求文档</button>
@@ -398,10 +403,10 @@
               </div>
             </template>
             
-            <!-- URL 文档列表（QA角色：链接提取/提取当前页/输入框URL，排除已设为主PRD的） -->
-            <template v-if="userRole === 'qa' && urlDocs.filter(d => !d.isMainPrd).length > 0">
+            <!-- URL 文档列表（所有角色可用：链接提取/提取当前页/输入框URL，QA角色排除已设为主PRD的） -->
+            <template v-if="urlDocs.filter(d => userRole !== 'qa' || !d.isMainPrd).length > 0">
               <div class="doc-list-divider">🔗 URL 文档</div>
-              <div v-for="doc in urlDocs.filter(d => !d.isMainPrd)" :key="doc.id" class="doc-list-item url-doc" :class="{ active: activeRightTab === 'url' && activeUrlDocId === doc.id }" @click="doc.status === 'success' && (activeRightTab = 'url', activeUrlDocId = doc.id)" @dblclick.stop="doc.status === 'success' && renameUrlDocTitle(doc.id)">
+              <div v-for="doc in urlDocs.filter(d => userRole !== 'qa' || !d.isMainPrd)" :key="doc.id" class="doc-list-item url-doc" :class="{ active: activeRightTab === 'url' && activeUrlDocId === doc.id }" @click="doc.status === 'success' && (activeRightTab = 'url', activeUrlDocId = doc.id)" @dblclick.stop="doc.status === 'success' && renameUrlDocTitle(doc.id)">
                 <span class="doc-icon">
                   <span v-if="doc.status === 'loading'" class="loading-spinner">⏳</span>
                   <span v-else-if="doc.status === 'error'">❌</span>
@@ -411,7 +416,8 @@
                   <div class="doc-title">{{ doc.title || 'URL文档' }}</div>
                   <div class="doc-meta">URL · 可编辑</div>
           </div>
-                <button v-if="doc.status === 'success'" class="doc-set-main" @click.stop="setAsMainPrd(doc.id)" title="设为主PRD">⭐</button>
+                <!-- 仅 QA 角色可设为主PRD -->
+                <button v-if="userRole === 'qa' && doc.status === 'success'" class="doc-set-main" @click.stop="setAsMainPrd(doc.id)" title="设为主PRD">⭐</button>
                 <button class="doc-delete" @click.stop="removeUrlDoc(doc.id)" title="删除">×</button>
         </div>
             </template>
@@ -534,6 +540,16 @@
           <div class="editor-header">
             <span class="editor-header-title">{{ currentEditorTitle }}</span>
             <div class="editor-header-actions">
+              <!-- 保存按钮（所有可编辑文档在编辑模式且有变化时显示） -->
+              <button 
+                v-if="isCurrentDocDirty" 
+                class="btn-save" 
+                @click="saveCurrentDocument"
+                :disabled="isSavingDoc"
+                :title="isSavingDoc ? '保存中...' : '保存文档到知识库'"
+              >
+                {{ isSavingDoc ? '💾...' : '💾 保存' }}
+              </button>
               <button class="btn-toggle" @click="viewMode = viewMode === 'edit' ? 'preview' : 'edit'" :title="viewMode === 'edit' ? '预览' : '编辑'">
                 {{ viewMode === 'edit' ? '预览' : '编辑' }}
               </button>
@@ -770,15 +786,16 @@
 
         <div class="extract-divider"></div>
         
-        <!-- URL区域（排除已设为主PRD的） -->
+        <!-- URL区域（所有角色：QA角色排除已设为主PRD的） -->
         <div class="extract-section">
           <div class="section-label">🔗 URL</div>
-          <div v-for="doc in urlDocs.filter(d => !d.isMainPrd)" :key="doc.id" class="extract-item" @dblclick="doc.status === 'success' && renameUrlDocTitle(doc.id)">
+          <div v-for="doc in urlDocs.filter(d => userRole !== 'qa' || !d.isMainPrd)" :key="doc.id" class="extract-item" @dblclick="doc.status === 'success' && renameUrlDocTitle(doc.id)">
             <span class="extract-status" :class="doc.status">
               {{ doc.status === 'loading' ? '⏳' : doc.status === 'success' ? '✅' : '❌' }}
             </span>
             <span class="extract-url">{{ doc.title || doc.url.slice(0, 30) }}</span>
-            <button v-if="doc.status === 'success'" class="extract-set-main" @click="setAsMainPrd(doc.id)" title="设为主PRD">⭐</button>
+            <!-- 仅 QA 角色可设为主PRD -->
+            <button v-if="userRole === 'qa' && doc.status === 'success'" class="extract-set-main" @click="setAsMainPrd(doc.id)" title="设为主PRD">⭐</button>
             <button class="extract-remove" @click="removeUrlDoc(doc.id)">×</button>
                 </div>
           <div class="extract-input-row">
@@ -907,6 +924,8 @@ import { ref, computed, nextTick, reactive, onMounted, onBeforeUnmount, watch } 
 import { marked } from 'marked';
 import { ImageProcessor } from '@/utils/imageProcessor';
 import { postRetrieve, ask, uploadImage, prdAgent, clearPrdSession, testCaseAgent, clearTestCaseSession, uiAgent, clearUiSession, getUiScreenshots, clearUiScreenshots, chatAgent } from '@/api';
+import { uploadRawPrd, uploadAuxDoc, upsertDocs, type DocUpsertItem } from '@/utils/docStoreApi';
+import type { DocRef } from '@/utils/refRegistry';
 import MindMapPreview from '@/components/MindMapPreview.vue';
 import { getLocalAgentUrl } from '@/utils/agentUrl';
 import { browser } from 'wxt/browser';
@@ -988,6 +1007,269 @@ interface Message {
 const messages = ref<Message[]>([]);
 const isProcessing = ref(false);
 const statusText = ref('');
+
+const ensureSessionId = (): string => {
+  if (projectState.assets.sessionId) return projectState.assets.sessionId;
+  const sid = `mvp-${Date.now()}`;
+  projectState.assets.sessionId = sid;
+  return sid;
+};
+
+// QA 输入框统一走 /api/ask，根据当前步骤映射 ask type
+const getQaAskTypeByStep = (step: string): 'testprd' | 'testpoint' | 'testcase' => {
+  if (step === 'test_point') return 'testpoint';
+  if (step === 'test_case') return 'testcase';
+  return 'testprd';
+};
+
+// 存储生成文档的 docRef（用于后续阶段的 docRefs 构建）
+const generatedDocRefs = reactive<{
+  optimizedPrd: DocRef | null;
+  testPoints: DocRef | null;
+  testCases: DocRef | null;
+}>({
+  optimizedPrd: null,
+  testPoints: null,
+  testCases: null,
+});
+
+// 构建 docRefs（根据阶段返回正确的主文档）
+const buildDocRefsForAsk = (type: 'testprd' | 'testpoint' | 'testcase'): DocRef[] => {
+  const docRefs: DocRef[] = [];
+  
+  // 根据 type 决定主文档
+  if (type === 'testprd') {
+    // 优化 PRD 阶段：使用原始 PRD（raw_prd）
+    const mainPrdDoc = urlDocs.value.find(d => d.isMainPrd && (d as any).docRef);
+    if (mainPrdDoc && (mainPrdDoc as any).docRef) {
+      docRefs.push({
+        docId: (mainPrdDoc as any).docRef.docId,
+        kind: 'main',
+        logicalId: 'raw_prd',
+        title: mainPrdDoc.title,
+      });
+    }
+  } else if (type === 'testpoint') {
+    // 生成测试点阶段：使用优化后的 PRD（optimized_prd_current）
+    if (generatedDocRefs.optimizedPrd) {
+      docRefs.push({
+        docId: generatedDocRefs.optimizedPrd.docId,
+        kind: 'main',
+        logicalId: 'optimized_prd_current',
+        title: generatedDocRefs.optimizedPrd.title || '优化后PRD',
+      });
+    } else {
+      // fallback: 使用原始 PRD
+      const mainPrdDoc = urlDocs.value.find(d => d.isMainPrd && (d as any).docRef);
+      if (mainPrdDoc && (mainPrdDoc as any).docRef) {
+        docRefs.push({
+          docId: (mainPrdDoc as any).docRef.docId,
+          kind: 'main',
+          logicalId: 'raw_prd',
+          title: mainPrdDoc.title,
+        });
+      }
+    }
+  } else if (type === 'testcase') {
+    // 生成测试用例阶段：主文档使用优化后的 PRD，辅助使用测试点
+    if (generatedDocRefs.optimizedPrd) {
+      docRefs.push({
+        docId: generatedDocRefs.optimizedPrd.docId,
+        kind: 'main',
+        logicalId: 'optimized_prd_current',
+        title: generatedDocRefs.optimizedPrd.title || '优化后PRD',
+      });
+    } else {
+      // fallback: 使用原始 PRD
+      const mainPrdDoc = urlDocs.value.find(d => d.isMainPrd && (d as any).docRef);
+      if (mainPrdDoc && (mainPrdDoc as any).docRef) {
+        docRefs.push({
+          docId: (mainPrdDoc as any).docRef.docId,
+          kind: 'main',
+          logicalId: 'raw_prd',
+          title: mainPrdDoc.title,
+        });
+      }
+    }
+    // 如果有测试点，作为辅助文档
+    if (generatedDocRefs.testPoints) {
+      docRefs.push({
+        docId: generatedDocRefs.testPoints.docId,
+        kind: 'aux',
+        logicalId: 'testpoints_current',
+        title: generatedDocRefs.testPoints.title || '测试点',
+      });
+    }
+  }
+  
+  // 通用辅助文档（非主 PRD 的已入库文档）
+  for (const doc of urlDocs.value) {
+    if (!doc.isMainPrd && (doc as any).docRef) {
+      docRefs.push({
+        docId: (doc as any).docRef.docId,
+        kind: 'aux',
+        title: doc.title,
+      });
+    }
+  }
+  
+  // 辅助 PRD 文档
+  for (const prd of additionalPrds.value) {
+    if (prd.status === 'success' && (prd as any).docRef) {
+      docRefs.push({
+        docId: (prd as any).docRef.docId,
+        kind: 'aux',
+        title: prd.title,
+      });
+    }
+  }
+  
+  // Figma 文档
+  for (const figma of figmaDocs.value) {
+    if (figma.status === 'success' && (figma as any).docRef) {
+      docRefs.push({
+        docId: (figma as any).docRef.docId,
+        kind: 'aux',
+        title: figma.title,
+      });
+    }
+  }
+  
+  return docRefs;
+};
+
+// 构建输入框的 docRefs（根据当前阶段的已生成文档）
+const buildDocRefsForChat = (): DocRef[] => {
+  const step = projectState.currentStep;
+  const docRefs: DocRef[] = [];
+  
+  // 根据当前步骤选择主文档
+  if (step === 'test_case' && generatedDocRefs.testCases) {
+    // 测试用例阶段：使用测试用例
+    docRefs.push({
+      docId: generatedDocRefs.testCases.docId,
+      kind: 'main',
+      logicalId: 'testcases_current',
+      title: generatedDocRefs.testCases.title || '测试用例',
+    });
+  } else if (step === 'test_point' && generatedDocRefs.testPoints) {
+    // 测试点阶段：使用测试点
+    docRefs.push({
+      docId: generatedDocRefs.testPoints.docId,
+      kind: 'main',
+      logicalId: 'testpoints_current',
+      title: generatedDocRefs.testPoints.title || '测试点',
+    });
+  } else if (['prd_review', 'optimizing'].includes(step) && generatedDocRefs.optimizedPrd) {
+    // PRD 阶段：使用优化后的 PRD
+    docRefs.push({
+      docId: generatedDocRefs.optimizedPrd.docId,
+      kind: 'main',
+      logicalId: 'optimized_prd_current',
+      title: generatedDocRefs.optimizedPrd.title || '优化后PRD',
+    });
+  } else {
+    // 默认：使用原始 PRD
+    const mainPrdDoc = urlDocs.value.find(d => d.isMainPrd && (d as any).docRef);
+    if (mainPrdDoc && (mainPrdDoc as any).docRef) {
+      docRefs.push({
+        docId: (mainPrdDoc as any).docRef.docId,
+        kind: 'main',
+        logicalId: 'raw_prd',
+        title: mainPrdDoc.title,
+      });
+    }
+  }
+  
+  return docRefs;
+};
+
+/**
+ * ✅ 新增：构建 @ 多选文档的 docRefs
+ * 将 @ 引用的文档作为 main 候选（支持多选），其他文档作为 aux
+ * 
+ * @param selected @ 选中的文档列表
+ * @returns docRefs 数组
+ */
+const buildDocRefsForAtSelection = (selected: RefDoc[]): DocRef[] => {
+  const docRefs: DocRef[] = [];
+  
+  // @ 选中的文档作为 main 候选（支持多个）
+  for (const doc of selected) {
+    // 根据 kind 获取对应的 docRef
+    let targetDocRef: DocRef | undefined;
+    let logicalId: string = '';
+    
+    if (doc.kind === 'main') {
+      // QA 主文档
+      if (doc.id === 'main:optimizedPrd' && generatedDocRefs.optimizedPrd) {
+        targetDocRef = generatedDocRefs.optimizedPrd;
+        logicalId = 'optimized_prd_current';
+      } else if (doc.id === 'main:testPoints' && generatedDocRefs.testPoints) {
+        targetDocRef = generatedDocRefs.testPoints;
+        logicalId = 'testpoints_current';
+      } else if (doc.id === 'main:testCases' && generatedDocRefs.testCases) {
+        targetDocRef = generatedDocRefs.testCases;
+        logicalId = 'testcases_current';
+      } else if (doc.id === 'main:prd') {
+        const mainPrdDoc = urlDocs.value.find(d => d.isMainPrd && d.docRef);
+        if (mainPrdDoc?.docRef) {
+          targetDocRef = mainPrdDoc.docRef;
+          logicalId = 'raw_prd';
+        }
+      }
+    } else if (doc.kind === 'url') {
+      const urlDoc = urlDocs.value.find(d => d.id === doc.id.replace('url:', ''));
+      if (urlDoc?.docRef) {
+        targetDocRef = urlDoc.docRef;
+        logicalId = urlDoc.logicalId || `aux_url_${urlDoc.id}`;
+      }
+    } else if (doc.kind === 'additional') {
+      const prdDoc = additionalPrds.value.find(p => p.id === doc.id.replace('additional:', ''));
+      if (prdDoc?.docRef) {
+        targetDocRef = prdDoc.docRef as DocRef;
+        logicalId = prdDoc.logicalId || `aux_prd_${prdDoc.id}`;
+      }
+    } else if (doc.kind === 'figma') {
+      const figmaDoc = figmaDocs.value.find(f => f.id === doc.id.replace('figma:', ''));
+      if (figmaDoc?.docRef) {
+        targetDocRef = figmaDoc.docRef as DocRef;
+        logicalId = figmaDoc.logicalId || `aux_figma_${figmaDoc.id}`;
+      }
+    } else if (doc.kind === 'custom') {
+      const customDoc = customDocs.value.find(c => c.id === doc.id.replace('custom:', ''));
+      if (customDoc?.docRef) {
+        targetDocRef = customDoc.docRef as DocRef;
+        logicalId = customDoc.logicalId || `custom_${customDoc.id}`;
+      }
+    } else if (doc.kind === 'chatDoc') {
+      // PM/DEV 的聊天文档（提取的页面内容）
+      const chatDoc = chatOnlyDocuments.value.find(c => c.id === doc.id.replace('chatDoc:', ''));
+      if (chatDoc?.docRef) {
+        targetDocRef = chatDoc.docRef as DocRef;
+        logicalId = chatDoc.logicalId || `chatdoc_${chatDoc.id}`;
+      }
+    }
+    
+    if (targetDocRef && targetDocRef.docId) {
+      docRefs.push({
+        docId: targetDocRef.docId,
+        kind: 'main',  // @ 选中的文档作为 main 候选
+        logicalId: logicalId,
+        title: doc.title,
+      });
+    }
+  }
+  
+  return docRefs;
+};
+
+// 检查是否有已入库的主文档（用于判断是否使用 docRefs 模式）
+const hasStoredMainPrd = (): boolean => {
+  const mainPrdDoc = urlDocs.value.find(d => d.isMainPrd && (d as any).docRef);
+  return !!mainPrdDoc || !!generatedDocRefs.optimizedPrd;
+};
+
 const progress = ref(0);
 const viewMode = ref<'edit' | 'preview'>('preview');
 const chatContainer = ref<HTMLElement|null>(null);
@@ -997,6 +1279,247 @@ const hasGeneratedTestPoints = ref(false);
 const cachedTestPoints = ref('');
 const hasGeneratedTestCases = ref(false);
 const cachedTestCases = ref('');
+
+// 文档保存相关
+const isSavingDoc = ref(false);
+const lastSavedContent = reactive<{
+  optimizedPrd: string;
+  testPoints: string;
+  testCases: string;
+}>({
+  optimizedPrd: '',
+  testPoints: '',
+  testCases: '',
+});
+
+// 检测当前文档是否有未保存的修改（扩展到所有右侧可编辑文档）
+const isCurrentDocDirty = computed(() => {
+  // ✅ 1. QA 主文档（优化PRD/测试点/测试用例）
+  if (userRole.value === 'qa' && activeRightTab.value === 'main') {
+    let currentContent = '';
+    let savedContent = '';
+    
+    if (activeMainDocType.value === 'optimizedPrd') {
+      currentContent = projectState.documents.optimizedPrd || '';
+      savedContent = lastSavedContent.optimizedPrd || '';
+    } else if (activeMainDocType.value === 'testPoints') {
+      currentContent = projectState.documents.testPoints || '';
+      savedContent = lastSavedContent.testPoints || '';
+    } else if (activeMainDocType.value === 'testCases') {
+      currentContent = projectState.documents.testCases || '';
+      savedContent = lastSavedContent.testCases || '';
+    } else {
+      return false;
+    }
+    
+    return currentContent.trim() !== '' && currentContent !== savedContent;
+  }
+  
+  // ✅ 2. URL 文档
+  if (activeRightTab.value === 'url' && activeUrlDocId.value) {
+    const doc = urlDocs.value.find(d => d.id === activeUrlDocId.value);
+    if (doc && doc.status === 'success') {
+      const currentContent = doc.content || '';
+      const savedContent = doc.lastSavedContent || '';
+      return currentContent.trim() !== '' && currentContent !== savedContent;
+    }
+  }
+  
+  // ✅ 3. 辅助 PRD
+  if (activeRightTab.value === 'additional' && activeAdditionalPrdId.value) {
+    const doc = additionalPrds.value.find(p => p.id === activeAdditionalPrdId.value);
+    if (doc && doc.status === 'success') {
+      const currentContent = doc.content || '';
+      const savedContent = doc.lastSavedContent || '';
+      return currentContent.trim() !== '' && currentContent !== savedContent;
+    }
+  }
+  
+  // ✅ 4. Figma 文档
+  if (activeRightTab.value === 'figma' && activeFigmaDocId.value) {
+    const doc = figmaDocs.value.find(f => f.id === activeFigmaDocId.value);
+    if (doc && doc.status === 'success') {
+      const currentContent = doc.content || '';
+      const savedContent = doc.lastSavedContent || '';
+      return currentContent.trim() !== '' && currentContent !== savedContent;
+    }
+  }
+  
+  // ✅ 5. 自定义文档
+  if (activeRightTab.value === 'custom' && activeCustomDocId.value) {
+    const doc = customDocs.value.find(d => d.id === activeCustomDocId.value);
+    if (doc) {
+      const currentContent = doc.content || '';
+      const savedContent = doc.lastSavedContent || '';
+      return currentContent.trim() !== '' && currentContent !== savedContent;
+    }
+  }
+  
+  // ✅ 6. PM/DEV 聊天文档（chatDoc）
+  if (activeRightTab.value === 'chatDoc' && activeChatDocId.value) {
+    const doc = chatOnlyDocuments.value.find(d => d.id === activeChatDocId.value);
+    if (doc) {
+      const currentContent = doc.content || '';
+      const savedContent = doc.lastSavedContent || '';
+      // 新文档（无 docRef）或内容有变化都视为 dirty
+      return currentContent.trim() !== '' && (currentContent !== savedContent || !doc.docRef);
+    }
+  }
+  
+  return false;
+});
+
+// 保存当前文档到 DocStore（扩展到所有右侧可编辑文档）
+const saveCurrentDocument = async () => {
+  if (isSavingDoc.value) return;
+  
+  isSavingDoc.value = true;
+  
+  try {
+    const sessionId = ensureSessionId();
+    let content = '';
+    let logicalId = '';
+    let title = '';
+    let kind: 'main' | 'aux' | 'output' = 'output';
+    let targetDoc: AdditionalPrd | UrlDoc | FigmaDoc | CustomDoc | null = null;
+    let docType: 'qa_main' | 'url' | 'additional' | 'figma' | 'custom' = 'qa_main';
+    
+    // ✅ 1. QA 主文档（优化PRD/测试点/测试用例）
+    if (userRole.value === 'qa' && activeRightTab.value === 'main') {
+      docType = 'qa_main';
+      if (activeMainDocType.value === 'optimizedPrd') {
+        content = projectState.documents.optimizedPrd || '';
+        logicalId = 'optimized_prd_current';
+        title = optimizedPrdTitle.value || '优化后PRD';
+        kind = 'output';
+      } else if (activeMainDocType.value === 'testPoints') {
+        content = projectState.documents.testPoints || '';
+        logicalId = 'testpoints_current';
+        title = testPointsTitle.value || '测试点';
+        kind = 'output';
+      } else if (activeMainDocType.value === 'testCases') {
+        content = projectState.documents.testCases || '';
+        logicalId = 'testcases_current';
+        title = testCasesTitle.value || '测试用例';
+        kind = 'output';
+      }
+    }
+    // ✅ 2. URL 文档
+    else if (activeRightTab.value === 'url' && activeUrlDocId.value) {
+      docType = 'url';
+      const doc = urlDocs.value.find(d => d.id === activeUrlDocId.value);
+      if (doc && doc.status === 'success') {
+        targetDoc = doc;
+        content = doc.content || '';
+        logicalId = doc.logicalId || (doc.isMainPrd ? 'raw_prd' : `aux_url_${doc.id}`);
+        title = doc.title || 'URL文档';
+        kind = doc.isMainPrd ? 'main' : 'aux';
+      }
+    }
+    // ✅ 3. 辅助 PRD
+    else if (activeRightTab.value === 'additional' && activeAdditionalPrdId.value) {
+      docType = 'additional';
+      const doc = additionalPrds.value.find(p => p.id === activeAdditionalPrdId.value);
+      if (doc && doc.status === 'success') {
+        targetDoc = doc;
+        content = doc.content || '';
+        logicalId = doc.logicalId || `aux_prd_${doc.id}`;
+        title = doc.title || '辅助PRD';
+        kind = 'aux';
+      }
+    }
+    // ✅ 4. Figma 文档
+    else if (activeRightTab.value === 'figma' && activeFigmaDocId.value) {
+      docType = 'figma';
+      const doc = figmaDocs.value.find(f => f.id === activeFigmaDocId.value);
+      if (doc && doc.status === 'success') {
+        targetDoc = doc;
+        content = doc.content || '';
+        logicalId = doc.logicalId || `aux_figma_${doc.id}`;
+        title = doc.title || 'Figma交互文档';
+        kind = 'aux';
+      }
+    }
+    // ✅ 5. 自定义文档
+    else if (activeRightTab.value === 'custom' && activeCustomDocId.value) {
+      docType = 'custom';
+      const doc = customDocs.value.find(d => d.id === activeCustomDocId.value);
+      if (doc) {
+        targetDoc = doc;
+        content = doc.content || '';
+        logicalId = doc.logicalId || `custom_${doc.id}`;
+        title = doc.title || '自定义文档';
+        kind = 'aux';
+      }
+    }
+    // ✅ 6. PM/DEV 聊天文档（chatDoc）
+    else if (activeRightTab.value === 'chatDoc' && activeChatDocId.value) {
+      docType = 'chatDoc' as any;  // 扩展类型
+      const doc = chatOnlyDocuments.value.find(d => d.id === activeChatDocId.value);
+      if (doc) {
+        targetDoc = doc as any;  // ChatOnlyDocument 兼容
+        content = doc.content || '';
+        logicalId = doc.logicalId || `chatdoc_${doc.id}`;
+        title = doc.title || '提取文档';
+        kind = 'aux';  // PM/DEV 文档默认作为辅助文档
+      }
+    }
+    
+    if (!content.trim()) {
+      addMessage('ai', '⚠️ 文档内容为空，无法保存');
+      isSavingDoc.value = false;
+      return;
+    }
+    
+    if (!logicalId) {
+      addMessage('ai', '⚠️ 无法确定文档类型，无法保存');
+      isSavingDoc.value = false;
+      return;
+    }
+    
+    // 调用 upsert 入库
+    const docRefResult = await upsertDocs({
+      sessionId,
+      docs: [{
+        logicalId,
+        kind,
+        title,
+        content,
+        contentType: 'text/markdown',
+      }]
+    });
+    
+    const storedRef = docRefResult.stored[0]?.docRef;
+    
+    // 更新 lastSavedContent 和 docRef
+    if (docType === 'qa_main') {
+      if (activeMainDocType.value === 'optimizedPrd') {
+        lastSavedContent.optimizedPrd = content;
+        if (storedRef) generatedDocRefs.optimizedPrd = storedRef as DocRef;
+      } else if (activeMainDocType.value === 'testPoints') {
+        lastSavedContent.testPoints = content;
+        if (storedRef) generatedDocRefs.testPoints = storedRef as DocRef;
+      } else if (activeMainDocType.value === 'testCases') {
+        lastSavedContent.testCases = content;
+        if (storedRef) generatedDocRefs.testCases = storedRef as DocRef;
+      }
+    } else if (targetDoc) {
+      // 更新目标文档的 lastSavedContent 和 docRef
+      targetDoc.lastSavedContent = content;
+      targetDoc.docRef = storedRef as DocRef;
+      targetDoc.logicalId = logicalId;
+    }
+    
+    addMessage('ai', `✅ 「${title}」已保存`);
+    console.log('[saveCurrentDocument] 保存成功:', docRefResult);
+    
+  } catch (e: any) {
+    console.error('[saveCurrentDocument] 保存失败:', e);
+    addMessage('ai', `❌ 保存失败：${e.message || e}`);
+  } finally {
+    isSavingDoc.value = false;
+  }
+};
 const imageProcessor = new ImageProcessor();
 const uiAgentInput = ref('');
 const prdAgentInput = ref(''); // PRD 智能体输入
@@ -1021,6 +1544,10 @@ interface AdditionalPrd {
   status: 'loading' | 'success' | 'error';
   content: string;
   error?: string;
+  // ✅ 新增：文档保存相关字段
+  docRef?: DocRef;  // DocStore 返回的引用
+  lastSavedContent?: string;  // 上次保存的内容（用于 dirty 检测）
+  logicalId?: string;  // 稳定的逻辑ID（例如 aux_prd_${id}）
 }
 const showAdditionalPrdPanel = ref(false);  // 是否显示添加PRD面板
 const newPrdUrl = ref('');  // 新PRD输入框
@@ -1035,6 +1562,10 @@ interface UrlDoc {
   content: string;
   error?: string;
   isMainPrd?: boolean;  // 是否被选为主PRD
+  // ✅ 新增：文档保存相关字段
+  docRef?: DocRef;  // DocStore 返回的引用
+  lastSavedContent?: string;  // 上次保存的内容（用于 dirty 检测）
+  logicalId?: string;  // 稳定的逻辑ID（例如 aux_url_${id} 或 raw_prd）
 }
 
 // 自定义文档（用户新增）
@@ -1043,6 +1574,10 @@ interface CustomDoc {
   title: string;
   content: string;
   createdAt: number;
+  // ✅ 新增：文档保存相关字段
+  docRef?: DocRef;  // DocStore 返回的引用
+  lastSavedContent?: string;  // 上次保存的内容（用于 dirty 检测）
+  logicalId?: string;  // 稳定的逻辑ID（例如 custom_${id}）
 }
 
 // Figma文档
@@ -1053,6 +1588,10 @@ interface FigmaDoc {
   status: 'loading' | 'success' | 'error';
   content: string;  // 生成的交互补充文档
   error?: string;
+  // ✅ 新增：文档保存相关字段
+  docRef?: DocRef;  // DocStore 返回的引用
+  lastSavedContent?: string;  // 上次保存的内容（用于 dirty 检测）
+  logicalId?: string;  // 稳定的逻辑ID（例如 aux_figma_${id}）
 }
 
 // ================= 按角色分离文档集合 =================
@@ -1595,6 +2134,13 @@ const allRightDocsForAt = computed<RefDoc[]>(() => {
       if (!content) continue;
       docs.push({ id: `chatDoc:${d.id}`, title: d.title || '文档', content, kind: 'chatDoc' });
     }
+    
+    // PM/DEV：URL 文档区（与 QA 一致，所有成功提取的 URL 文档）
+    for (const d of urlDocs.value.filter(x => x.status === 'success')) {
+      const content = (d.content || '').trim();
+      if (!content) continue;
+      docs.push({ id: `url:${d.id}`, title: d.title || 'URL文档', content, kind: 'url' });
+    }
   }
 
   // 通用：辅助PRD / Figma / 自定义文档
@@ -1628,6 +2174,55 @@ const filteredRightDocsForAt = computed(() => {
 const clearAtPicker = () => {
   showAtDocPicker.value = false;
   atQuery.value = '';
+};
+
+// 检查文档是否已入库（有 docRef）
+const isDocSaved = (doc: RefDoc): boolean => {
+  const docId = doc.id;
+  
+  // QA 主文档
+  if (doc.kind === 'main') {
+    if (docId.includes('optimizedPrd') && generatedDocRefs.optimizedPrd?.docId) return true;
+    if (docId.includes('testPoints') && generatedDocRefs.testPoints?.docId) return true;
+    if (docId.includes('testCases') && generatedDocRefs.testCases?.docId) return true;
+    if (docId === 'main:prd') {
+      const mainPrdDoc = urlDocs.value.find(d => d.isMainPrd);
+      return !!(mainPrdDoc?.docRef?.docId);
+    }
+    return false;
+  }
+  
+  // URL 文档
+  if (doc.kind === 'url') {
+    const urlDoc = urlDocs.value.find(d => `url:${d.id}` === docId);
+    return !!(urlDoc?.docRef?.docId);
+  }
+  
+  // 辅助 PRD
+  if (doc.kind === 'additional') {
+    const prdDoc = additionalPrds.value.find(p => `additional:${p.id}` === docId);
+    return !!(prdDoc?.docRef);
+  }
+  
+  // Figma 文档
+  if (doc.kind === 'figma') {
+    const figmaDoc = figmaDocs.value.find(f => `figma:${f.id}` === docId);
+    return !!(figmaDoc?.docRef);
+  }
+  
+  // 自定义文档
+  if (doc.kind === 'custom') {
+    const customDoc = customDocs.value.find(c => `custom:${c.id}` === docId);
+    return !!(customDoc?.docRef);
+  }
+  
+  // PM/DEV 聊天文档
+  if (doc.kind === 'chatDoc') {
+    const chatDoc = chatOnlyDocuments.value.find(c => `chatDoc:${c.id}` === docId);
+    return !!(chatDoc?.docRef);
+  }
+  
+  return false;
 };
 
 const addRefDoc = (doc: RefDoc) => {
@@ -2023,88 +2618,238 @@ const handleUnifiedKeydown = (e: KeyboardEvent) => {
 };
 
 // 发送统一消息
-const sendUnifiedMessage = async () => {
+
+const sendQaAskMessage = async (opts?: {
+  selected?: RefDoc[];
+  additionalPrds?: Array<{ title: string; content: string }>;
+}) => {
   if (!unifiedInput.value.trim() || isProcessing.value) return;
-  
-  const msg = unifiedInput.value.trim();
+
+  const userText = unifiedInput.value.trim();
+  const step = projectState.currentStep || '';
+  const askType = getQaAskTypeByStep(step);
+  const sid = ensureSessionId();
+
+  // 选择的 @ 文档（作为主 text 的优先来源）
+  const frozenSelected = opts?.selected ?? selectedRefDocs.value;
+
+  // fallback：按阶段选择默认主文本
+  const baseForPrdStage =
+    step === 'prd_review' || step === 'test_point' || step === 'test_case'
+      ? (projectState.documents.optimizedPrd || projectState.documents.prd)
+      : (projectState.documents.prd || projectState.documents.optimizedPrd);
+
+  const fallbackText =
+    askType === 'testprd'
+      ? baseForPrdStage
+      : (projectState.documents.optimizedPrd || projectState.documents.prd);
+
+  const primaryText = buildPrimaryTextFromAtSelection(frozenSelected, fallbackText);
+
+  // additionalPrds：全局辅助PRD+Figma + 一次性引用 + @ 引用（URL/自定义）
+  const additionalPrdsToSend =
+    opts?.additionalPrds ?? buildAdditionalPrdsForRequest({ selected: frozenSelected });
+
+  // testcase 阶段：把"测试点"作为辅助输入（不要把测试点当 main）
+  if (askType === 'testcase' && projectState.documents.testPoints?.trim()) {
+    additionalPrdsToSend.unshift({
+      title: '[测试点]',
+      content: projectState.documents.testPoints,
+    });
+  }
+
+  // UI 状态：先落 user 消息，再清空输入和选择
+  addMessage('user', userText);
   unifiedInput.value = '';
+  selectedRefDocs.value = [];
+  pendingAdditionalPrds.value = [];
 
-  // 固化本次发送需要的“@引用/弹窗引用”（避免发送中用户继续操作导致引用变化）
-  const frozenSelected = [...selectedRefDocs.value];
-  const frozenPickedOnce = [...pendingAdditionalPrds.value];
-  const frozenAdditionalPrds = buildAdditionalPrdsForRequest({
-    selected: frozenSelected,
-    pickedOnce: frozenPickedOnce,
-  });
-  // 发送后清空 UI 选中态（但不影响本次已冻结的请求参数）
-  clearAllRefDocs();
-  clearAtPicker();
+  isProcessing.value = true;
   
-  if (userRole.value === 'pm' || userRole.value === 'dev') {
-    // PM/DEV角色：使用chatAgent
-    // message = 输入框文本；additionalPrds = 冻结的引用文档列表
-    chatOnlyInput.value = msg;
-    // sendChatOnlyMessage 内部会重新 buildAdditionalPrdsForRequest，这里直接复用冻结结果避免丢引用
-    await (async () => {
-      if (!chatOnlyInput.value.trim() || isProcessing.value) return;
-      if (!userRole.value || !isChatOnlyRole.value) return;
+  // 显示当前操作的目标文档（便于用户了解 AI 正在分析/编辑哪个文档）
+  const docNameMap: Record<string, string> = {
+    testprd: '优化PRD',
+    testpoint: '测试点',
+    testcase: '测试用例',
+  };
+  const targetDocName = docNameMap[askType] || '文档';
+  statusText.value = `正在分析「${targetDocName}」...`;
 
-      const userText = chatOnlyInput.value.trim();
-      chatOnlyInput.value = '';
+  try {
+    const codeMap: Record<string, string> = {
+      testprd: 'plugin_test_testprd',
+      testpoint: 'plugin_test_testpoint',
+      testcase: 'plugin_test_testcase',
+    };
+    
+    // ✅ 新增：@ 多选模式 - 将 @ 选中的文档作为 main 候选
+    const atSelectedDocRefs = buildDocRefsForAtSelection(frozenSelected);
+    const hasAtSelection = atSelectedDocRefs.length > 0;
+    
+    // 如果没有 @ 选择，则使用默认的 buildDocRefsForChat
+    const docRefs = hasAtSelection ? atSelectedDocRefs : buildDocRefsForChat();
+    const useDocRefs = docRefs.length > 0;
+    
+    console.log('[sendQaAskMessage] @ 多选模式:', hasAtSelection, 'docRefs:', docRefs);
+    
+    // 使用 chat 类型进行对话（区分分析类和编辑类）
+    const chatType = `${askType}_chat` as 'testprd_chat' | 'testpoint_chat' | 'testcase_chat';
+    
+    // ✅ 多选模式：不指定 targetLogicalId，由模型决定
+    // 单选模式：根据阶段设置默认 targetLogicalId
+    const targetLogicalIdMap: Record<string, string> = {
+      testprd: 'optimized_prd_current',
+      testpoint: 'testpoints_current',
+      testcase: 'testcases_current',
+    };
+    // 如果有多个 @ 选择，不指定 targetLogicalId，让模型选择
+    const targetLogicalId = hasAtSelection && atSelectedDocRefs.length > 1 
+      ? undefined  // 多选模式：由模型决定
+      : (hasAtSelection && atSelectedDocRefs[0]?.logicalId) || targetLogicalIdMap[askType];
 
-      messages.value.push({ role: 'user', content: userText });
-      const aiMsg: Message = { role: 'ai', content: '' };
-      messages.value.push(aiMsg);
-      scrollChatOnlyToBottom();
+    // 更新 loading 状态
+    if (hasAtSelection && atSelectedDocRefs.length > 1) {
+      statusText.value = `正在分析 ${atSelectedDocRefs.length} 个文档...`;
+    }
 
-      isProcessing.value = true;
-      statusText.value = 'AI 正在思考...';
+    const res = await ask({
+      code: codeMap[askType] || `plugin_test_${askType}`,
+      type: chatType as any,  // 使用 chat 类型，后端会区分 analysis/edit
+      sessionId: sid,
+      params: {
+        text: useDocRefs ? '' : primaryText,
+      },
+      instruction: userText,
+      docRefs: useDocRefs ? docRefs : undefined,
+      additionalPrds: useDocRefs ? undefined : additionalPrdsToSend,
+      targetLogicalId: targetLogicalId,  // 告知后端目标文档
+    });
 
-      try {
-        const role = userRole.value === 'pm' ? 'pm' : 'dev';
-        const result = await chatAgent({
-          sessionId: chatOnlySessionId.value,
-          role,
-          message: userText,
-          additionalPrds: frozenAdditionalPrds,
-        });
+    // 同步 sessionId（后端可能回写）
+    if (res?.sessionId) projectState.assets.sessionId = res.sessionId;
 
-        if (result.status === 'success') aiMsg.content = result.reply || '（无回复）';
-        else aiMsg.content = result.reply || 'Error: Unknown error.';
-      } catch (e: any) {
-        aiMsg.content = `Error: ${e?.message || e}`;
-      } finally {
-        isProcessing.value = false;
-        statusText.value = '';
-        scrollChatOnlyToBottom();
+    // 检查响应中的 mode（分析类 vs 编辑类）
+    const mode = (res as any).mode;
+    const updatedDocument = (res as any).updatedDocument;
+    const generatedDocRef = (res as any).generatedDocRef;
+    // ✅ 新增：获取模型选择的目标文档
+    const modelTargetLogicalId = (res as any).targetLogicalId as string | undefined;
+    
+    // ✅ 多选模式：显示模型选择的目标文档
+    if (hasAtSelection && atSelectedDocRefs.length > 1 && modelTargetLogicalId) {
+      const targetTitle = docRefs.find(r => r.logicalId === modelTargetLogicalId)?.title || modelTargetLogicalId;
+      console.log('[sendQaAskMessage] 模型选择的目标文档:', modelTargetLogicalId, targetTitle);
+    }
+    
+    if (mode === 'edit' && updatedDocument) {
+      // ✅ 编辑类命令：根据 modelTargetLogicalId 或 askType 更新对应文档
+      const effectiveLogicalId = modelTargetLogicalId || targetLogicalId;
+      
+      if (effectiveLogicalId === 'optimized_prd_current' || (!effectiveLogicalId && askType === 'testprd')) {
+        projectState.documents.optimizedPrd = updatedDocument;
+        cachedPRD.value = updatedDocument;
+        hasGeneratedPRD.value = true;
+        activeMainDocType.value = 'optimizedPrd';
+        addMessage('ai', `✏️ 已更新优化PRD：${res.answer || '（已应用修改）'}`);
+      } else if (effectiveLogicalId === 'testpoints_current' || (!effectiveLogicalId && askType === 'testpoint')) {
+        projectState.documents.testPoints = updatedDocument;
+        cachedTestPoints.value = updatedDocument;
+        hasGeneratedTestPoints.value = true;
+        activeMainDocType.value = 'testPoints';
+        addMessage('ai', `✏️ 已更新测试点：${res.answer || '（已应用修改）'}`);
+      } else if (effectiveLogicalId === 'testcases_current' || (!effectiveLogicalId && askType === 'testcase')) {
+        projectState.documents.testCases = updatedDocument;
+        cachedTestCases.value = updatedDocument;
+        hasGeneratedTestCases.value = true;
+        activeMainDocType.value = 'testCases';
+        addMessage('ai', `✏️ 已更新测试用例：${res.answer || '（已应用修改）'}`);
+      } else {
+        // ✅ 其他文档（URL/辅助PRD/Figma/自定义）：根据 logicalId 更新
+        const targetUrl = urlDocs.value.find(d => d.logicalId === effectiveLogicalId);
+        const targetPrd = additionalPrds.value.find(p => p.logicalId === effectiveLogicalId);
+        const targetFigma = figmaDocs.value.find(f => f.logicalId === effectiveLogicalId);
+        const targetCustom = customDocs.value.find(c => c.logicalId === effectiveLogicalId);
+        
+        if (targetUrl) {
+          targetUrl.content = updatedDocument;
+          targetUrl.lastSavedContent = updatedDocument;
+          if (generatedDocRef) targetUrl.docRef = generatedDocRef;
+          addMessage('ai', `✏️ 已更新URL文档「${targetUrl.title}」：${res.answer || '（已应用修改）'}`);
+        } else if (targetPrd) {
+          targetPrd.content = updatedDocument;
+          targetPrd.lastSavedContent = updatedDocument;
+          if (generatedDocRef) targetPrd.docRef = generatedDocRef as DocRef;
+          addMessage('ai', `✏️ 已更新辅助PRD「${targetPrd.title}」：${res.answer || '（已应用修改）'}`);
+        } else if (targetFigma) {
+          targetFigma.content = updatedDocument;
+          targetFigma.lastSavedContent = updatedDocument;
+          if (generatedDocRef) targetFigma.docRef = generatedDocRef as DocRef;
+          addMessage('ai', `✏️ 已更新Figma文档「${targetFigma.title}」：${res.answer || '（已应用修改）'}`);
+        } else if (targetCustom) {
+          targetCustom.content = updatedDocument;
+          targetCustom.lastSavedContent = updatedDocument;
+          if (generatedDocRef) targetCustom.docRef = generatedDocRef as DocRef;
+          addMessage('ai', `✏️ 已更新自定义文档「${targetCustom.title}」：${res.answer || '（已应用修改）'}`);
+        } else {
+          addMessage('ai', `✏️ 文档已更新（${effectiveLogicalId}）：${res.answer || '（已应用修改）'}`);
+        }
       }
-    })();
-  } else if (userRole.value === 'qa') {
-    // QA角色：根据当前步骤调用不同的agent
-    const step = projectState.currentStep;
-    // 特殊分流：URL + “生成测试用例” → 强制走 testcase 链路（避免被当前步骤误导到 PRD 分支）
-    const hasUrlInInput = URL_REGEX.test(msg);
-    if (hasUrlInInput && isGenerateTestCaseRequest(msg)) {
-      testCaseAgentInput.value = msg;
-      await sendTestCaseAgentMessage(frozenSelected, frozenAdditionalPrds);
-      return;
+      
+      // 如果有 generatedDocRef，更新 generatedDocRefs（用于后续阶段的 docRefs）
+      if (generatedDocRef) {
+        console.log('[sendQaAskMessage] 编辑后生成新版本:', generatedDocRef);
+        if (askType === 'testprd') {
+          generatedDocRefs.optimizedPrd = generatedDocRef;
+        } else if (askType === 'testpoint') {
+          generatedDocRefs.testPoints = generatedDocRef;
+        } else if (askType === 'testcase') {
+          generatedDocRefs.testCases = generatedDocRef;
+        }
+      }
+    } else {
+      // 分析类命令：只在聊天区输出
+      addMessage('ai', res.answer || '（无输出）');
     }
-
-    if (['setup', 'analyzing', 'content_review', 'optimizing', 'prd_review'].includes(step)) {
-      prdAgentInput.value = msg;
-      await sendPrdAgentMessage(frozenSelected, frozenAdditionalPrds);
-    } else if (['test_point', 'test_case'].includes(step)) {
-      testCaseAgentInput.value = msg;
-      await sendTestCaseAgentMessage(frozenSelected, frozenAdditionalPrds);
-    } else if (step === 'auto_test') {
-      uiAgentInput.value = msg;
-      await sendUiAgentMessage(frozenSelected, frozenAdditionalPrds);
-    }
+  } catch (error: any) {
+    console.error('QA ask failed:', error);
+    addMessage('ai', `❌ 请求失败：${error?.message || error}`);
+  } finally {
+    isProcessing.value = false;
+    statusText.value = '';
   }
 };
 
-// 保存 URL 提取结果到 URL 区域（首次提取默认设为主PRD）
-const saveUrlDoc = (url: string, content: string, title: string) => {
+const sendUnifiedMessage = async () => {
+  if (!unifiedInput.value.trim() || isProcessing.value) return;
+
+  const msg = unifiedInput.value.trim();
+  const currentAgent = userRole.value;
+
+  // 冻结引用（防止请求过程中状态变化）
+  const frozenSelected = [...selectedRefDocs.value];
+  const frozenAdditionalPrds = buildAdditionalPrdsForRequest({
+    selected: frozenSelected,
+    pickedOnce: pendingAdditionalPrds.value,
+  });
+
+  // QA 模式：阶段5（auto_test）使用 UI Agent，其他阶段使用 ask 接口
+  if (currentAgent === 'qa') {
+    if (projectState.currentStep === 'auto_test') {
+      // 传入 unifiedInput 的内容
+      await sendUiAgentMessage(msg, frozenSelected, frozenAdditionalPrds);
+      unifiedInput.value = ''; // 清空统一输入框
+    } else {
+      await sendQaAskMessage({ selected: frozenSelected, additionalPrds: frozenAdditionalPrds });
+    }
+  } else {
+    // product / dev：保持原聊天接口不变
+    await sendChatOnlyMessage(msg);
+    unifiedInput.value = ''; // 清空统一输入框
+  }
+};
+
+// 保存 URL 提取结果到 URL 区域（首次提取默认设为主PRD），并调用 upsert 入库
+const saveUrlDoc = async (url: string, content: string, title: string): Promise<string> => {
   const id = `url-${Date.now()}`;
   const isFirst = urlDocs.value.length === 0 && !Boolean((projectState.documents.prd || '').trim());
   
@@ -2128,6 +2873,28 @@ const saveUrlDoc = (url: string, content: string, title: string) => {
   activeRightTab.value = 'url';
   activeUrlDocId.value = id;
   viewMode.value = 'preview';
+  
+  // === 调用 upsert 入库 ===
+  try {
+    const sessionId = ensureSessionId();
+    if (isFirst) {
+      // 首次提取，作为主 PRD 入库
+      const docRef = await uploadRawPrd(sessionId, content, title || '主需求文档', id);
+      console.log('[saveUrlDoc] 主PRD入库成功:', docRef);
+      // 保存 docRef 到 urlDoc
+      const doc = urlDocs.value.find(d => d.id === id);
+      if (doc) (doc as any).docRef = docRef;
+    } else {
+      // 非首次提取，作为辅助文档入库
+      const docRef = await uploadAuxDoc(sessionId, content, title || 'URL文档', undefined, undefined, id);
+      console.log('[saveUrlDoc] 辅助文档入库成功:', docRef);
+      const doc = urlDocs.value.find(d => d.id === id);
+      if (doc) (doc as any).docRef = docRef;
+    }
+  } catch (e: any) {
+    console.error('[saveUrlDoc] 入库失败:', e);
+    // 入库失败不影响本地保存
+  }
   
   return id;
 };
@@ -2153,10 +2920,10 @@ const extractModalUrl = async () => {
     }
     
     const title = deriveDocTitle(content, url, 'URL文档');
-    const docId = saveUrlDoc(url, content, title);
+    const docId = await saveUrlDoc(url, content, title);
     
     extractModalUrlInput.value = '';
-    addMessage('ai', `✅ 已提取并加入 URL 区域：《${title}》${urlDocs.value.find(d => d.id === docId)?.isMainPrd ? '（已设为主PRD）' : ''}`);
+    addMessage('ai', `✅ 已提取并加入 URL 区域：《${title}》${urlDocs.value.find(d => d.id === docId)?.isMainPrd ? '（已设为主PRD）' : ''}（已入库）`);
   } catch (e: any) {
     addMessage('ai', `❌ 链接提取失败：${e?.message || e}`);
   } finally {
@@ -2182,6 +2949,10 @@ interface ChatOnlyDocument {
   type: 'extracted' | 'url' | 'page';
   url?: string;
   createdAt: number;
+  // ✅ 新增：文档保存相关字段（与 UrlDoc/CustomDoc 对齐）
+  docRef?: DocRef;  // 入库后的文档引用
+  lastSavedContent?: string;  // 上次保存的内容（用于 dirty 检测）
+  logicalId?: string;  // 稳定的逻辑ID（例如 chatdoc_${id}）
 }
 
 const chatOnlyDocuments = ref<ChatOnlyDocument[]>([]);
@@ -2300,12 +3071,21 @@ const buildRoleSystemPrompt = () => {
   return `你是一个智能助手。必须使用中文回复。`;
 };
 
-const sendChatOnlyMessage = async () => {
-  if (!chatOnlyInput.value.trim() || isProcessing.value) return;
+const sendChatOnlyMessage = async (userInput?: string) => {
+  // 支持从 unifiedInput 传入，或使用 chatOnlyInput
+  const inputText = userInput || chatOnlyInput.value;
+  if (!inputText.trim() || isProcessing.value) return;
   if (!userRole.value || !isChatOnlyRole.value) return;
 
-  const userText = chatOnlyInput.value.trim();
-  chatOnlyInput.value = '';
+  const userText = inputText.trim();
+  // 清空输入框（如果是从 unifiedInput 调用，需要在调用处清空）
+  if (!userInput) {
+    chatOnlyInput.value = '';
+  }
+
+  // ✅ 获取当前 @ 选中的文档
+  const frozenSelected = [...selectedRefDocs.value];
+  selectedRefDocs.value = [];  // 清空 @ 引用
 
   messages.value.push({ role: 'user', content: userText });
   const aiMsg: Message = { role: 'ai', content: '' };
@@ -2317,13 +3097,21 @@ const sendChatOnlyMessage = async () => {
 
   try {
     const role = userRole.value === 'pm' ? 'pm' : 'dev';
-    const additionalPrdsToSend = buildAdditionalPrdsForRequest();
+    const additionalPrdsToSend = buildAdditionalPrdsForRequest({ selected: frozenSelected });
     pendingAdditionalPrds.value = [];
+    
+    // ✅ 新增：构建 @ 选中文档的 docRefs（作为 main 候选）
+    const atDocRefs = buildDocRefsForAtSelection(frozenSelected);
+    const hasDocRefs = atDocRefs.length > 0;
+    
+    console.log('[sendChatOnlyMessage] @ 引用 docRefs:', hasDocRefs, atDocRefs);
+    
     const result = await chatAgent({
       sessionId: chatOnlySessionId.value,
       role,
       message: userText,  // 输入框文字作为 message
-      additionalPrds: additionalPrdsToSend
+      additionalPrds: hasDocRefs ? undefined : additionalPrdsToSend,  // 有 docRefs 时不传 additionalPrds
+      docRefs: hasDocRefs ? atDocRefs : undefined,  // ✅ 新增：传递 docRefs
     });
 
     if (result.status === 'success') {
@@ -2380,6 +3168,18 @@ const extractChatOnlyUrl = async () => {
     activeRightTab.value = 'chatDoc';
     activeChatDocId.value = docId;
     viewMode.value = 'preview';
+    
+    // === PM/DEV 模式也入库（与 QA 对齐）===
+    try {
+      const sessionId = ensureSessionId();
+      const docRef = await uploadAuxDoc(sessionId, extractResult.content, docTitle, `aux_pmdev_${docId}`);
+      if (docRef) {
+        (newDoc as any).docRef = docRef;
+        console.log('[extractChatOnlyUrl] PM/DEV 入库成功:', docRef);
+      }
+    } catch (upsertErr: any) {
+      console.error('[extractChatOnlyUrl] PM/DEV upsert 失败:', upsertErr);
+    }
     
     // 将提取的内容作为上下文发送给AI分析
     const role = userRole.value === 'pm' ? 'pm' : 'dev';
@@ -2541,6 +3341,18 @@ const startChatOnlyFullPageAnalysis = async () => {
     activeRightTab.value = 'chatDoc';
     activeChatDocId.value = docId;
     viewMode.value = 'preview';
+    
+    // === PM/DEV 模式也入库（与 QA 对齐）===
+    try {
+      const sessionId = ensureSessionId();
+      const docRef = await uploadAuxDoc(sessionId, fullMarkdown, docTitle, `aux_pmdev_page_${docId}`);
+      if (docRef) {
+        (newDoc as any).docRef = docRef;
+        console.log('[startChatOnlyFullPageAnalysis] PM/DEV 入库成功:', docRef);
+      }
+    } catch (upsertErr: any) {
+      console.error('[startChatOnlyFullPageAnalysis] PM/DEV upsert 失败:', upsertErr);
+    }
     
     // 将提取的内容作为上下文发送给AI分析
     const role = userRole.value === 'pm' ? 'pm' : 'dev';
@@ -3033,15 +3845,15 @@ const startAnalysis = async () => {
     projectState.assets.cdnUrl = uploadRes.cdnUrl;
     projectState.assets.cdnUrls = uploadRes.cdnUrls || (uploadRes.cdnUrl ? [uploadRes.cdnUrl] : []);
     
-    // 3. 保存到 URL 区域（首次提取默认为主PRD）
+    // 3. 保存到 URL 区域（首次提取默认为主PRD）并入库
     const tabUrl = tabs[0]?.url || 'current_page';
     const title = deriveDocTitle(projectState.assets.domMarkdown, tabUrl, '当前页');
-    saveUrlDoc(tabUrl, projectState.assets.domMarkdown, title);
+    await saveUrlDoc(tabUrl, projectState.assets.domMarkdown, title);
     
     // 如果是首次提取，进入 content_review 步骤
     projectState.currentStep = 'content_review';
     viewMode.value = 'edit';
-    addMessage('ai', `✅ 内容提取完成，已保存到【URL区域】：《${title}》${urlDocs.value[0]?.isMainPrd ? '（已设为主PRD）' : ''}\n\n您可以直接编辑原始数据（剔除无关内容），然后点击"优化需求文档"。`);
+    addMessage('ai', `✅ 内容提取完成，已保存到【URL区域】并入库：《${title}》${urlDocs.value[0]?.isMainPrd ? '（已设为主PRD）' : ''}\n\n您可以直接编辑原始数据（剔除无关内容），然后点击"优化需求文档"。`);
 
   } catch (e) {
     console.error(e);
@@ -3112,23 +3924,39 @@ const optimizePRD = async () => {
     pendingAdditionalPrds.value = [];  // 清空一次性引用
 
     try {
+        // 构建 docRefs（优先使用已入库的文档）
+        const docRefs = buildDocRefsForAsk('testprd');
+        const useDocRefs = docRefs.length > 0 && hasStoredMainPrd();
+        
+        console.log('[optimizePRD] 使用 docRefs 模式:', useDocRefs, 'docRefs:', docRefs);
+        
         // New Ask Interface for PRD
         const aiRes = await ask({
             code: 'plugin_test_testprd',
             type: 'testprd',
-            sessionId: projectState.assets.sessionId,
+            sessionId: ensureSessionId(),
             params: {
-                text: projectState.documents.prd, // User edited DOM content
-                pictureKeyList: projectState.assets.cdnUrls || (projectState.assets.cdnUrl ? [projectState.assets.cdnUrl] : []), // Screenshot URL 列表
+                text: useDocRefs ? '' : projectState.documents.prd, // 如果有 docRefs，text 可为空
+                pictureKeyList: projectState.assets.cdnUrls || (projectState.assets.cdnUrl ? [projectState.assets.cdnUrl] : []),
                 isImageSolve: true,
                 isImageByte64: true
             },
-            additionalPrds: additionalPrdParams
+            docRefs: useDocRefs ? docRefs : undefined,
+            additionalPrds: useDocRefs ? undefined : additionalPrdParams // docRefs 模式下不传 additionalPrds
         });
         
         projectState.assets.sessionId = aiRes.sessionId;
         // 存储到优化后PRD（不覆盖原始PRD）
         projectState.documents.optimizedPrd = aiRes.answer;
+        
+        // 保存生成的 docRef（用于后续阶段）
+        if ((aiRes as any).generatedDocRef) {
+          generatedDocRefs.optimizedPrd = (aiRes as any).generatedDocRef;
+          console.log('[optimizePRD] 已保存 generatedDocRef:', generatedDocRefs.optimizedPrd);
+        }
+        
+        // 同步 lastSavedContent（标记为已保存状态）
+        lastSavedContent.optimizedPrd = aiRes.answer;
         
         // Cache the result
         cachedPRD.value = aiRes.answer;
@@ -3292,6 +4120,19 @@ const addAdditionalPrd = async () => {
             prd.title = result.title;
             prd.content = result.content;
             prd.status = 'success';
+        }
+        
+        // 入库：调用 upsert 接口
+        try {
+          const sessionId = ensureSessionId();
+          const docRef = await uploadAuxDoc(sessionId, result.content, result.title, `aux_prd_${prdId}`);
+          if (prd && docRef) {
+            (prd as any).docRef = docRef;
+            console.log('[addAdditionalPrd] 已入库 docRef:', docRef);
+          }
+        } catch (upsertErr: any) {
+          console.error('[addAdditionalPrd] upsert 失败:', upsertErr);
+          // 入库失败不影响显示，只记录日志
         }
         
         // 切换到辅助PRD Tab显示
@@ -3491,7 +4332,7 @@ const proceedToOptimizePRD = async () => {
         const aiRes = await ask({
             code: 'plugin_test_testprd',
             type: 'testprd',
-            sessionId: projectState.assets.sessionId || `prd-optimize-${Date.now()}`,
+            sessionId: ensureSessionId() || `prd-optimize-${Date.now()}`,
             params: {
                 text: projectState.documents.prd,
                 pictureKeyList: projectState.assets.cdnUrls || [],
@@ -3571,31 +4412,45 @@ const confirmAndGenerateTestCases = async () => {
     statusText.value = "正在生成测试用例...";
     
     try {
-        // 构建辅助PRD列表参数（包含PRD和Figma）
-        const additionalPrdParams: Array<{ title: string; content: string }> = [];
-        for (const prd of successfulPrds) {
-            additionalPrdParams.push({ title: `[辅助PRD] ${prd.title}`, content: prd.content });
-        }
-        for (const figma of successfulFigmas) {
-            additionalPrdParams.push({ title: `[Figma交互补充] ${figma.title}`, content: figma.content });
-        }
-        
-        const aiRes = await ask({
-            code: 'plugin_test_testcase',
-            type: 'testcase',
-            sessionId: `mvp-${Date.now()}`,
-            params: {
-                text: projectState.documents.prd,
-                pictureKeyList: projectState.assets.cdnUrls || [],
-                isImageSolve: true,
-                isImageByte64: true
-            },
-            additionalPrds: additionalPrdParams
-        });
+        // 构建辅助PRD列表参数（包含辅助PRD、Figma、@引用/弹窗引用等）
+        const additionalPrdParams = buildAdditionalPrdsForRequest();
+
+        const baseText = projectState.documents.optimizedPrd || projectState.documents.prd;
+      if (projectState.documents.testPoints?.trim()) {
+        additionalPrdParams.unshift({ title: '[测试点]', content: projectState.documents.testPoints });
+      }
+      
+      // 构建 docRefs（优先使用已入库的文档）
+      const docRefs = buildDocRefsForAsk('testcase');
+      const useDocRefs = docRefs.length > 0 && hasStoredMainPrd();
+      
+      console.log('[confirmAndGenerateTestCases] 使用 docRefs 模式:', useDocRefs, 'docRefs:', docRefs);
+
+      const aiRes = await ask({
+          code: 'plugin_test_testcase',
+          type: 'testcase',
+          sessionId: ensureSessionId(),
+          params: {
+              text: useDocRefs ? '' : baseText,
+          },
+          instruction: '基于优化后的PRD（可参考测试点）生成可执行测试用例，覆盖正向/边界/异常/权限/数据校验。',
+          docRefs: useDocRefs ? docRefs : undefined,
+          additionalPrds: useDocRefs ? undefined : additionalPrdParams
+      });
         
         projectState.documents.testCases = aiRes.answer;
         cachedTestCases.value = aiRes.answer;
         hasGeneratedTestCases.value = true;
+        
+        // 保存生成的 docRef（用于后续阶段）
+        if ((aiRes as any).generatedDocRef) {
+          generatedDocRefs.testCases = (aiRes as any).generatedDocRef;
+          console.log('[confirmAndGenerateTestCases] 已保存 generatedDocRef:', generatedDocRefs.testCases);
+        }
+        
+        // 同步 lastSavedContent（标记为已保存状态）
+        lastSavedContent.testCases = aiRes.answer;
+        
         projectState.currentStep = 'test_case';
         viewMode.value = 'preview';
         activeRightTab.value = 'main';
@@ -3621,7 +4476,7 @@ const regeneratePRD = async () => {
       const aiRes = await ask({
           code: 'plugin_test_testprd', 
           type: 'testprd',
-          sessionId: projectState.assets.sessionId,
+          sessionId: ensureSessionId(),
           params: {
               text: sourceText + "\n(请重新生成)",
               pictureKeyList: projectState.assets.cdnUrls || (projectState.assets.cdnUrl ? [projectState.assets.cdnUrl] : []),
@@ -3650,21 +4505,39 @@ const proceedToTestPoints = async () => {
   
   try {
       // Test Point Generation
+      const baseText = projectState.documents.optimizedPrd || projectState.documents.prd;
+      const additionalPrdParams = buildAdditionalPrdsForRequest();
+      
+      // 构建 docRefs（优先使用已入库的文档）
+      const docRefs = buildDocRefsForAsk('testpoint');
+      const useDocRefs = docRefs.length > 0 && hasStoredMainPrd();
+      
+      console.log('[proceedToTestPoints] 使用 docRefs 模式:', useDocRefs, 'docRefs:', docRefs);
+
       const aiRes = await ask({
           code: 'plugin_test_testpoint',
           type: 'testpoint',
-          sessionId: `mvp-${Date.now()}`, // New session
+          sessionId: ensureSessionId(),
           params: {
-              text: projectState.documents.prd, // Send PRD as context
-              pictureKeyList: projectState.assets.cdnUrls || (projectState.assets.cdnUrl ? [projectState.assets.cdnUrl] : []), // Optional: keep screenshot context
-              isImageSolve: true,
-              isImageByte64: true
-          }
+              text: useDocRefs ? '' : baseText,
+          },
+          instruction: '请基于优化后的PRD按模块输出测试点，覆盖正向/边界/异常/权限/数据校验，并标注优先级。',
+          docRefs: useDocRefs ? docRefs : undefined,
+          additionalPrds: useDocRefs ? undefined : additionalPrdParams
       });
       
       projectState.documents.testPoints = aiRes.answer;
       cachedTestPoints.value = aiRes.answer;
       hasGeneratedTestPoints.value = true;
+      
+      // 保存生成的 docRef（用于后续阶段）
+      if ((aiRes as any).generatedDocRef) {
+        generatedDocRefs.testPoints = (aiRes as any).generatedDocRef;
+        console.log('[proceedToTestPoints] 已保存 generatedDocRef:', generatedDocRefs.testPoints);
+      }
+      
+      // 同步 lastSavedContent（标记为已保存状态）
+      lastSavedContent.testPoints = aiRes.answer;
 
       projectState.currentStep = 'test_point';
       viewMode.value = 'preview';
@@ -3686,16 +4559,25 @@ const proceedToTestCasesFromPRD = async () => {
   addMessage('user', '跳过测试点，直接生成测试用例...');
   
   try {
+      const baseText = projectState.documents.optimizedPrd || projectState.documents.prd;
+      const additionalPrdParams = buildAdditionalPrdsForRequest();
+      
+      // 构建 docRefs（优先使用已入库的文档）
+      const docRefs = buildDocRefsForAsk('testcase');
+      const useDocRefs = docRefs.length > 0 && hasStoredMainPrd();
+      
+      console.log('[proceedToTestCasesFromPRD] 使用 docRefs 模式:', useDocRefs, 'docRefs:', docRefs);
+
       const aiRes = await ask({
           code: 'plugin_test_testcase',
           type: 'testcase',
-          sessionId: `mvp-${Date.now()}`, 
+          sessionId: ensureSessionId(),
           params: {
-              text: projectState.documents.prd, // PRD as input
-              pictureKeyList: projectState.assets.cdnUrls || (projectState.assets.cdnUrl ? [projectState.assets.cdnUrl] : []),
-              isImageSolve: true,
-              isImageByte64: true
-          }
+              text: useDocRefs ? '' : baseText,
+          },
+          instruction: '基于优化后的PRD直接生成可执行测试用例（含前置条件/步骤/预期结果/优先级），覆盖正向/边界/异常/权限/数据校验。',
+          docRefs: useDocRefs ? docRefs : undefined,
+          additionalPrds: useDocRefs ? undefined : additionalPrdParams
       });
       
       projectState.documents.testCases = aiRes.answer;
@@ -3744,21 +4626,28 @@ const proceedToTestCases = async () => {
   
   try {
       // Test Case Generation
+      const baseText = projectState.documents.optimizedPrd || projectState.documents.prd;
+      const additionalPrdParams = buildAdditionalPrdsForRequest();
+      if (projectState.documents.testPoints?.trim()) {
+        additionalPrdParams.unshift({ title: '[测试点]', content: projectState.documents.testPoints });
+      }
+      
+      // 构建 docRefs（优先使用已入库的文档）
+      const docRefs = buildDocRefsForAsk('testcase');
+      const useDocRefs = docRefs.length > 0 && hasStoredMainPrd();
+      
+      console.log('[proceedToTestCases] 使用 docRefs 模式:', useDocRefs, 'docRefs:', docRefs);
+
       const aiRes = await ask({
           code: 'plugin_test_testcase',
           type: 'testcase',
-          sessionId: `mvp-${Date.now()}`, // New session
+          sessionId: ensureSessionId(),
           params: {
-              text: projectState.documents.testPoints, // Send Test Points as context
-              pictureKeyList: projectState.assets.cdnUrls || (projectState.assets.cdnUrl ? [projectState.assets.cdnUrl] : []), // Optional
-              isImageSolve: true,
-              isImageByte64: true,
-              // Figma link might be useful here if backend supports it, 
-              // but standard params only show text/pictureKeyList.
-              // I'll append it to text if it exists just in case, or ignore if backend is strict.
-              // User instructions say: "modified PRD or Test Points as text".
-              // So I will stick to just testPoints.
-          }
+              text: useDocRefs ? '' : baseText,
+          },
+          instruction: '基于测试点生成可执行测试用例（含前置条件/步骤/预期结果/优先级），覆盖正向/边界/异常/权限/数据校验。',
+          docRefs: useDocRefs ? docRefs : undefined,
+          additionalPrds: useDocRefs ? undefined : additionalPrdParams
       });
       
       projectState.documents.testCases = aiRes.answer;
@@ -3861,8 +4750,10 @@ const shouldExecutePlan = (input: string): boolean => {
     return UI_EXECUTE_PLAN_KEYWORDS.some(k => s.includes(k.toLowerCase()));
 };
 
-const sendUiAgentMessage = async (frozenSelected?: RefDoc[], frozenAdditionalPrds?: Array<{ title: string; content: string }>) => {
-    if (!uiAgentInput.value || isProcessing.value) return;
+const sendUiAgentMessage = async (userInput?: string, frozenSelected?: RefDoc[], frozenAdditionalPrds?: Array<{ title: string; content: string }>) => {
+    // 支持从 unifiedInput 传入，或使用 uiAgentInput
+    const inputText = userInput || uiAgentInput.value;
+    if (!inputText || isProcessing.value) return;
 
     // 1. 获取当前标签页 URL
     let currentUrl = '';
@@ -3873,10 +4764,12 @@ const sendUiAgentMessage = async (frozenSelected?: RefDoc[], frozenAdditionalPrd
         console.warn("无法获取标签页信息");
     }
 
-    const userInput = uiAgentInput.value;
-    uiAgentInput.value = '';
+    // 清空输入框（如果是从 unifiedInput 调用，需要在调用处清空）
+    if (!userInput) {
+        uiAgentInput.value = '';
+    }
 
-    addMessage('user', userInput);
+    addMessage('user', inputText);
     isProcessing.value = true;
     statusText.value = "🤖 UI 自动化智能体运行中...";
 
@@ -3886,7 +4779,7 @@ const sendUiAgentMessage = async (frozenSelected?: RefDoc[], frozenAdditionalPrd
         let planToSend = projectState.documents.uiPlan || '';
         const additionalPrdsToSend = frozenAdditionalPrds ?? buildAdditionalPrdsForRequest();
 
-        if (shouldExecutePlan(userInput)) {
+        if (shouldExecutePlan(inputText)) {
             // 如果用户显式用 @ 引用文档：优先用第一个选中文档作为 plan 执行
             if (frozenSelected && frozenSelected.length > 0) {
                 planToSend = (frozenSelected[0].content || '').trim() || planToSend;
@@ -3901,7 +4794,7 @@ const sendUiAgentMessage = async (frozenSelected?: RefDoc[], frozenAdditionalPrd
 
         const result = await uiAgent({
             sessionId: uiAgentSessionId.value,
-            instruction: userInput,
+            instruction: inputText,
             url: currentUrl,
             plan: planToSend,
             report: projectState.documents.uiReport,
@@ -4403,7 +5296,7 @@ const sendPrdAgentMessage = async (frozenSelected?: RefDoc[], frozenAdditionalPr
             const aiRes = await ask({
                 code: 'plugin_test_testprd',
                 type: 'testprd',
-                sessionId: projectState.assets.sessionId || `prd-optimize-${Date.now()}`,
+                sessionId: ensureSessionId() || `prd-optimize-${Date.now()}`,
                 instruction: userInput, // 输入框文字作为 instruction（后端会放进 [补充说明]）
                 additionalPrds: additionalPrdParams,
                 params: {
@@ -5270,6 +6163,17 @@ body {
   padding: 2px 6px;
   background: var(--neo-cream);
   box-shadow: 2px 2px 0 var(--neo-black);
+}
+
+/* 未入库文档警告样式 */
+.ref-picker-item.unsaved {
+  border-color: var(--neo-orange, #f39c12);
+}
+
+.ref-picker-unsaved {
+  font-size: 14px;
+  margin-left: 4px;
+  flex-shrink: 0;
 }
 
 .ref-chip-remove,

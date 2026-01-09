@@ -1160,24 +1160,16 @@ Markdown plan:
         return state
 
     def _call_anthropic_stream(messages: List[Dict], model: str, max_tokens: int = 8000) -> str:
-        """调用 Anthropic API（流式）"""
+        """调用 Anthropic API（流式，无工具调用）"""
         if not anthropic_client:
             raise ValueError("Anthropic client not configured")
-
         system_content = ""
         chat_messages = []
         for msg in messages:
             if msg.get("role") == "system":
                 system_content += (msg.get("content") or "") + "\n"
-            elif msg.get("role") == "tool":
-                # Anthropic 的 tool role 不同，这里跳过
-                continue
-            elif msg.get("tool_calls"):
-                # 跳过带 tool_calls 的 assistant 消息
-                continue
             else:
                 chat_messages.append({"role": msg.get("role"), "content": msg.get("content") or ""})
-
         full_response = ""
         with anthropic_client.messages.stream(
             model=model,
@@ -1189,15 +1181,125 @@ Markdown plan:
                 full_response += t
         return full_response
 
+    def _convert_openai_tools_to_anthropic(openai_tools: List[Dict]) -> List[Dict]:
+        """将 OpenAI 格式的工具定义转换为 Anthropic 格式"""
+        anthropic_tools = []
+        for tool in openai_tools:
+            if tool.get("type") == "function" and "function" in tool:
+                func = tool["function"]
+                anthropic_tools.append({
+                    "name": func.get("name"),
+                    "description": func.get("description", ""),
+                    "input_schema": func.get("parameters", {})
+                })
+        return anthropic_tools
+
+    def _call_anthropic_with_tools(messages: List[Dict], model: str, max_tokens: int = 8000) -> tuple[str, List[Dict]]:
+        """调用 Anthropic API（支持工具调用）"""
+        if not anthropic_client:
+            raise ValueError("Anthropic client not configured")
+
+        # 转换工具定义
+        anthropic_tools = _convert_openai_tools_to_anthropic(ui_agent_tools_schema)
+
+        # 处理消息历史（转换 tool_calls 和 tool results 为 Anthropic 格式）
+        system_content = ""
+        chat_messages = []
+        for msg in messages:
+            if msg.get("role") == "system":
+                system_content += (msg.get("content") or "") + "\n"
+            elif msg.get("role") == "tool":
+                # Anthropic 格式：tool role 包含 tool_use_id 和 content
+                tool_call_id = msg.get("tool_call_id", "")
+                content = msg.get("content", "")
+                chat_messages.append({
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": tool_call_id,
+                        "content": content
+                    }]
+                })
+            elif msg.get("tool_calls"):
+                # 转换 tool_calls 为 Anthropic 格式
+                content_blocks = []
+                if msg.get("content"):
+                    content_blocks.append({"type": "text", "text": msg.get("content")})
+                for tc in msg.get("tool_calls", []):
+                    func = tc.get("function", {}) if isinstance(tc, dict) else getattr(tc, "function", None)
+                    if func:
+                        if isinstance(func, dict):
+                            name = func.get("name", "")
+                            args = func.get("arguments", "{}")
+                        else:
+                            name = getattr(func, "name", "")
+                            args = getattr(func, "arguments", "{}")
+                        try:
+                            args_dict = json.loads(args) if isinstance(args, str) else args
+                        except:
+                            args_dict = {}
+                        content_blocks.append({
+                            "type": "tool_use",
+                            "id": tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", ""),
+                            "name": name,
+                            "input": args_dict
+                        })
+                chat_messages.append({"role": "assistant", "content": content_blocks})
+            else:
+                chat_messages.append({"role": msg.get("role"), "content": msg.get("content") or ""})
+
+        # 调用 API
+        response = anthropic_client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            system=system_content.strip() if system_content else None,
+            messages=chat_messages,
+            tools=anthropic_tools if anthropic_tools else None,
+        )
+
+        # 提取文本内容和工具调用
+        text_content = ""
+        tool_calls = []
+        
+        for block in response.content:
+            if block.type == "text":
+                text_content += block.text
+            elif block.type == "tool_use":
+                tool_calls.append({
+                    "id": block.id,
+                    "function": {
+                        "name": block.name,
+                        "arguments": json.dumps(block.input, ensure_ascii=False)
+                    }
+                })
+        
+        return text_content, tool_calls
+
     def llm_step(state: UiState) -> UiState:
         state["turn"] = int(state.get("turn", 0)) + 1
 
         try:
             if is_anthropic_model(model_name) and anthropic_client:
-                content = _call_anthropic_stream(state["messages"], model_name)
-                state["modelMessage"] = {"content": content, "tool_calls": None}
-                state["messages"].append({"role": "assistant", "content": content})
-                state["toolCalls"] = []
+                content, tool_calls = _call_anthropic_with_tools(state["messages"], model_name)
+                # 转换 tool_calls 为 SimpleNamespace 格式（与 OpenAI 兼容）
+                formatted_tool_calls = []
+                for tc in tool_calls:
+                    formatted_tool_calls.append(
+                        SimpleNamespace(
+                            id=tc["id"],
+                            function=SimpleNamespace(
+                                name=tc["function"]["name"],
+                                arguments=tc["function"]["arguments"]
+                            )
+                        )
+                    )
+                state["modelMessage"] = {"content": content, "tool_calls": formatted_tool_calls if formatted_tool_calls else None}
+                state["messages"].append({
+                    "role": "assistant",
+                    "content": content,
+                    "tool_calls": formatted_tool_calls if formatted_tool_calls else None
+                })
+                state["toolCalls"] = formatted_tool_calls
             else:
                 # OpenAI
                 resp = openai_client.chat.completions.create(

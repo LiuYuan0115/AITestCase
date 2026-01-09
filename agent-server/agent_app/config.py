@@ -39,7 +39,7 @@ def build_anthropic_client() -> Anthropic:
 
 
 def get_default_model() -> str:
-    return os.getenv("DEFAULT_MODEL", "anthropic/claude-sonnet-4")
+    return os.getenv("DEFAULT_MODEL", "anthropic/claude-haiku-4.5")
 
 
 def get_model_for(agent_key: str) -> str:
@@ -49,7 +49,7 @@ def get_model_for(agent_key: str) -> str:
     规则（优先级从高到低）：
     1) MODEL_{AGENT_KEY}  （如 MODEL_PRD）
     2) DEFAULT_MODEL
-    3) anthropic/claude-sonnet-4.5
+    3) anthropic/claude-haiku-4.5
     """
     key = (agent_key or "").strip().upper()
     if key:

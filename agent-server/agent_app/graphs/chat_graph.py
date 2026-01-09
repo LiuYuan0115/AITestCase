@@ -1,10 +1,14 @@
 """
 PM/DEV Chat-only LangGraph
+
+支持：
+- additionalPrds：直接传入的辅助参考文档（旧协议）
+- docRefs：文档引用列表，从 DocStore 检索上下文（新协议，为知识库做准备）
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, TypedDict
+from typing import Any, Dict, List, Optional, TypedDict
 
 from langgraph.graph import StateGraph, END
 
@@ -18,14 +22,24 @@ class AdditionalPrdItem(TypedDict):
     content: str
 
 
+class DocRefItem(TypedDict, total=False):
+    """文档引用项"""
+    docId: str
+    logicalId: Optional[str]
+    title: Optional[str]
+    kind: Optional[str]  # main | aux
+
+
 class ChatState(TypedDict, total=False):
     sessionId: str
     role: str  # pm | dev
     userMessage: str
     additionalPrds: List[AdditionalPrdItem]  # 辅助参考文档列表（可多选）
+    docRefs: List[DocRefItem]  # ✅ 新增：文档引用列表（从 DocStore 检索）
     messages: List[Dict[str, Any]]
     modelMessage: Any
     result: Dict[str, Any]
+    usedDocRefs: List[Dict[str, Any]]  # ✅ 新增：实际使用的文档引用
 
 
 def build_chat_graph(openai_client, model_name: str, session_store, anthropic_client=None):
@@ -63,8 +77,44 @@ def build_chat_graph(openai_client, model_name: str, session_store, anthropic_cl
         system_prompt = PM_CHAT_SYSTEM_PROMPT if role == "pm" else DEV_CHAT_SYSTEM_PROMPT
 
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+        used_doc_refs: List[Dict[str, Any]] = []
 
-        # 注入辅助参考文档（如用户在输入框用 @ 引用的右侧文档）
+        # ✅ 优先使用 docRefs（新协议：从 DocStore 检索上下文）
+        doc_refs = state.get("docRefs") or []
+        if doc_refs:
+            doc_ids = [r.get("docId") for r in doc_refs if r.get("docId")]
+            user_message = state.get("userMessage") or ""
+            
+            # 使用 retrieve 做轻量检索（关键词匹配）
+            chunks = session_store.retrieve(doc_ids, query=user_message, top_k=10)
+            
+            if chunks:
+                ref_text = "## 参考文档（以下内容来自用户引用的文档，仅供参考）\n\n"
+                seen_docs = set()
+                
+                for doc_id, chunk, score in chunks:
+                    # 获取文档元数据
+                    doc = session_store.get_doc(doc_id) or {}
+                    title = doc.get("title") or doc_id[:16]
+                    logical_id = doc.get("logicalId")
+                    
+                    # 记录使用的文档
+                    if doc_id not in seen_docs:
+                        seen_docs.add(doc_id)
+                        used_doc_refs.append({
+                            "docId": doc_id,
+                            "logicalId": logical_id,
+                            "title": title,
+                            "kind": doc.get("kind"),
+                        })
+                    
+                    # 截取片段（避免上下文过长）
+                    chunk_text = chunk[:1500] if len(chunk) > 1500 else chunk
+                    ref_text += f"### {title}\n\n{chunk_text}\n\n---\n\n"
+                
+                messages.append({"role": "system", "content": ref_text})
+        
+        # 兼容旧协议：additionalPrds（直接传入内容）
         additional_prds = state.get("additionalPrds") or []
         if additional_prds:
             ref_text = "## 辅助参考文档（以下内容仅供参考）\n\n"
@@ -80,6 +130,7 @@ def build_chat_graph(openai_client, model_name: str, session_store, anthropic_cl
         messages.extend(session_store.get(state["sessionId"]))
         messages.append({"role": "user", "content": state.get("userMessage", "")})
         state["messages"] = messages
+        state["usedDocRefs"] = used_doc_refs
         return state
 
     def call_llm(state: ChatState) -> ChatState:
@@ -106,7 +157,10 @@ def build_chat_graph(openai_client, model_name: str, session_store, anthropic_cl
         content = (getattr(msg, "content", None) or "").strip() if msg else ""
         if not content:
             content = "处理完成"
-        state["result"] = {"reply": content}
+        state["result"] = {
+            "reply": content,
+            "usedDocRefs": state.get("usedDocRefs") or [],
+        }
         return state
 
     graph = StateGraph(ChatState)

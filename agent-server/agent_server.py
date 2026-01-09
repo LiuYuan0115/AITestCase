@@ -8,9 +8,15 @@
 """
 
 from agent_app.app_factory import create_app
+from agent_app.config import build_openai_client, build_anthropic_client, get_default_model
 
 
-app = create_app()
+# 初始化客户端
+openai_client = build_openai_client()
+anthropic_client = build_anthropic_client()
+model_name = get_default_model()
+
+app = create_app(openai_client, model_name=model_name, anthropic_client=anthropic_client)
 
 if __name__ == "__main__":
     import uvicorn
