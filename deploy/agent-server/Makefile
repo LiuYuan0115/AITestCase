@@ -37,9 +37,5 @@ google_artifact_registry_image := "${google_artifact_registry}/ai-testcase-agent
 help:
 	@python3 -c "$$PRINT_HELP_PYSCRIPT" < $(MAKEFILE_LIST)
 
-build_docker: ## 构建docker镜像
+build_push_docker: ## 构建docker镜像
 	 docker build   --platform linux/amd64  -f Dockerfile -t ${google_artifact_registry_image} --push  ../../agent-server
-
-
-push_docker:  ## 推送docker镜像
-	 docker push ${google_artifact_registry_image}
