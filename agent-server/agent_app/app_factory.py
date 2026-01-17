@@ -370,7 +370,7 @@ def create_app(
         return {
             "status": "healthy",
             "service": "PluginCode Agent Server",
-            "version": "1.0.0",
+            "version": "2026.1.9",
             "endpoints": [
                 "POST /api/docs/upsert - 上传/更新文档",
                 "GET /api/docs/{docId} - 获取文档内容",
