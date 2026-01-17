@@ -307,12 +307,12 @@
               <button v-if="projectState.documents.uiPlan" @click="toggleUiDoc('plan')" class="btn-secondary step-action-btn">📋 测试计划</button>
               <button v-if="projectState.documents.uiPlanJson" @click="toggleUiDoc('plan_json')" class="btn-secondary step-action-btn">🧩 Plan JSON</button>
               <button v-if="projectState.documents.uiReport" @click="toggleUiDoc('report')" class="btn-secondary step-action-btn">📊 测试报告</button>
-              <!-- 有头/无头模式切换 -->
+              <!-- 有头/无头模式标识（实际模式由启动脚本决定：run_chrome.sh 或 run_chrome_headless.sh） -->
               <button 
                 @click="isHeadlessMode = !isHeadlessMode" 
                 class="btn-mode-toggle step-action-btn"
                 :class="{ 'headless': isHeadlessMode }"
-                :title="isHeadlessMode ? '无头模式：后台运行，不显示浏览器界面' : '有头模式：显示浏览器界面'"
+                :title="isHeadlessMode ? '标识：已启动 run_chrome_headless.sh（新无头模式）' : '标识：已启动 run_chrome.sh（有头模式）'"
               >
                 {{ isHeadlessMode ? '👻 无头' : '🖥️ 有头' }}
               </button>
@@ -922,6 +922,13 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, reactive, onMounted, onBeforeUnmount, watch } from 'vue';
 import { marked } from 'marked';
+
+// 配置 marked：启用 breaks 选项，让单个换行符渲染为 <br>
+marked.use({
+  breaks: true,  // 单个换行符转换为 <br>
+  gfm: true,     // GitHub 风格 Markdown
+});
+
 import { ImageProcessor } from '@/utils/imageProcessor';
 import { postRetrieve, ask, uploadImage, prdAgent, clearPrdSession, testCaseAgent, clearTestCaseSession, uiAgent, clearUiSession, getUiScreenshots, clearUiScreenshots, chatAgent } from '@/api';
 import { uploadRawPrd, uploadAuxDoc, upsertDocs, type DocUpsertItem } from '@/utils/docStoreApi';
@@ -3216,10 +3223,14 @@ const startChatOnlyFullPageAnalysis = async () => {
   statusText.value = '正在提取当前页面...';
   addMessage('user', '📸 一键提取当前页面内容');
   
+  // 用于恢复页面状态
+  let tabId: number | null = null;
+  let originalScrollY: number = 0;
+  
   try {
     // 确保与页面的连接已建立（自动注入 content script）
     statusText.value = '正在连接页面...';
-    const tabId = await ensureConnection();
+    tabId = await ensureConnection();
     
     // 获取当前标签页信息
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
@@ -3261,6 +3272,9 @@ const startChatOnlyFullPageAnalysis = async () => {
     const pageInfo: any = await browser.tabs.sendMessage(tabId, { type: 'GET_PAGE_SCROLL_INFO' });
     const { totalHeight, viewportHeight } = pageInfo;
     const scrollSteps = Math.ceil(totalHeight / viewportHeight);
+    
+    // 保存原始滚动位置，用于恢复
+    originalScrollY = pageInfo.currentScrollY || 0;
     
     const screenshots: string[] = [];
     let domSegments: { markdown: string, images: { url: string, base64: string }[] }[] = [];
@@ -3377,6 +3391,21 @@ const startChatOnlyFullPageAnalysis = async () => {
   } catch (e: any) {
     addMessage('ai', `Error: 页面提取失败 - ${e?.message || e}`);
   } finally {
+    // 恢复页面状态（取消与页面的控制）
+    if (tabId) {
+      try {
+        // 恢复原始滚动位置
+        await browser.tabs.sendMessage(tabId, { 
+          type: 'RESTORE_SCROLL_POSITION', 
+          originalPosition: originalScrollY 
+        });
+        // 恢复页面样式等状态
+        await browser.tabs.sendMessage(tabId, { type: 'RESTORE_PAGE_AFTER_SCREENSHOT' });
+        console.log('[startChatOnlyFullPageAnalysis] 页面状态已恢复');
+      } catch (restoreErr) {
+        console.warn('[startChatOnlyFullPageAnalysis] 恢复页面状态失败:', restoreErr);
+      }
+    }
     isProcessing.value = false;
     statusText.value = '';
     scrollChatOnlyToBottom();
@@ -4798,7 +4827,7 @@ const sendUiAgentMessage = async (userInput?: string, frozenSelected?: RefDoc[],
             url: currentUrl,
             plan: planToSend,
             report: projectState.documents.uiReport,
-            headless: isHeadlessMode.value,
+            headless: false,  // 始终使用 CDP 连接（用户通过脚本控制有头/无头）
             workflow: uiWorkflowMode.value,
             autoHeal: uiWorkflowMode.value === 'closed_loop' ? uiAutoHeal.value : undefined,
             maxHealRounds: uiWorkflowMode.value === 'closed_loop' ? uiMaxHealRounds.value : undefined,

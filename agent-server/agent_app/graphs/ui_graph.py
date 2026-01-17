@@ -28,11 +28,37 @@ from agent_app.ui.runner import UiRunner, parse_plan_json
 # 这些 helper 在你的工程里已存在（用于更稳的 tab/page 定位与语义化定位）。
 # 若缺失，本文件也做了降级处理。
 try:
-    from agent_app.ui.browser_helpers import locate_target_page, smart_locate_element, build_accessibility_snapshot
+    from agent_app.ui.browser_helpers import (
+        locate_target_page, 
+        smart_locate_element, 
+        build_accessibility_snapshot,
+        select_best_page,
+        list_available_pages,
+        safe_locate_single,
+        execute_with_navigation_handling,
+        wait_for_page_stable,
+        take_screenshot,
+        LocateResult,
+        ActionResult,
+        disable_animations,
+        clear_accessibility_cache,
+        ui_log,
+    )
 except Exception:  # pragma: no cover
     locate_target_page = None
     smart_locate_element = None
     build_accessibility_snapshot = None
+    select_best_page = None
+    list_available_pages = None
+    safe_locate_single = None
+    execute_with_navigation_handling = None
+    wait_for_page_stable = None
+    take_screenshot = None
+    LocateResult = None
+    ActionResult = None
+    disable_animations = None
+    clear_accessibility_cache = None
+    ui_log = None
 
 
 class UiState(TypedDict, total=False):
@@ -70,7 +96,7 @@ class UiState(TypedDict, total=False):
     finalResponse: str
     finalPlan: Optional[str]
     finalReport: Optional[str]
-    # 便于定位“没执行但回复”的问题
+    # 便于定位"没执行但回复"的问题
     toolResults: List[str]
     hadToolExecution: bool
     # 是否允许一次请求内多轮继续（默认 False：执行一轮即 finalize，确保释放浏览器控制）
@@ -84,6 +110,12 @@ class UiState(TypedDict, total=False):
     # 最近一次执行结果（便于生成自愈 prompt / 报告摘要）
     lastRunStats: Dict[str, Any]
     lastFailedSummary: str
+    
+    # 新增：资源追踪（用于正确清理）
+    is_cdp_mode: bool  # 是否 CDP 连接
+    created_pages: List[str]  # 本次运行创建的 page URL 列表
+    created_contexts: List[str]  # 本次运行创建的 context ID 列表
+    initial_url: str  # 初始页面 URL，用于 switch_tab index=0 时优先匹配回初始页面
 
 
 # -----------------------------
@@ -501,16 +533,35 @@ Constraints:
 2) Schema (top-level): {{"name": string, "baseUrl"?: string, "steps": Step[]}}
 3) Step schema:
    - id: string
-   - action: one of [navigate, click, fill, hover, select, assert, wait, screenshot, evaluate]
+   - action: one of [navigate, click, fill, hover, select, assert, wait, screenshot, evaluate, upload, go_back, switch_tab, close_tab]
    - url?: string (for navigate)
-   - target?: {{by: one of [testid, extid, role, aria, label, placeholder, text, css], role?: string, name?: string, exact?: bool, value?: string}}
+   - target?: {{by: one of [testid, id, name, extid, role, aria, label, placeholder, title, alt, href, value, type, class, data, xpath, text, css], role?: string, name?: string, exact?: bool, value?: string}}
    - value?: string (for fill/select)
+   - file_path?: string (for upload, absolute path, multiple files separated by comma)
+   - tab_index?: number (for switch_tab, 0 = first tab, -1 = last tab)
+   - tab_url?: string (for switch_tab, URL partial match - preferred over tab_index)
    - assert_type?: one of [url_contains, url_equals, text_visible, element_visible, element_hidden, element_count]
    - assert_value?: string|number
    - wait_time?: number (ms)
    - step_name?: string
-4) Prefer stable selectors: testid/extid > role/name > label/placeholder > text > css.
-5) If the user's request is ambiguous, create the smallest reasonable plan that navigates, locates key element(s), and asserts a visible success signal.
+4) Prefer stable selectors: testid > id > name > placeholder > type > extid > label > role > text > css.
+5) CRITICAL selector distinctions:
+   - by:"id" + value:"email" → matches id="email"
+   - by:"name" + value:"email" → matches name="email" (HTML name attribute)
+   - by:"placeholder" + value:"abc@example.com" → matches placeholder="..."
+   - by:"type" + value:"email" → matches input[type="email"]
+   - by:"type" + value:"submit" → matches input[type="submit"]
+   - by:"value" + value:"登录" → matches [value="登录"] (buttons)
+   - by:"href" + value:"/login" → matches a[href*="/login"]
+   - by:"alt" + value:"logo" → matches img[alt="logo"]
+   - by:"role" + role:"textbox" + name:"xxx" → "name" is ACCESSIBLE NAME, NOT HTML name attribute!
+6) For form inputs: prefer id > name > placeholder > type over role selectors!
+7) MULTI-ELEMENT precision (when selector matches multiple elements):
+   - Use ,has:xxx to filter by text: value:"price-plan,has:$6.49" → filter elements containing "$6.49"
+   - Use :nth(n) to select nth element (0-based): value:"price-plan:nth(2)" → select 3rd element
+   - Chain filters with >>: value:"testid:price-plan >> text:Yearly" → filter by contained text
+   - Example: 3 price cards with testid="price-plan" → use value:"price-plan,has:$6.49" to click specific one
+8) If the user's request is ambiguous, create the smallest reasonable plan that navigates, locates key element(s), and asserts a visible success signal.
 
 Current page context:
 {page_info}
@@ -548,6 +599,9 @@ User request:
             return state
 
         except Exception as e:
+            # 打印服务端详细错误日志
+            print(f"[generate_plan] Error: {type(e).__name__}: {str(e)}")
+            traceback.print_exc()
             state["finalType"] = "query"
             state["finalResponse"] = f"Error: generate_plan failed: {type(e).__name__}: {str(e)}"
             return state
@@ -760,6 +814,12 @@ Markdown plan:
                     if not url:
                         raise ValueError("navigate requires url")
                     page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                    # 优化：禁用动画以加速后续操作
+                    if disable_animations:
+                        disable_animations(page)
+                    # 优化：清空 accessibility 缓存（URL 变化后需要重新获取）
+                    if clear_accessibility_cache:
+                        clear_accessibility_cache()
                     return f"✅ Navigated to: {url}"
 
                 if action_type == "get_content":
@@ -789,6 +849,18 @@ Markdown plan:
                     )
 
                 if action_type == "screenshot":
+                    # 等待页面稳定后再截图
+                    try:
+                        page.wait_for_load_state("networkidle", timeout=5000)
+                    except Exception:
+                        pass
+                    try:
+                        page.wait_for_load_state("domcontentloaded", timeout=3000)
+                    except Exception:
+                        pass
+                    # 额外等待让动画/渲染完成
+                    page.wait_for_timeout(300)
+                    
                     screenshot_dir = get_screenshot_dir()
                     os.makedirs(screenshot_dir, exist_ok=True)
                     idx = int(state.get("screenshotCount", 0)) + 1
@@ -822,6 +894,204 @@ Markdown plan:
                         ms = 1000
                     page.wait_for_timeout(ms)
                     return f"⏳ Waited: {ms}ms"
+
+                if action_type == "upload":
+                    # 文件上传操作
+                    file_path_arg = args.get("file_path") or value or ""
+                    if not file_path_arg:
+                        raise ValueError("upload requires file_path")
+                    
+                    # 支持多文件上传（逗号分隔）
+                    file_paths = [p.strip() for p in file_path_arg.split(",") if p.strip()]
+                    files_to_upload = file_paths if len(file_paths) > 1 else file_paths[0]
+                    
+                    # 策略1：先尝试找页面上所有的 input[type=file]，直接设置文件（最可靠，不弹窗）
+                    file_inputs = page.locator("input[type='file']")
+                    file_input_count = file_inputs.count()
+                    
+                    if file_input_count > 0:
+                        # 找到 file input，直接设置（即使是隐藏的也可以）
+                        # 如果有 selector，尝试找与之关联的 file input
+                        if selector:
+                            loc = _locate(page, selector)
+                            # 检查 selector 本身是否是 file input
+                            try:
+                                tag_name = loc.evaluate("el => el.tagName.toLowerCase()")
+                                input_type = loc.evaluate("el => el.type || ''")
+                                if tag_name == "input" and input_type == "file":
+                                    loc.set_input_files(files_to_upload)
+                                    return f"✅ Uploaded {len(file_paths)} file(s) to {selector}"
+                            except Exception:
+                                pass
+                            
+                            # 尝试在 selector 元素内部或附近找 file input
+                            try:
+                                nested_input = loc.locator("input[type='file']").first
+                                if nested_input.count() > 0:
+                                    nested_input.set_input_files(files_to_upload)
+                                    return f"✅ Uploaded {len(file_paths)} file(s) to nested file input"
+                            except Exception:
+                                pass
+                            
+                            # 尝试找同级或父级的 file input
+                            try:
+                                # 使用 JS 查找最近的 file input
+                                file_input_handle = page.evaluate_handle("""
+                                    (selector) => {
+                                        const el = document.querySelector(selector) || 
+                                                   document.querySelector(`[data-testid="${selector}"]`) ||
+                                                   document.querySelector(`#${selector}`);
+                                        if (!el) return null;
+                                        // 先找同级
+                                        const parent = el.parentElement;
+                                        if (parent) {
+                                            const sibling = parent.querySelector('input[type="file"]');
+                                            if (sibling) return sibling;
+                                        }
+                                        // 再找整个页面
+                                        return document.querySelector('input[type="file"]');
+                                    }
+                                """, selector.split(":")[-1] if ":" in selector else selector)
+                                if file_input_handle:
+                                    page.locator("input[type='file']").first.set_input_files(files_to_upload)
+                                    return f"✅ Uploaded {len(file_paths)} file(s) to associated file input"
+                            except Exception:
+                                pass
+                        
+                        # 直接使用第一个 file input
+                        file_inputs.first.set_input_files(files_to_upload)
+                        return f"✅ Uploaded {len(file_paths)} file(s) to file input"
+                    
+                    # 策略2：没有找到 file input，使用 file chooser 方式（会弹出系统对话框）
+                    if selector:
+                        loc = _locate(page, selector)
+                        loc.wait_for(state="visible", timeout=timeout_ms)
+                        
+                        # 使用 expect_file_chooser 拦截文件选择器
+                        with page.expect_file_chooser(timeout=timeout_ms) as fc_info:
+                            loc.click(timeout=timeout_ms)
+                        file_chooser = fc_info.value
+                        file_chooser.set_files(files_to_upload)
+                        return f"✅ Uploaded {len(file_paths)} file(s) via file chooser"
+                    
+                    raise ValueError("No file input found and no selector provided")
+
+                # go_back - 浏览器后退（同 tab 内 URL 跳转后返回上一页）
+                if action_type == "go_back":
+                    page.go_back(wait_until="domcontentloaded", timeout=30000)
+                    # 优化：禁用动画
+                    if disable_animations:
+                        disable_animations(page)
+                    # 优化：清空 accessibility 缓存
+                    if clear_accessibility_cache:
+                        clear_accessibility_cache()
+                    # 优化：移除固定的 500ms 等待
+                    return f"✅ Navigated back to: {page.url}"
+
+                # switch_tab - 切换到指定 tab
+                if action_type == "switch_tab":
+                    browser = state.get("browser")
+                    if not browser:
+                        return "❌ switch_tab requires browser connection (not available in runner mode)"
+                    
+                    tab_url = args.get("tab_url", "")
+                    tab_index = args.get("tab_index", 0)
+                    initial_url = state.get("initial_url", "")
+                    
+                    # 获取所有 pages
+                    all_pages = []
+                    for ctx in browser.contexts:
+                        all_pages.extend(ctx.pages)
+                    
+                    if not all_pages:
+                        return "❌ No tabs available"
+                    
+                    target_page = None
+                    match_info = ""
+                    
+                    # 优先通过 URL 匹配（支持部分匹配）
+                    if tab_url:
+                        for p in all_pages:
+                            try:
+                                if tab_url in p.url:
+                                    target_page = p
+                                    match_info = f"url contains '{tab_url}'"
+                                    break
+                            except Exception:
+                                continue
+                        
+                        if not target_page:
+                            available_urls = [p.url for p in all_pages]
+                            return f"❌ No tab found matching URL '{tab_url}'. Available: {available_urls}"
+                    else:
+                        # 【增强】当 tab_index=0 且有 initial_url 时，优先匹配初始页面
+                        # 这避免了多个 chrome-extension:// sidepanel 时选错 tab 的问题
+                        if tab_index == 0 and initial_url:
+                            for p in all_pages:
+                                try:
+                                    # 精确匹配
+                                    if p.url == initial_url:
+                                        target_page = p
+                                        match_info = "initial_url exact match"
+                                        break
+                                    # 同 extension ID 匹配（chrome-extension://xxx/...）
+                                    if initial_url.startswith("chrome-extension://"):
+                                        initial_ext_id = initial_url.split("/")[2] if len(initial_url.split("/")) > 2 else ""
+                                        if initial_ext_id and f"chrome-extension://{initial_ext_id}/" in p.url:
+                                            target_page = p
+                                            match_info = f"initial_url extension match ({initial_ext_id})"
+                                            break
+                                except Exception:
+                                    continue
+                        
+                        # 如果没有通过 initial_url 匹配到，使用原来的 index 逻辑
+                        if not target_page:
+                            # 支持负数索引（-1 表示最后一个 tab）
+                            if tab_index < 0:
+                                tab_index = len(all_pages) + tab_index
+                            
+                            if tab_index < 0 or tab_index >= len(all_pages):
+                                return f"❌ Invalid tab_index: {tab_index} (total tabs: {len(all_pages)})"
+                            
+                            target_page = all_pages[tab_index]
+                            match_info = f"index {tab_index}"
+                    
+                    target_page.bring_to_front()
+                    state["page"] = target_page
+                    _refresh_page_context(state)
+                    ui_log(
+                        "info",
+                        "graph_switch_tab",
+                        match_info=match_info,
+                        target_url=target_page.url,
+                        initial_url=initial_url,
+                        available_tabs=len(all_pages),
+                    )
+                    return f"✅ Switched to tab ({match_info}): {target_page.url}"
+
+                # close_tab - 关闭当前 tab
+                if action_type == "close_tab":
+                    browser = state.get("browser")
+                    if not browser:
+                        return "❌ close_tab requires browser connection (not available in runner mode)"
+                    
+                    current_url = page.url
+                    page.close()
+                    
+                    # 获取剩余的 pages，切换到第一个
+                    all_pages = []
+                    for ctx in browser.contexts:
+                        all_pages.extend(ctx.pages)
+                    
+                    if all_pages:
+                        new_page = all_pages[0]
+                        new_page.bring_to_front()
+                        state["page"] = new_page
+                        _refresh_page_context(state)
+                        return f"✅ Closed tab ({current_url}), switched to: {new_page.url}"
+                    else:
+                        state["page"] = None
+                        return f"✅ Closed tab ({current_url}), no remaining tabs"
 
                 if action_type == "assert":
 
@@ -952,9 +1222,39 @@ Markdown plan:
 
                     raise AssertionError(f"Text not found: '{expected}'")
 
-# click/fill/hover/select 需要 selector
-                loc = _locate(page, selector).first
-                loc.wait_for(state="visible", timeout=timeout_ms)
+# click/fill/hover/select/press 需要 selector
+                # 使用 safe_locate_single 替代 .first
+                if safe_locate_single:
+                    locate_result = safe_locate_single(page, selector)
+                    loc = locate_result.locator
+                    if locate_result.warning:
+                        if ui_log:
+                            ui_log(
+                                "warning",
+                                "graph_locate_multiple",
+                                action=action_type,
+                                selector=selector,
+                                url=getattr(page, "url", ""),
+                                count=locate_result.count,
+                                selected_index=locate_result.selected_index,
+                                candidates=locate_result.candidates_summary,
+                            )
+                    if locate_result.count == 0:
+                        if ui_log:
+                            ui_log("warning", "graph_locate_none", action=action_type, selector=selector, url=getattr(page, "url", ""))
+                        raise ValueError(f"No elements found for selector: {selector}")
+                else:
+                    loc = _locate(page, selector).first
+                
+                # 等待元素：优先 visible，fallback 到 attached（对 SVG 等元素更友好）
+                try:
+                    loc.wait_for(state="visible", timeout=timeout_ms)
+                except Exception:
+                    try:
+                        loc.wait_for(state="attached", timeout=5000)
+                    except Exception:
+                        pass
+                
                 try:
                     loc.scroll_into_view_if_needed(timeout=3000)
                 except Exception:
@@ -963,28 +1263,143 @@ Markdown plan:
                 # 可视化反馈（可关：如你未来加 params）
                 _highlight_locator(page, loc)
 
+                # 获取当前 context 用于导航监听
+                context = None
+                try:
+                    context = page.context
+                except Exception:
+                    pass
+
                 if action_type == "click":
-                    loc.click(timeout=timeout_ms)
-                    return f"✅ Clicked: selector={selector}"
+                    # 使用统一导航处理器
+                    if execute_with_navigation_handling and context:
+                        nav_result = execute_with_navigation_handling(
+                            page=page,
+                            action_fn=lambda: loc.click(timeout=timeout_ms),
+                            context=context,
+                            timeout_ms=3000
+                        )
+                        if ui_log:
+                            ui_log(
+                                "info",
+                                "graph_action_done",
+                                action="click",
+                                selector=selector,
+                                url_before=nav_result.url_before,
+                                url_after=nav_result.url_after,
+                                navigation_occurred=nav_result.navigation_occurred,
+                                new_page=bool(nav_result.new_page),
+                                message=nav_result.message,
+                            )
+                        if nav_result.new_page:
+                            # 接管新页面
+                            state["page"] = nav_result.new_page
+                            # 优化：禁用动画 + 清空缓存
+                            if disable_animations:
+                                disable_animations(nav_result.new_page)
+                            if clear_accessibility_cache:
+                                clear_accessibility_cache()
+                            _refresh_page_context(state)
+                            return f"✅ Clicked: selector={selector} (new tab opened: {nav_result.url_after})"
+                        elif nav_result.navigation_occurred:
+                            # 优化：禁用动画 + 清空缓存
+                            if disable_animations:
+                                disable_animations(page)
+                            if clear_accessibility_cache:
+                                clear_accessibility_cache()
+                            return f"✅ Clicked: selector={selector} (navigated to: {nav_result.url_after})"
+                        else:
+                            return f"✅ Clicked: selector={selector}"
+                    else:
+                        loc.click(timeout=timeout_ms)
+                        return f"✅ Clicked: selector={selector}"
 
                 if action_type == "hover":
-                    loc.hover(timeout=timeout_ms)
-                    return f"✅ Hovered: selector={selector}"
+                    # hover 也可能触发导航（菜单）
+                    if execute_with_navigation_handling and context:
+                        def do_hover():
+                            try:
+                                loc.hover(timeout=timeout_ms)
+                            except Exception:
+                                loc.hover(timeout=timeout_ms, force=True)
+                        nav_result = execute_with_navigation_handling(
+                            page=page,
+                            action_fn=do_hover,
+                            context=context,
+                            timeout_ms=2000
+                        )
+                        if nav_result.new_page:
+                            state["page"] = nav_result.new_page
+                            _refresh_page_context(state)
+                        return f"✅ Hovered: selector={selector}"
+                    else:
+                        try:
+                            loc.hover(timeout=timeout_ms)
+                        except Exception:
+                            loc.hover(timeout=timeout_ms, force=True)
+                        return f"✅ Hovered: selector={selector}"
 
                 if action_type == "fill":
-                    loc.fill(value or "", timeout=timeout_ms)
-                    return f"✅ Filled: selector={selector}, value={value}"
+                    # fill 可能触发表单自动提交
+                    if execute_with_navigation_handling and context:
+                        nav_result = execute_with_navigation_handling(
+                            page=page,
+                            action_fn=lambda: loc.fill(value or "", timeout=timeout_ms),
+                            context=context,
+                            timeout_ms=2000
+                        )
+                        if nav_result.new_page:
+                            state["page"] = nav_result.new_page
+                            _refresh_page_context(state)
+                            return f"✅ Filled: selector={selector}, value={value} (new tab)"
+                        elif nav_result.navigation_occurred:
+                            return f"✅ Filled: selector={selector}, value={value} (navigated)"
+                        else:
+                            return f"✅ Filled: selector={selector}, value={value}"
+                    else:
+                        loc.fill(value or "", timeout=timeout_ms)
+                        return f"✅ Filled: selector={selector}, value={value}"
 
                 if action_type == "press":
                     key = args.get("key") or value
                     if not key:
                         raise ValueError("press requires 'key' (e.g., Enter)")
-                    loc.press(str(key), timeout=timeout_ms)
-                    return f"✅ Pressed: selector={selector}, key={key}"
+                    # press Enter 经常触发导航
+                    if execute_with_navigation_handling and context:
+                        nav_result = execute_with_navigation_handling(
+                            page=page,
+                            action_fn=lambda: loc.press(str(key), timeout=timeout_ms),
+                            context=context,
+                            timeout_ms=3000
+                        )
+                        if nav_result.new_page:
+                            state["page"] = nav_result.new_page
+                            _refresh_page_context(state)
+                            return f"✅ Pressed: selector={selector}, key={key} (new tab)"
+                        elif nav_result.navigation_occurred:
+                            return f"✅ Pressed: selector={selector}, key={key} (navigated)"
+                        else:
+                            return f"✅ Pressed: selector={selector}, key={key}"
+                    else:
+                        loc.press(str(key), timeout=timeout_ms)
+                        return f"✅ Pressed: selector={selector}, key={key}"
 
                 if action_type == "select":
-                    loc.select_option(value, timeout=timeout_ms)
-                    return f"✅ Selected: selector={selector}, value={value}"
+                    # select 可能触发导航
+                    if execute_with_navigation_handling and context:
+                        nav_result = execute_with_navigation_handling(
+                            page=page,
+                            action_fn=lambda: loc.select_option(value, timeout=timeout_ms),
+                            context=context,
+                            timeout_ms=2000
+                        )
+                        if nav_result.new_page:
+                            state["page"] = nav_result.new_page
+                            _refresh_page_context(state)
+                        return f"✅ Selected: selector={selector}, value={value}"
+                    else:
+                        loc.select_option(value, timeout=timeout_ms)
+                        return f"✅ Selected: selector={selector}, value={value}"
 
                 raise ValueError(f"Unknown action_type: {action_type}")
 
@@ -1020,7 +1435,8 @@ Markdown plan:
         state["turn"] = 0
         state["maxTurns"] = int(state.get("maxTurns", 15))
         # workflow & self-heal defaults
-        state["workflow"] = (state.get("workflow") or "direct").strip().lower()
+        # 优化：默认使用 closed_loop 模式（LLM 只生成一次 Plan JSON → Runner 本地执行，更快更稳定）
+        state["workflow"] = (state.get("workflow") or "closed_loop").strip().lower()
         state["autoHeal"] = bool(state.get("autoHeal", True))
         state["maxHealRounds"] = int(state.get("maxHealRounds", 1) or 1)
         state["healRound"] = int(state.get("healRound", 0) or 0)
@@ -1037,6 +1453,11 @@ Markdown plan:
         state["toolCalls"] = []
         state["toolResults"] = []
         state["hadToolExecution"] = False
+        # 新增：资源追踪
+        state["is_cdp_mode"] = False
+        state["created_pages"] = []
+        state["created_contexts"] = []
+        state["initial_url"] = ""  # 用于 switch_tab index=0 时优先匹配回初始页面
         return state
 
     def connect_browser(state: UiState) -> UiState:
@@ -1044,6 +1465,11 @@ Markdown plan:
         连接浏览器：
         - 默认（headless=False）：优先 CDP 连接到用户已打开的 Chrome（便于测插件注入）
         - headless=True：启动新的无头 Chromium（便于纯 Web 测试）
+        
+        Page 选择策略（确定性）：
+        - 使用 select_best_page 根据 URL 评分选择最佳页面
+        - CDP 模式：禁止新建 context，无匹配时报错并列出可选页面
+        - launch 模式：可以新建 page
         """
         from playwright.sync_api import sync_playwright
 
@@ -1055,6 +1481,7 @@ Markdown plan:
 
         try:
             if headless_mode:
+                # launch 模式：新建浏览器
                 browser = p.chromium.launch(headless=True)
                 ctx = browser.new_context()
                 page = ctx.new_page()
@@ -1062,13 +1489,18 @@ Markdown plan:
                     page.goto(url, wait_until="domcontentloaded", timeout=45000)
                 state["browser"] = browser
                 state["page"] = page
+                state["is_cdp_mode"] = False
+                state["created_pages"] = [page.url]
                 _refresh_page_context(state)
                 return state
 
             # 有头：优先连接 CDP（用于测试插件注入/用户真实浏览器状态）
+            is_cdp = False
             try:
                 browser = p.chromium.connect_over_cdp("http://localhost:9222")
                 state["browser"] = browser
+                is_cdp = True
+                state["is_cdp_mode"] = True
             except Exception:
                 # CDP 失败兜底：启动新的有头 Chromium，确保至少能执行并截图
                 browser = p.chromium.launch(headless=False)
@@ -1078,36 +1510,73 @@ Markdown plan:
                     page.goto(url, wait_until="domcontentloaded", timeout=45000)
                 state["browser"] = browser
                 state["page"] = page
+                state["is_cdp_mode"] = False
+                state["created_pages"] = [page.url]
                 _refresh_page_context(state)
                 return state
 
+            # CDP 连接成功，选择页面
             page = None
-            if locate_target_page and url:
+            available_pages: List[Dict[str, Any]] = []
+            
+            # 尝试用 URL 匹配最佳页面
+            if select_best_page and url:
+                try:
+                    page, available_pages = select_best_page(browser, url)
+                except Exception:
+                    page = None
+                    available_pages = []
+            elif locate_target_page and url:
                 try:
                     page = locate_target_page(browser, url)
                 except Exception:
                     page = None
 
-            # fallback：取第一个 page
-            if not page:
+            # 如果没有匹配的页面，选择第一个可用页面（CDP 模式下不新建页面）
+            if not page and is_cdp:
+                # 直接从 browser.contexts 获取第一个页面
                 try:
-                    if browser.contexts and browser.contexts[0].pages:
-                        page = browser.contexts[0].pages[0]
-                except Exception:
-                    page = None
-
-            # fallback：创建新 page
-            if not page:
+                    for ctx in browser.contexts:
+                        if ctx.pages:
+                            page = ctx.pages[0]
+                            if ui_log:
+                                ui_log("info", "connect_browser_fallback_page", 
+                                       url=page.url, reason="no_matching_page")
+                            break
+                except Exception as e:
+                    if ui_log:
+                        ui_log("warning", "connect_browser_fallback_failed", error=str(e))
+                
+                # 如果仍然没有页面
+                if not page:
+                    err = f"Error: No pages available in Chrome. Please open a page first."
+                    state["pageInfo"] = err
+                    state["pageAccessibility"] = ""
+                    return state
+            
+            # 非 CDP 模式且没有页面：新建 page
+            if not page and not is_cdp:
                 ctx = browser.contexts[0] if browser.contexts else browser.new_context()
                 page = ctx.new_page()
                 if url:
                     page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                state["created_pages"] = [page.url]
 
             state["page"] = page
+            # 记录初始 URL，用于 switch_tab index=0 时优先匹配回初始页面
+            try:
+                state["initial_url"] = page.url if page else ""
+            except Exception:
+                state["initial_url"] = state.get("url", "")
             _refresh_page_context(state)
             return state
 
         except Exception as e:
+            # 异常时尝试清理资源
+            try:
+                cleanup_resources(state)
+            except Exception:
+                pass
             # 错误信息必须为英文
             err = f"Error: Failed to connect to Chrome via CDP (http://localhost:9222): {str(e)}"
             err += "\n\nPlease start Chrome with remote debugging enabled:\n"
@@ -1117,6 +1586,60 @@ Markdown plan:
             state["pageInfo"] = err
             state["pageAccessibility"] = ""
             return state
+    
+    def cleanup_resources(state: UiState) -> None:
+        """
+        全链路资源清理，支持异常路径
+        
+        CDP 模式：只 disconnect，不 close browser（保留用户浏览器）
+        launch 模式：正常 close browser
+        """
+        browser = state.get("browser")
+        is_cdp = state.get("is_cdp_mode", False)
+        
+        # 额外检测：如果 browser 有 disconnect 方法但没有 _process 属性，说明是 CDP 连接
+        # （launch 的 browser 会有 _process 属性表示启动的进程）
+        if browser:
+            try:
+                # 更可靠的 CDP 检测：CDP 连接的 browser 没有 _process 属性
+                if hasattr(browser, "disconnect") and not hasattr(browser, "_process"):
+                    is_cdp = True
+                # 另一种检测方式：检查是否有 _connection 属性
+                if hasattr(browser, "_connection") and hasattr(browser, "disconnect"):
+                    # 有 disconnect 方法的通常是 CDP 连接
+                    is_cdp = True
+            except Exception:
+                pass
+        
+        if browser:
+            if is_cdp:
+                # CDP 模式：绝对不能 close browser！只 disconnect
+                # 不关闭任何 page，因为都是用户的
+                if ui_log:
+                    ui_log("info", "cleanup", mode="cdp", action="disconnect_only")
+                if hasattr(browser, "disconnect"):
+                    try:
+                        browser.disconnect()
+                    except Exception:
+                        pass
+                # 重要：CDP 模式下不调用 browser.close()
+            else:
+                # launch 模式：正常关闭
+                if ui_log:
+                    ui_log("info", "cleanup", mode="launch", action="browser_close")
+                if hasattr(browser, "close"):
+                    try:
+                        browser.close()
+                    except Exception:
+                        pass
+        
+        # 停止 playwright
+        p = state.get("playwright")
+        if p:
+            try:
+                p.stop()
+            except Exception:
+                pass
 
     def build_prompt(state: UiState) -> UiState:
         NL = "\n"
@@ -1488,7 +2011,7 @@ Markdown plan:
         return "build_prompt" if bool(state.get("autoContinue", False)) else "finalize"
 
     def finalize(state: UiState) -> UiState:
-        # 若无 finalResponse：优先返回工具执行摘要；否则返回明确错误，避免“Done”
+        # 若无 finalResponse：优先返回工具执行摘要；否则返回明确错误，避免"Done"
         if not (state.get("finalResponse") or "").strip():
             tool_results = state.get("toolResults") or []
             if tool_results:
@@ -1502,27 +2025,9 @@ Markdown plan:
         state["finalPlan"] = state.get("finalPlan") or state.get("plan")
         state["finalReport"] = state.get("finalReport") or state.get("report")
 
-        # 资源清理
+        # 资源清理：使用统一的 cleanup_resources
         try:
-            browser = state.get("browser")
-            if browser:
-                # connect_over_cdp：优先断开连接；launch：关闭浏览器进程
-                if hasattr(browser, "disconnect"):
-                    try:
-                        browser.disconnect()
-                    except Exception:
-                        pass
-                if hasattr(browser, "close"):
-                    try:
-                        browser.close()
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-        try:
-            p = state.get("playwright")
-            if p:
-                p.stop()
+            cleanup_resources(state)
         except Exception:
             pass
         return state
@@ -1568,8 +2073,20 @@ Markdown plan:
         {"execute_plan": "execute_plan", "llm_step": "llm_step"},
     )
 
-    # closed_loop 模式：生成计划后直接执行
-    g.add_edge("generate_plan", "execute_plan")
+    # closed_loop 模式：生成计划后直接执行（失败则跳到 finalize）
+    def route_after_generate_plan(state: UiState) -> str:
+        # 如果 generate_plan 失败（plan 为空），直接结束
+        plan_json = (state.get("planJson") or "").strip()
+        plan = (state.get("plan") or "").strip()
+        if not plan_json and not plan:
+            return "finalize"
+        return "execute_plan"
+
+    g.add_conditional_edges(
+        "generate_plan",
+        route_after_generate_plan,
+        {"execute_plan": "execute_plan", "finalize": "finalize"},
+    )
 
     def route_after_execute_plan(state: UiState) -> str:
         if not _use_closed_loop(state):

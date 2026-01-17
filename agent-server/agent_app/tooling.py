@@ -128,13 +128,61 @@ ui_agent_tools_schema = [
             "description": """执行浏览器操作（基于Playwright）。用于分析页面、执行测试或获取信息。
 
 ## 选择器语法（推荐按优先级使用）：
-1. `testid:xxx` - 使用 data-testid 属性（最稳定）
-2. `extid:xxx` - 使用 data-ext-id 属性（插件专用）
-3. `role:button,name:登录` - 使用角色+名称（语义化）
-4. `aria:提交` - 使用 aria-label
-5. `label:用户名` / `placeholder:请输入` - 表单字段
-6. `text:登录` - 文本定位（谨慎使用）
-7. CSS 选择器 - 最后手段
+
+### 稳定性最高（推荐）
+1. `testid:xxx` - data-testid 属性（最稳定）
+2. `id:xxx` - 原生 id 属性（如 id="email" → id:email）
+3. `name:xxx` - HTML name 属性（表单元素常用，如 name="email" → name:email）
+4. `extid:xxx` - data-ext-id 属性（插件专用）
+
+### 表单元素定位
+5. `placeholder:xxx` - placeholder 属性（输入框推荐）
+6. `label:xxx` - 关联的 label 文本
+7. `type:xxx` - input 类型（如 type:email、type:password、type:submit）
+8. `value:xxx` - value 属性（按钮常用，如 value:登录）
+
+### 语义化定位
+9. `role:button,name:登录` - 角色+accessible name（注意：name 是无障碍名称！）
+10. `aria:提交` - aria-label 属性
+11. `title:xxx` - title 属性（鼠标悬停提示）
+12. `alt:xxx` - 图片 alt 属性
+
+### 链接与样式
+13. `href:xxx` - 链接 href（支持部分匹配）
+14. `class:xxx` - CSS class 名称
+
+### 通用选择器
+15. `data:data-foo=bar` - 任意 data-* 属性
+16. `text:登录` - 文本定位（谨慎使用，易变）
+17. `xpath://div[@class='xxx']` - XPath 选择器
+18. CSS 选择器 - 最后手段（如 #id、.class、[attr=val]）
+
+## 多元素精确定位（解决 strict mode violation）
+当选择器匹配多个元素时，使用以下方式精确定位：
+- 链式筛选：`testid:price-plan >> text:$6.49`（在 testid 结果中筛选包含 $6.49 的）
+- 索引选择：`testid:price-plan:nth(2)`（选择第 3 个匹配元素，0-based）
+- 文本筛选：`testid:price-plan,has:Yearly`（筛选包含 Yearly 文本的元素）
+- 组合使用：`testid:price-plan,has:$6.49:nth(0)`
+
+## 文件上传操作
+使用 `upload` action_type 进行文件上传：
+- `selector`: 上传按钮或 input[type=file] 元素的选择器
+- `file_path`: 要上传的文件路径（绝对路径），多个文件用逗号分隔
+- 示例：action_type="upload", selector="testid:uploadfile", file_path="/path/to/file.png"
+
+## 页面导航操作
+- `go_back`: 浏览器后退，适用于同 tab 内 URL 跳转后返回上一页
+- `switch_tab`: 切换到指定 tab，支持两种方式：
+  - 通过 URL 匹配（推荐）：`tab_url` 参数，支持部分匹配，如 tab_url="pricing" 匹配包含 pricing 的 URL
+  - 通过索引：`tab_index` 参数（0 表示第一个 tab，-1 表示最后一个）
+- `close_tab`: 关闭当前 tab，自动切换到剩余的第一个 tab
+- 示例：action_type="switch_tab", tab_url="solvely.ai/pricing" 或 action_type="close_tab"
+
+## 重要区分：
+- `id:email` → 匹配 id="email"
+- `name:email` → 匹配 name="email"（HTML 属性）
+- `role:textbox,name:xxx` → name 是 accessible name（来自 aria-label/label/placeholder），不是 HTML name 属性！
+- 对于表单输入框，优先使用 `id:` > `name:` > `placeholder:` > `type:`
 
 ## 执行策略（由执行器实现）：
 - 自动等待页面稳定（domcontentloaded）
@@ -157,7 +205,11 @@ ui_agent_tools_schema = [
                             "hover",
                             "select",
                             "assert",
-                            "wait"
+                            "wait",
+                            "upload",
+                            "go_back",
+                            "switch_tab",
+                            "close_tab"
                         ],
                         "description": "操作类型"
                     },
@@ -180,6 +232,18 @@ ui_agent_tools_schema = [
                     "option": {
                         "type": "string",
                         "description": "select 操作要选择的 option 值或文本"
+                    },
+                    "file_path": {
+                        "type": "string",
+                        "description": "upload 操作要上传的文件路径（绝对路径或相对路径）。支持单个文件或多个文件（用逗号分隔）"
+                    },
+                    "tab_index": {
+                        "type": "integer",
+                        "description": "switch_tab 操作的目标 tab 索引（0 表示第一个 tab，-1 表示最后一个 tab）"
+                    },
+                    "tab_url": {
+                        "type": "string",
+                        "description": "switch_tab 操作通过 URL 匹配切换 tab（支持部分匹配，优先于 tab_index）"
                     },
                     "js_code": {
                         "type": "string",
