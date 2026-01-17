@@ -333,6 +333,37 @@ def create_app(
         except Exception as e:
             return {"status": "error", "message": f"Error: {str(e)}"}
 
+    # -----------------------------
+    # Assets 静态资源服务
+    # -----------------------------
+    from fastapi.responses import FileResponse
+    from agent_app.assets.storage import find_asset_file, get_assets_dir
+    import os
+
+    @app.get("/api/assets/{filename}")
+    def get_asset(filename: str):
+        """获取上传的资源文件（截图等）"""
+        # 安全：只允许访问文件名，防止路径穿越
+        safe_filename = os.path.basename(filename)
+        assets_dir = get_assets_dir()
+        filepath = os.path.join(assets_dir, safe_filename)
+        
+        if not os.path.exists(filepath) or not os.path.isfile(filepath):
+            raise HTTPException(status_code=404, detail="Asset not found")
+        
+        # 根据扩展名设置 MIME 类型
+        ext = os.path.splitext(safe_filename)[1].lower()
+        media_types = {
+            ".webp": "image/webp",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".gif": "image/gif",
+        }
+        media_type = media_types.get(ext, "application/octet-stream")
+        
+        return FileResponse(filepath, media_type=media_type)
+
     # health
     @app.get("/health")
     def health_check():
@@ -352,6 +383,7 @@ def create_app(
                 "POST /api/ui_agent - UI 自动化智能体",
                 "GET /api/ui_agent/screenshots - 获取截图列表",
                 "DELETE /api/ui_agent/screenshots - 清空截图",
+                "GET /api/assets/{filename} - 获取资源文件（截图等）",
                 "DELETE /api/session/{sessionId} - 清除会话",
             ],
             "ask_configs": get_all_configs_summary(),

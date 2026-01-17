@@ -13,7 +13,9 @@ PluginCode/
 ├── agent-server/          # 🐍 Python 后端服务 (FastAPI)
 │   ├── agent_server.py     # 启动入口（FastAPI）
 │   ├── requirements.txt    # Python 依赖
-│   ├── run_agent.sh        # 启动脚本（可选）
+│   ├── run_agent.sh        # 启动脚本（Agent 服务）
+│   ├── run_chrome.sh       # 启动脚本（有头 Chrome）
+│   ├── run_chrome_headless.sh # 启动脚本（新无头 Chrome）
 │   ├── .env                # 环境变量配置（需自行创建）
 │   └── agent_app/          # 主要后端代码
 │       ├── app_factory.py  # FastAPI 路由与依赖装配
@@ -128,6 +130,9 @@ npm run build
 cd agent-server
 ./run_chrome.sh
 
+# （可选）新无头模式：支持扩展与 chrome-extension:// 页面
+./run_chrome_headless.sh
+
 # 2. 启动 Agent 服务（必需）
 ./run_agent.sh
 
@@ -148,6 +153,76 @@ npm run build
 2. 开启「开发者模式」（右上角开关）
 3. 点击「加载已解压的扩展程序」
 4. 选择目录：`solvely-mvp/.output/chrome-mv3`
+
+---
+
+## 👻 新无头模式（Chrome 112+）
+
+新增脚本：`agent-server/run_chrome_headless.sh`
+
+说明：
+- 使用 `--headless=new` 启动真实 Chrome 内核（支持扩展）
+- 仍通过 `localhost:9222` 提供 CDP 调试端口
+- 与 `run_chrome.sh` 共用 `USER_DATA_DIR=/tmp/chrome_dev_test`，可复用插件与登录状态
+
+### 🔄 有头/无头模式流程图
+
+```mermaid
+flowchart TB
+    subgraph HeadMode [有头模式 - 调试与准备]
+        A[启动有头 Chrome] --> B[安装插件/登录账号]
+        B --> C[配置测试环境]
+        C --> D[关闭 Chrome]
+    end
+
+    subgraph HeadlessMode [无头模式 - 后台执行]
+        E[杀掉占用端口进程] --> F[启动无头 Chrome]
+        F --> G[启动 Agent Server]
+        G --> H[在日常浏览器中打开插件]
+        H --> I[执行 UI 自动化测试]
+    end
+
+    D --> E
+    
+    style HeadMode fill:#e1f5fe
+    style HeadlessMode fill:#f3e5f5
+```
+
+### 📋 详细操作步骤
+
+**方式一：纯有头模式**（可视化调试）
+```bash
+cd agent-server
+./run_chrome.sh      # 启动有头 Chrome（能看到浏览器界面）
+./run_agent.sh       # 启动 Agent 服务
+# 在有头 Chrome 中直接测试
+```
+
+**方式二：无头模式**（后台运行，推荐）
+```bash
+# 步骤 1：先用有头模式准备环境（首次或需要更新时）
+cd agent-server
+./run_chrome.sh      # 启动有头 Chrome
+# → 安装测试插件
+# → 登录需要的账号
+# → 配置好测试环境
+# → 完全关闭 Chrome（Cmd+Q）
+
+# 步骤 2：切换到无头模式
+lsof -t -i:9222 | xargs kill -9   # 确保端口释放
+./run_chrome_headless.sh          # 启动无头 Chrome（后台运行）
+./run_agent.sh                    # 启动 Agent 服务
+
+# 步骤 3：在日常浏览器中测试
+# 打开你日常使用的 Chrome，安装 AITestCase 插件
+# 在插件中执行 UI 自动化测试（会在无头 Chrome 中执行）
+```
+
+### ⚠️ 注意事项
+
+- **同一时间只能运行一个 Chrome**（共享数据目录 `/tmp/chrome_dev_test`）
+- **切换模式前必须关闭前一个 Chrome**：`Cmd+Q` 或 `lsof -t -i:9222 | xargs kill -9`
+- **无头模式下插件自动加载**：因为共享数据目录，有头模式安装的插件无头模式也能用
 
 ---
 
@@ -307,6 +382,9 @@ curl -X POST http://localhost:8000/api/ui_agent \
     }
   }'
 ```
+说明：
+- UI 自动化实际模式由启动脚本决定：`run_chrome.sh`（有头）或 `run_chrome_headless.sh`（新无头）
+- 只要 `localhost:9222` 可用，后端即可通过 CDP 控制浏览器
 
 ---
 
@@ -388,6 +466,7 @@ agent-server/agent_app/
 │   └── ui_graph.py        # UI 自动化执行图
 └── ui/
     ├── browser_helpers.py # 元素定位与页面快照
+    ├── runner.py          # UI 自动化执行器（Plan DSL 执行、自愈、证据采集）
     └── screenshots.py     # UI 自动化截图管理
 ```
 
@@ -526,10 +605,12 @@ ls solvely-mvp/src/entrypoints/sidepanel/
 
 # 或使用脚本
 bash agent-server/run_chrome.sh
+bash agent-server/run_chrome_headless.sh
 ```
 
 说明：
 - 有头模式会连接到 `localhost:9222` 的 Chrome 实例并在真实页面上执行点击/输入等操作
+- 新无头模式同样通过 `localhost:9222` 提供调试端口
 - 若未开启调试端口，UI 自动化会无法连接浏览器（请先启动上述命令）
 
 ---
@@ -618,6 +699,23 @@ git push origin develop
 ---
 
 ## 📝 更新日志
+
+### v0.0.6 (2025-01)
+- ✅ 新增新无头模式 (`--headless=new`) 支持，可在后台加载插件运行测试
+- ✅ 优化 UI 自动化页面连接逻辑，支持 CDP 模式下自动导航与页面复用
+- ✅ 统一 Chrome 启动脚本数据目录，实现有头/无头模式插件状态共享
+- ✅ 优化 README 文档，增加无头模式详细说明
+
+### v0.0.5 (2025-01)
+- ✅ 升级 Ask 接口：新增性能与控制参数
+  - `ASK_DEBUG`：开启详细日志输出
+  - `ASK_USE_LLM_SUMMARY`：长对话自动摘要（超长历史时用 LLM 压缩）
+  - `ASK_ENABLE_REPAIR`：允许 testprd 修复机制
+  - `ASK_TESTCASE_MAX_TOKENS` / `ASK_TESTPOINT_MAX_TOKENS` 等：按任务类型配置最大输出长度
+  - `ASK_TESTCASE_THINKING_BUDGET` 等：控制思考预算，优化响应速度
+- ✅ 增强上下文管理：引入长对话自动摘要机制，优化多轮会话记忆
+- ✅ 模型参数微调：支持针对 TestCase / TestPoint / PRD 等不同任务独立配置
+- ✅ 错误修复与稳定性提升
 
 ### v0.0.4 (2025-12)
 - ✅ PM/DEV/QA 统一布局（含右侧文档预览区）
