@@ -4462,7 +4462,6 @@ const confirmAndGenerateTestCases = async () => {
           params: {
               text: useDocRefs ? '' : baseText,
           },
-          instruction: '基于优化后的PRD（可参考测试点）生成可执行测试用例，覆盖正向/边界/异常/权限/数据校验。',
           docRefs: useDocRefs ? docRefs : undefined,
           additionalPrds: useDocRefs ? undefined : additionalPrdParams
       });
@@ -4550,7 +4549,6 @@ const proceedToTestPoints = async () => {
           params: {
               text: useDocRefs ? '' : baseText,
           },
-          instruction: '请基于优化后的PRD按模块输出测试点，覆盖正向/边界/异常/权限/数据校验，并标注优先级。',
           docRefs: useDocRefs ? docRefs : undefined,
           additionalPrds: useDocRefs ? undefined : additionalPrdParams
       });
@@ -4604,7 +4602,6 @@ const proceedToTestCasesFromPRD = async () => {
           params: {
               text: useDocRefs ? '' : baseText,
           },
-          instruction: '基于优化后的PRD直接生成可执行测试用例（含前置条件/步骤/预期结果/优先级），覆盖正向/边界/异常/权限/数据校验。',
           docRefs: useDocRefs ? docRefs : undefined,
           additionalPrds: useDocRefs ? undefined : additionalPrdParams
       });
@@ -4674,7 +4671,6 @@ const proceedToTestCases = async () => {
           params: {
               text: useDocRefs ? '' : baseText,
           },
-          instruction: '基于测试点生成可执行测试用例（含前置条件/步骤/预期结果/优先级），覆盖正向/边界/异常/权限/数据校验。',
           docRefs: useDocRefs ? docRefs : undefined,
           additionalPrds: useDocRefs ? undefined : additionalPrdParams
       });
