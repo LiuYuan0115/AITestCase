@@ -1,0 +1,87 @@
+{
+  "id": "template_plugin_solve",
+  "name": "插件解题流程",
+  "description": "测试插件的核心解题功能，包括打开目标页面、触发分析、等待结果",
+  "category": "solve",
+  "variables": [
+    {
+      "name": "targetUrl",
+      "label": "目标页面",
+      "type": "url",
+      "required": true,
+      "placeholder": "https://example.com/question"
+    },
+    {
+      "name": "navItem",
+      "label": "导航项名称",
+      "type": "string",
+      "required": false,
+      "placeholder": "如: 功能模块A（可选）"
+    }
+  ],
+  "steps": [
+    {
+      "id": "s1",
+      "name": "打开目标页面",
+      "target": "page",
+      "action": "navigate",
+      "params": { "value": "{{targetUrl}}" },
+      "onError": "fail",
+      "enabled": true
+    },
+    {
+      "id": "s2",
+      "name": "点击导航项",
+      "target": "page",
+      "action": "click",
+      "selector": { "type": "ai", "value": "{{navItem}} 导航链接" },
+      "onError": "skip",
+      "enabled": true
+    },
+    {
+      "id": "s3",
+      "name": "等待页面加载",
+      "target": "page",
+      "action": "wait",
+      "params": { "timeout": 3000 },
+      "onError": "skip",
+      "enabled": true
+    },
+    {
+      "id": "s4",
+      "name": "点击插件分析按钮",
+      "target": "plugin",
+      "action": "click",
+      "selector": { "type": "ai", "value": "开始分析/提取按钮" },
+      "onError": "fail",
+      "enabled": true
+    },
+    {
+      "id": "s5",
+      "name": "等待分析完成",
+      "target": "plugin",
+      "action": "wait",
+      "selector": { "type": "ai", "value": "分析结果或生成完成提示" },
+      "params": { "timeout": 30000, "waitFor": "visible" },
+      "onError": "fail",
+      "enabled": true
+    },
+    {
+      "id": "s6",
+      "name": "截图生成结果",
+      "target": "plugin",
+      "action": "screenshot",
+      "onError": "skip",
+      "enabled": true
+    }
+  ],
+  "options": {
+    "headless": false,
+    "autoScreenshot": true,
+    "autoHeal": true,
+    "maxRetries": 2,
+    "stepTimeout": 30000,
+    "flowTimeout": 120000
+  },
+  "isPreset": true
+}

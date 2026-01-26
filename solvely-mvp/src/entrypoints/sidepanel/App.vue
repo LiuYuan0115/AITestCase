@@ -303,6 +303,7 @@
             <!-- 自动化测试步骤 -->
             <template v-else-if="projectState.currentStep === 'auto_test'">
               <button @click="projectState.currentStep = 'test_case'" class="btn-secondary step-action-btn">← 返回测试用例</button>
+              <button @click="showFlowEditor = true" class="btn-primary step-action-btn">🎨 可视化测试</button>
               <button @click="showScreenshots" class="btn-secondary step-action-btn">📸 查看截图</button>
               <button v-if="projectState.documents.uiPlan" @click="toggleUiDoc('plan')" class="btn-secondary step-action-btn">📋 测试计划</button>
               <button v-if="projectState.documents.uiPlanJson" @click="toggleUiDoc('plan_json')" class="btn-secondary step-action-btn">🧩 Plan JSON</button>
@@ -888,6 +889,11 @@
             </div>
         </div>
         
+    <!-- 可视化测试面板（FlowEditor） -->
+    <div v-if="showFlowEditor" class="flow-editor-overlay">
+      <FlowEditor @close="showFlowEditor = false" @result="handleFlowResult" />
+    </div>
+
     <!-- 截图弹窗（QA自动化测试用） -->
         <div v-if="showScreenshotModal" class="screenshot-modal-overlay" @click.self="showScreenshotModal = false">
             <div class="screenshot-modal">
@@ -934,6 +940,7 @@ import { postRetrieve, ask, uploadImage, prdAgent, clearPrdSession, testCaseAgen
 import { uploadRawPrd, uploadAuxDoc, upsertDocs, type DocUpsertItem } from '@/utils/docStoreApi';
 import type { DocRef } from '@/utils/refRegistry';
 import MindMapPreview from '@/components/MindMapPreview.vue';
+import FlowEditor from '@/components/flow/FlowEditor.vue';
 import { getLocalAgentUrl } from '@/utils/agentUrl';
 import { browser } from 'wxt/browser';
 import { ensureConnection, sendMessageToContent, getActiveTab, isInjectableTab } from '@/utils/connectionHelper';
@@ -1538,6 +1545,7 @@ const isHeadlessMode = ref(false); // UI自动化测试：有头/无头模式
 const uiWorkflowMode = ref<'direct' | 'closed_loop'>('closed_loop'); // UI自动化工作流模式
 const uiAutoHeal = ref(true); // 闭环模式自愈开关
 const uiMaxHealRounds = ref(1); // 闭环模式最大自愈轮数
+const showFlowEditor = ref(false); // 可视化测试面板开关
 
 // ================= 参考确认弹窗 =================
 const showReferenceConfirmModal = ref(false); // 是否显示参考确认弹窗
@@ -4725,6 +4733,22 @@ const toggleUiDoc = (type: 'plan' | 'plan_json' | 'report') => {
     viewMode.value = 'preview';
 };
 
+// 处理可视化测试结果
+const handleFlowResult = (result: any) => {
+    console.log('[App] FlowEditor result:', result);
+    // 将结果转换为报告格式
+    if (result && result.status) {
+        const reportMd = `# 可视化测试完成\n\n状态: ${result.status}\n通过: ${result.summary?.passed || 0}\n失败: ${result.summary?.failed || 0}`;
+        projectState.documents.uiReport = reportMd;
+        // 提示用户
+        if (result.status === 'success') {
+            addMessage('ai', `✅ 可视化测试执行完成！通过 ${result.summary?.passed || 0} 个步骤，失败 ${result.summary?.failed || 0} 个步骤。`);
+        } else {
+            addMessage('ai', `⚠️ 可视化测试执行完成，部分步骤失败。通过 ${result.summary?.passed || 0} 个，失败 ${result.summary?.failed || 0} 个。`);
+        }
+    }
+};
+
 // 显示截图弹窗
 const showScreenshots = async () => {
     showScreenshotModal.value = true;
@@ -7152,6 +7176,19 @@ button {
 .markdown-preview :deep(pre) :deep(code) {
   background: none;
   padding: 0;
+}
+
+/* Flow Editor Overlay */
+.flow-editor-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #f8f9fa;
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Screenshot Modal */

@@ -309,6 +309,12 @@ def _locate_by_prefix(page: Any, selector_str: str):
         except Exception:
             pass
 
+    # 19. 检测 [data-testid="xxx"] 格式的 CSS 选择器
+    # 使用 get_by_test_id() 以支持 Shadow DOM 穿透
+    testid_match = re.match(r'\[data-testid=["\']([^"\']+)["\']\]', selector_str)
+    if testid_match:
+        return page.get_by_test_id(testid_match.group(1))
+
     # CSS 选择器（最后）
     return page.locator(selector_str)
 

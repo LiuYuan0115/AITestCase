@@ -364,6 +364,18 @@ def create_app(
         
         return FileResponse(filepath, media_type=media_type)
 
+    # -----------------------------
+    # Flow（可视化测试）
+    # -----------------------------
+    from agent_app.flow.routes import router as flow_router
+    from agent_app.flow.template_store import init_template_store
+    
+    # 初始化模板存储
+    init_template_store(session_store=store)
+    
+    # 注册 Flow 路由
+    app.include_router(flow_router)
+
     # health
     @app.get("/health")
     def health_check():
@@ -385,6 +397,12 @@ def create_app(
                 "DELETE /api/ui_agent/screenshots - 清空截图",
                 "GET /api/assets/{filename} - 获取资源文件（截图等）",
                 "DELETE /api/session/{sessionId} - 清除会话",
+                "POST /api/flow/execute - 执行可视化测试流程",
+                "GET /api/flow/status/{taskId} - 获取执行状态（SSE）",
+                "GET /api/flow/result/{taskId} - 获取执行结果",
+                "GET /api/flow/templates - 获取模板列表",
+                "POST /api/flow/templates - 保存模板",
+                "DELETE /api/flow/templates/{id} - 删除模板",
             ],
             "ask_configs": get_all_configs_summary(),
         }
