@@ -6,6 +6,62 @@ import os
 from pathlib import Path
 
 
+def load_skill(skill_name: str) -> str:
+    """
+    加载 Skill Prompt 文件
+
+    优先从 skills/ 目录加载，然后尝试 prompts/ 目录。
+
+    Args:
+        skill_name: skill 文件名（不含路径和扩展名），例如 "qa-engineer" 或 "webapp-testing"
+
+    Returns:
+        skill 文件内容
+    """
+    current_dir = Path(__file__).parent
+
+    # 优先查找 skills/ 目录
+    skills_path = current_dir / "skills" / f"{skill_name}.md"
+    if skills_path.exists():
+        try:
+            return skills_path.read_text(encoding="utf-8")
+        except Exception as e:
+            raise RuntimeError(f"Failed to load skill {skill_name}: {e}")
+
+    # 回退到 prompts/ 目录
+    prompts_path = current_dir / "prompts" / f"{skill_name}.md"
+    if prompts_path.exists():
+        try:
+            return prompts_path.read_text(encoding="utf-8")
+        except Exception as e:
+            raise RuntimeError(f"Failed to load skill {skill_name}: {e}")
+
+    raise RuntimeError(f"Skill file not found: {skill_name} (searched in skills/ and prompts/)")
+
+
+def get_available_skills() -> list:
+    """
+    获取所有可用的 Skills 列表
+
+    Returns:
+        skill 名称列表
+    """
+    current_dir = Path(__file__).parent
+    skills = []
+
+    # 从 skills/ 目录
+    skills_dir = current_dir / "skills"
+    if skills_dir.exists():
+        skills.extend([f.stem for f in skills_dir.glob("*.md")])
+
+    # 从 prompts/ 目录
+    prompts_dir = current_dir / "prompts"
+    if prompts_dir.exists():
+        skills.extend([f.stem for f in prompts_dir.glob("*.md")])
+
+    return list(set(skills))
+
+
 def load_prompt(env_key: str, default: str) -> str:
     """
     通过环境变量覆盖 prompt。

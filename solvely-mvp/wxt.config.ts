@@ -5,13 +5,20 @@ export default defineConfig({
   modules: ['@wxt-dev/module-vue'],
   srcDir: 'src',
   outDir: '.output',
+  imports: {
+    addons: {
+      vueTemplate: true,
+    },
+    // 禁用自定义目录扫描，只保留 WXT 内置导入
+    dirs: [],
+  },
   zip: {
     artifactTemplate: 'AITestCase-{{version}}-{{browser}}.zip'
   },
   manifest: {
     name: "AI Test Case",
     description: "Automated PRD & Test Case Analysis",
-    version: "0.0.5",
+    version: "0.0.7",
     // 插件图标（占位资源：可用图四同名覆盖 `public/icons/logo.svg`）
     icons: {
       "16": "icons/logo.svg",

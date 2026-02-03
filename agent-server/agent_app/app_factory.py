@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+import io
+from typing import Any, Dict, Optional, List
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Body
 from fastapi.middleware.cors import CORSMiddleware
 
 from agent_app.graphs.ask_graph import DocRefMiss, build_ask_graph
@@ -21,9 +22,18 @@ from agent_app.schemas import (
     UIAgentRequest,
     UIAgentResponse,
 )
-from agent_app.session_store import SessionStore
+from agent_app.session_store import SessionStore, ImprovedSessionStore, CHROMA_AVAILABLE
 from agent_app.ui.screenshots import list_screenshots, clear_screenshots
 from agent_app.ask_config import get_all_configs_summary
+from agent_app.file_processor import FileProcessor
+from agent_app.evaluator import Evaluator
+from agent_app.config_manager import config
+from agent_app.task_queue import task_queue
+from agent_app.batch_upload import BatchUploadProcessor
+import os
+import json
+import asyncio
+import time
 
 
 def create_app(
@@ -57,7 +67,25 @@ def create_app(
         allow_headers=["*"],
     )
 
-    store = session_store or SessionStore(max_rounds=10)
+    # 选择 SessionStore 实现（支持 ChromaDB 向量检索）
+    if session_store:
+        store = session_store
+    else:
+        # 环境变量控制：USE_CHROMADB=true 启用向量数据库
+        use_chromadb = config.USE_CHROMADB
+
+        if use_chromadb and CHROMA_AVAILABLE:
+            print("🔍 使用 ImprovedSessionStore (ChromaDB 向量检索)")
+            try:
+                store = ImprovedSessionStore(max_rounds=10)
+            except Exception as e:
+                print(f"⚠️  ImprovedSessionStore 初始化失败，回退到 SessionStore: {e}")
+                store = SessionStore(max_rounds=10)
+        else:
+            if use_chromadb and not CHROMA_AVAILABLE:
+                print("⚠️  USE_CHROMADB=true 但 ChromaDB 未安装，使用普通 SessionStore")
+            store = SessionStore(max_rounds=10)
+
     ask_graph = build_ask_graph(openai_client, model_name, session_store=store, anthropic_client=anthropic_client)
     chat_graph = build_chat_graph(openai_client, model_name, session_store=store, anthropic_client=anthropic_client)
     ui_graph = build_ui_graph(openai_client, model_name, session_store=store, anthropic_client=anthropic_client)
@@ -122,6 +150,137 @@ def create_app(
             },
             "content": doc.get("content") or "",
         }
+
+    @app.delete("/api/docs/{doc_id}")
+    async def docs_delete(doc_id: str, session_id: Optional[str] = None):
+        """
+        删除文档
+
+        从知识库/会话文档中删除指定文档。
+        支持从 ChromaDB 的所有 collection 中删除。
+
+        Args:
+            doc_id: 文档 ID (sha256:...)
+            session_id: 可选会话 ID（用于清理会话关联）
+
+        Returns:
+            删除结果
+        """
+        try:
+            deleted = store.delete_doc(doc_id, session_id=session_id)
+            if deleted:
+                return {
+                    "status": "success",
+                    "docId": doc_id,
+                    "message": "文档已删除"
+                }
+            else:
+                return {
+                    "status": "error",
+                    "code": "DOC_NOT_FOUND",
+                    "docId": doc_id,
+                    "message": f"文档不存在: {doc_id}"
+                }
+        except Exception as e:
+            return {
+                "status": "error",
+                "code": "DELETE_FAILED",
+                "docId": doc_id,
+                "message": f"删除失败: {str(e)}"
+            }
+
+    @app.post("/api/docs/upload")
+    async def docs_upload_file(
+        file: UploadFile = File(...),
+        sessionId: str = Form(...),
+        title: Optional[str] = Form(None),
+        kind: Optional[str] = Form(None),
+        logicalId: Optional[str] = Form(None),
+        useOcr: bool = Form(True)
+    ):
+        """
+        文件上传端点（支持 PDF/图片/文本）
+
+        Week 2: 多模态文件解析功能
+        """
+        try:
+            # 检查文件类型
+            file_type = FileProcessor.get_file_type(file.filename)
+            if file_type == 'unknown':
+                return {
+                    "status": "error",
+                    "code": "UNSUPPORTED_FILE_TYPE",
+                    "message": f"不支持的文件类型: {file.filename}。支持: PDF、图片(PNG/JPG/WebP)、文本(TXT/MD)"
+                }
+
+            # 读取文件内容
+            file_content = await file.read()
+            file_obj = io.BytesIO(file_content)
+
+            # 处理文件
+            result = FileProcessor.process_file(
+                file_obj,
+                file.filename,
+                auto_detect=True,
+                use_ocr=useOcr
+            )
+
+            if not result['success']:
+                return {
+                    "status": "error",
+                    "code": "FILE_PROCESS_FAILED",
+                    "message": f"文件处理失败: {result['error']}"
+                }
+
+            # 存储到 SessionStore/ChromaDB
+            extracted_content = result['content']
+            doc_title = title or f"{file.filename}"
+            doc_kind = kind or file_type  # 使用文件类型作为 kind
+
+            put_result = store.put_doc(
+                content=extracted_content,
+                title=doc_title,
+                kind=doc_kind,
+                session_id=sessionId,
+                logical_id=logicalId,
+                content_type=file.content_type or "application/octet-stream",
+                tags=[file_type, "uploaded"]
+            )
+
+            return {
+                "status": "success",
+                "sessionId": sessionId,
+                "fileInfo": {
+                    "filename": file.filename,
+                    "size": len(file_content),
+                    "type": file_type,
+                    "contentType": file.content_type,
+                },
+                "docRef": {
+                    "docId": put_result.get("docId"),
+                    "hash": put_result.get("hash"),
+                    "title": doc_title,
+                    "kind": doc_kind,
+                    "logicalId": put_result.get("logicalId") or logicalId,
+                    "length": put_result.get("length"),
+                    "contentType": put_result.get("contentType"),
+                    "createdAt": put_result.get("createdAt"),
+                },
+                "isNew": put_result.get("isNew"),
+                "extracted": {
+                    "contentLength": len(extracted_content),
+                    "ocrUsed": result['metadata'].get('ocr_used', False),
+                }
+            }
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return {
+                "status": "error",
+                "code": "UPLOAD_FAILED",
+                "message": f"文件上传失败: {str(e)}"
+            }
 
     # -----------------------------
     # Session doc listing + pointers
@@ -364,15 +523,515 @@ def create_app(
         
         return FileResponse(filepath, media_type=media_type)
 
+    # -----------------------------
+    # Knowledge Archive & History
+    # -----------------------------
+
+    @app.post("/api/docs/{docId}/archive")
+    def archive_document(
+        docId: str,
+        sessionId: str = Body(...),
+        tags: Optional[List[str]] = Body(None)
+    ):
+        """
+        归档确认的测试用例到历史库
+
+        Args:
+            docId: 文档 ID
+            sessionId: 会话 ID
+            tags: 可选标签列表
+
+        Returns:
+            归档结果
+        """
+        if not isinstance(store, ImprovedSessionStore):
+            return {
+                "status": "error",
+                "message": "Archive feature requires ChromaDB (USE_CHROMADB=true)"
+            }
+
+        try:
+            metadata = {"tags": tags or []}
+            success = store.archive_to_history(
+                doc_id=docId,
+                session_id=sessionId,
+                metadata=metadata
+            )
+
+            if success:
+                return {
+                    "status": "success",
+                    "docId": docId,
+                    "message": "Document archived successfully"
+                }
+            else:
+                return {
+                    "status": "error",
+                    "docId": docId,
+                    "message": "Archive failed (document not found or empty)"
+                }
+
+        except Exception as e:
+            return {
+                "status": "error",
+                "docId": docId,
+                "message": f"Archive error: {str(e)}"
+            }
+
+    @app.get("/api/history/search")
+    def search_history(query: str, top_k: int = 3):
+        """
+        搜索历史测试用例
+
+        Args:
+            query: 搜索查询
+            top_k: 返回结果数量（默认3）
+
+        Returns:
+            历史用例列表
+        """
+        if not isinstance(store, ImprovedSessionStore):
+            return {
+                "status": "error",
+                "message": "History search requires ChromaDB (USE_CHROMADB=true)",
+                "results": []
+            }
+
+        if not query or not query.strip():
+            return {
+                "status": "error",
+                "message": "Query is empty",
+                "results": []
+            }
+
+        try:
+            results = store.search_history(query, top_k=min(top_k, 10))
+
+            return {
+                "status": "success",
+                "query": query,
+                "count": len(results),
+                "results": results
+            }
+
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Search error: {str(e)}",
+                "results": []
+            }
+
+    @app.get("/api/history/stats")
+    def get_history_stats():
+        """
+        获取历史库统计信息
+
+        Returns:
+            历史库统计数据
+        """
+        if not isinstance(store, ImprovedSessionStore):
+            return {
+                "status": "error",
+                "message": "History stats requires ChromaDB (USE_CHROMADB=true)"
+            }
+
+        try:
+            stats = store.get_collection_stats()
+
+            return {
+                "status": "success",
+                "stats": {
+                    "total_history_cases": stats.get("history_cases", 0),
+                    "total_session_docs": stats.get("session_docs", 0),
+                    "total_company_knowledge": stats.get("company_knowledge", 0),
+                }
+            }
+
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Stats error: {str(e)}"
+            }
+
+    # -----------------------------
+    # Knowledge Base API (Week 8)
+    # -----------------------------
+
+    @app.get("/api/knowledge/list")
+    def list_knowledge_docs(
+        session_id: Optional[str] = None,
+        category: Optional[str] = None,
+        limit: int = 100
+    ):
+        """
+        列出知识库文档
+
+        支持全局知识库查询或按会话筛选。
+
+        Args:
+            session_id: 可选会话 ID，若提供则只返回该会话的文档
+            category: 可选分类筛选（如 'prd', 'testcase', 'knowledge'）
+            limit: 返回数量限制（默认 100）
+
+        Returns:
+            文档列表，按创建时间倒序
+        """
+        try:
+            if session_id:
+                # 返回指定会话的文档
+                docs = store.list_session_docs(session_id)
+                # 按 category 筛选
+                if category:
+                    docs = [d for d in docs if d.get("kind") == category]
+            else:
+                # 返回全局知识库（所有文档）
+                include_knowledge = isinstance(store, ImprovedSessionStore)
+                docs = store.list_all_docs(
+                    limit=limit,
+                    category=category
+                )
+
+            # 按 category/kind 分组
+            grouped: Dict[str, List[Dict[str, Any]]] = {}
+            for doc in docs:
+                cat = doc.get("kind") or doc.get("category") or "未分类"
+                if cat not in grouped:
+                    grouped[cat] = []
+                grouped[cat].append(doc)
+
+            # 获取统计信息
+            total_chunks = len(docs)
+            if isinstance(store, ImprovedSessionStore):
+                try:
+                    stats = store.get_collection_stats()
+                    total_chunks = (
+                        stats.get("session_docs", 0) +
+                        stats.get("company_knowledge", 0)
+                    )
+                except Exception:
+                    pass
+
+            return {
+                "status": "success",
+                "docs": docs[:limit],
+                "grouped": grouped,
+                "totalChunks": total_chunks,
+                "lastUpdated": int(time.time())
+            }
+
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Knowledge list error: {str(e)}",
+                "docs": [],
+                "grouped": {},
+                "totalChunks": 0
+            }
+
+    # -----------------------------
+    # AI Quality Evaluation
+    # -----------------------------
+
+    @app.post("/api/evaluate")
+    def evaluate_testcases(
+        prdText: str = Form(...),
+        testcasesText: str = Form(...),
+        ragContext: Optional[str] = Form(None)
+    ):
+        """
+        AI 质检评估测试用例
+
+        Args:
+            prdText: 原始 PRD 文本
+            testcasesText: 待评估的测试用例（Markdown 格式）
+            ragContext: 可选的 RAG 上下文（测试规范、历史用例等）
+
+        Returns:
+            评估报告，包含漏测点、逻辑问题、改进建议等
+        """
+        try:
+            # 初始化 Evaluator
+            evaluator = Evaluator(
+                openai_client=openai_client,
+                anthropic_client=anthropic_client,
+                model_name=model_name
+            )
+
+            # 执行评估
+            report = evaluator.evaluate_testcases(
+                prd_text=prdText,
+                testcases_text=testcasesText,
+                rag_context=ragContext
+            )
+
+            return report
+
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Evaluation failed: {str(e)}"
+            }
+
+    @app.post("/api/evaluate/simple")
+    def evaluate_testcases_simple(
+        testcasesText: str = Form(...),
+        referenceText: Optional[str] = Form(None)
+    ):
+        """
+        简化评估（不需要 PRD）
+
+        仅检查测试用例结构和质量
+
+        Args:
+            testcasesText: 待评估的测试用例
+            referenceText: 可选的参考文本（测试规范等）
+
+        Returns:
+            简化的评估报告
+        """
+        try:
+            evaluator = Evaluator(
+                openai_client=openai_client,
+                anthropic_client=anthropic_client,
+                model_name=model_name
+            )
+
+            report = evaluator.evaluate_simple(
+                testcases_text=testcasesText,
+                reference_text=referenceText
+            )
+
+            return report
+
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Evaluation failed: {str(e)}"
+            }
+
+    # -----------------------------
+    # Async Task & SSE Progress (Week 8)
+    # -----------------------------
+
+    @app.post("/api/evaluate/async")
+    async def evaluate_async(
+        prdText: str = Form(...),
+        testcasesText: str = Form(...),
+        ragContext: Optional[str] = Form(None)
+    ):
+        """
+        异步 AI 质检评估
+
+        立即返回任务 ID，评估在后台执行。
+        使用 /api/tasks/{taskId} 查询状态，
+        或 /api/tasks/{taskId}/stream 接收 SSE 推送。
+        """
+        def run_evaluation():
+            evaluator = Evaluator(
+                openai_client=openai_client,
+                anthropic_client=anthropic_client,
+                model_name=model_name
+            )
+            return evaluator.evaluate_testcases(
+                prd_text=prdText,
+                testcases_text=testcasesText,
+                rag_context=ragContext
+            )
+
+        task_id = task_queue.submit(
+            run_evaluation,
+            task_name="AI质检评估"
+        )
+
+        return {
+            "status": "submitted",
+            "taskId": task_id,
+            "message": "评估任务已提交，请使用 /api/tasks/{taskId} 查询结果"
+        }
+
+    @app.get("/api/tasks/{taskId}")
+    async def get_task_status(taskId: str):
+        """
+        查询任务状态
+
+        返回任务的当前状态、进度和结果（如果已完成）
+        """
+        status = task_queue.get_status(taskId)
+        return status
+
+    @app.get("/api/tasks/{taskId}/stream")
+    async def stream_task_progress(taskId: str):
+        """
+        SSE 流式返回任务进度
+
+        客户端可通过 EventSource 订阅，实时接收任务状态更新。
+        事件类型: progress, completed, failed
+        """
+        from fastapi.responses import StreamingResponse
+
+        async def event_generator():
+            last_status = None
+            while True:
+                task = task_queue.get_status(taskId)
+
+                # 仅在状态变化时发送事件
+                current_status = task.get("status")
+                if current_status != last_status:
+                    event_data = json.dumps(task, ensure_ascii=False)
+                    yield f"event: {current_status}\ndata: {event_data}\n\n"
+                    last_status = current_status
+
+                # 任务结束，发送最终事件并关闭
+                if current_status in ["completed", "failed", "cancelled", "not_found"]:
+                    break
+
+                await asyncio.sleep(0.5)
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+
+    @app.delete("/api/tasks/{taskId}")
+    async def cancel_task(taskId: str):
+        """取消任务"""
+        success = task_queue.cancel(taskId)
+        return {
+            "status": "success" if success else "failed",
+            "taskId": taskId,
+            "message": "任务已取消" if success else "无法取消任务（可能已完成或不存在）"
+        }
+
+    @app.get("/api/tasks")
+    async def list_tasks(status: Optional[str] = None):
+        """
+        列出所有任务
+
+        可选过滤：status=pending/running/completed/failed/cancelled
+        """
+        tasks = task_queue.get_all_tasks(status=status)
+        stats = task_queue.get_stats()
+        return {
+            "status": "success",
+            "tasks": tasks,
+            "stats": stats
+        }
+
+    @app.delete("/api/tasks")
+    async def clear_completed_tasks():
+        """清理已完成的任务"""
+        count = task_queue.clear_completed_tasks()
+        return {
+            "status": "success",
+            "cleared": count,
+            "message": f"已清理 {count} 个完成的任务"
+        }
+
+    # -----------------------------
+    # Batch Upload (Week 7-8)
+    # -----------------------------
+
+    batch_processor = BatchUploadProcessor(session_store=store)
+
+    @app.post("/api/docs/batch-upload")
+    async def batch_upload(
+        files: List[UploadFile] = File(...),
+        sessionId: str = Form(...),
+        kind: Optional[str] = Form(None),
+        useOcr: bool = Form(True)
+    ):
+        """
+        批量上传文件
+
+        支持同时上传多个 PDF/图片/文本文件，并行处理。
+
+        Args:
+            files: 文件列表（最多 10 个）
+            sessionId: 会话 ID
+            kind: 文档类型（可选）
+            useOcr: 是否使用 OCR（默认 true）
+        """
+        try:
+            result = await batch_processor.process_batch_async(
+                files=files,
+                session_id=sessionId,
+                kind=kind,
+                use_ocr=useOcr
+            )
+            return result
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"批量上传失败: {str(e)}"
+            }
+
+    # -----------------------------
+    # Cache Management (Week 7-8)
+    # -----------------------------
+
+    @app.get("/api/cache/stats")
+    async def get_cache_stats():
+        """获取缓存统计信息"""
+        try:
+            from agent_app.cache_manager import cache_manager
+            stats = cache_manager.get_cache_stats()
+            return {
+                "status": "success",
+                "stats": stats
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"获取缓存统计失败: {str(e)}"
+            }
+
+    @app.delete("/api/cache")
+    async def clear_cache(cache_type: Optional[str] = None):
+        """
+        清除缓存
+
+        Args:
+            cache_type: 缓存类型（llm/embedding/pdf），不指定则清除全部
+        """
+        try:
+            from agent_app.cache_manager import cache_manager
+            cache_manager.clear(cache_type)
+            return {
+                "status": "success",
+                "message": f"缓存已清除: {cache_type or '全部'}"
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"清除缓存失败: {str(e)}"
+            }
+
     # health
     @app.get("/health")
     def health_check():
+        # 检查是否使用 ChromaDB
+        store_type = "ImprovedSessionStore (ChromaDB)" if isinstance(store, ImprovedSessionStore) else "SessionStore (Memory)"
+        chroma_stats = None
+        if isinstance(store, ImprovedSessionStore):
+            try:
+                chroma_stats = store.get_collection_stats()
+            except Exception:
+                pass
+
         return {
             "status": "healthy",
             "service": "PluginCode Agent Server",
             "version": "2026.1.9",
+            "store_type": store_type,
+            "chroma_stats": chroma_stats,
             "endpoints": [
-                "POST /api/docs/upsert - 上传/更新文档",
+                "POST /api/docs/upsert - 上传/更新文档（JSON）",
+                "POST /api/docs/upload - 上传文件（PDF/图片/文本）⭐ NEW",
                 "GET /api/docs/{docId} - 获取文档内容",
                 "GET /api/sessions/{sessionId}/docs - 列出会话文档",
                 "GET /api/sessions/{sessionId}/doc_pointers - 获取文档指针",
@@ -385,7 +1044,23 @@ def create_app(
                 "DELETE /api/ui_agent/screenshots - 清空截图",
                 "GET /api/assets/{filename} - 获取资源文件（截图等）",
                 "DELETE /api/session/{sessionId} - 清除会话",
+                "POST /api/docs/{docId}/archive - 归档文档到历史库 ⭐ NEW",
+                "GET /api/history/search - 搜索历史用例 ⭐ NEW",
+                "GET /api/history/stats - 获取历史库统计 ⭐ NEW",
+                "GET /api/knowledge/list - 列出知识库文档 ⭐ Week8",
+                "POST /api/evaluate - AI 质检评估测试用例 ⭐ NEW",
+                "POST /api/evaluate/simple - 简化评估（无 PRD） ⭐ NEW",
+                "POST /api/evaluate/async - 异步 AI 质检评估 ⭐ Week8",
+                "GET /api/tasks/{taskId} - 查询任务状态 ⭐ Week8",
+                "GET /api/tasks/{taskId}/stream - SSE 任务进度推送 ⭐ Week8",
+                "DELETE /api/tasks/{taskId} - 取消任务 ⭐ Week8",
+                "GET /api/tasks - 列出所有任务 ⭐ Week8",
+                "DELETE /api/tasks - 清理已完成任务 ⭐ Week8",
+                "POST /api/docs/batch-upload - 批量上传文件 ⭐ Week8",
+                "GET /api/cache/stats - 获取缓存统计 ⭐ Week8",
+                "DELETE /api/cache - 清除缓存 ⭐ Week8",
             ],
+            "file_processor": FileProcessor.check_dependencies(),
             "ask_configs": get_all_configs_summary(),
         }
 

@@ -75,19 +75,27 @@
     <div class="unified-body">
       <!-- 左侧面板：聊天 + 输入 -->
       <div class="left-panel" :style="{ width: leftPanelWidth + 'px' }">
-        <!-- 聊天消息区 -->
+        <!-- 聊天消息区（Phase 4: 使用 ChatMessage 组件） -->
       <div class="chat-container" ref="chatContainer">
-        <div v-for="(msg, idx) in messages" :key="idx" :class="['msg', msg.role]">
-          <div class="msg-content" v-html="renderMarkdown(msg.content)"></div>
-          <button 
-            v-if="msg.canUndo && msg.role === 'ai'" 
-            @click="msg.actionType === 'testcase_edit' ? undoTestCaseEdit(idx) : undoPrdEdit(idx)" 
+        <template v-for="adaptedMsg in adaptedMessages" :key="adaptedMsg.id">
+          <ChatMessage
+            :message="adaptedMsg"
+            @retry="handleMessageRetry(adaptedMsg)"
+            @attachment-click="handleAttachmentClick"
+            @ref-click="handleRefClick"
+          />
+          <!-- Phase 4: 撤回按钮（保留原有逻辑） -->
+          <button
+            v-if="canUndoMessage(adaptedMsg)"
+            @click="getActionType(adaptedMsg) === 'testcase_edit'
+              ? undoTestCaseEdit(getOriginalIndex(adaptedMsg))
+              : undoPrdEdit(getOriginalIndex(adaptedMsg))"
             class="undo-btn"
             title="撤回此操作"
           >
             ↩️ 撤回
           </button>
-        </div>
+        </template>
         <div v-if="isProcessing" class="msg ai">
           <div class="typing-indicator">{{ statusText || 'AI 正在思考...' }}</div>
           <div class="progress-bar" v-if="progress > 0">
@@ -525,6 +533,18 @@
             <button v-if="hasAnyDocument" class="tab-control-btn" @click="showDocList = !showDocList" :title="showDocList ? '隐藏列表' : '显示列表'">
               ☰
             </button>
+            <!-- Phase 4: 知识库入口 -->
+            <button class="tab-control-btn" :class="{ active: rightPanelTab === 'knowledge' }" @click="rightPanelTab = rightPanelTab === 'knowledge' ? 'docs' : 'knowledge'" title="知识库">
+              📚
+            </button>
+            <!-- P1: 历史记录入口 -->
+            <button class="tab-control-btn" :class="{ active: rightPanelTab === 'history' }" @click="rightPanelTab = rightPanelTab === 'history' ? 'docs' : 'history'" title="历史记录">
+              📜
+            </button>
+            <!-- Phase 4: 批量上传入口 -->
+            <button class="tab-control-btn add" @click="showBatchUploader = true" title="批量上传">
+              📤
+            </button>
             <!-- 新建自定义文档 -->
             <button class="tab-control-btn add" @click="createCustomDoc" title="新建自定义文档">
               +
@@ -534,9 +554,26 @@
               </button>
             </div>
         </div>
-        
+
+        <!-- Phase 4: 知识库面板（覆盖编辑器） -->
+        <KnowledgeBasePanel
+          v-if="rightPanelTab === 'knowledge'"
+          :session-id="projectState.assets.sessionId"
+          @upload="showBatchUploader = true"
+          @select="handleKnowledgeSelect"
+          class="knowledge-panel-overlay"
+        />
+
+        <!-- P1: 历史记录面板（覆盖编辑器） -->
+        <HistoryPanel
+          v-if="rightPanelTab === 'history'"
+          :session-id="projectState.assets.sessionId"
+          @use="handleHistoryUse"
+          class="history-panel-overlay"
+        />
+
         <!-- 文档内容区域 -->
-        <div class="editor-container">
+        <div v-show="rightPanelTab === 'docs'" class="editor-container">
           <div class="editor-header">
             <span class="editor-header-title">{{ currentEditorTitle }}</span>
             <div class="editor-header-actions">
@@ -671,6 +708,24 @@
         </div>
       </div>
         </div>
+
+    <!-- Phase 4: QA 工作流进度条 -->
+    <WorkflowProgress
+      v-if="userRole === 'qa' && projectState.currentStep"
+      :current-step="qaWorkflowStepIndex"
+      :task-progress="progress"
+      :task-label="statusText"
+      :is-processing="isProcessing"
+      @step-click="handleWorkflowStepClick"
+    />
+
+    <!-- Phase 4: 批量上传弹窗 -->
+    <BatchUploader
+      v-if="showBatchUploader"
+      :session-id="projectState.assets.sessionId"
+      @close="showBatchUploader = false"
+      @uploaded="handleBatchUploaded"
+    />
 
     <!-- 参考确认弹窗（增强：当无参考和引用时弹出，可选择tab列表内容） -->
     <div v-if="showReferenceConfirmModal" class="assist-modal-overlay" @click.self="showReferenceConfirmModal = false"></div>
@@ -934,6 +989,19 @@ import { postRetrieve, ask, uploadImage, prdAgent, clearPrdSession, testCaseAgen
 import { uploadRawPrd, uploadAuxDoc, upsertDocs, type DocUpsertItem } from '@/utils/docStoreApi';
 import type { DocRef } from '@/utils/refRegistry';
 import MindMapPreview from '@/components/MindMapPreview.vue';
+// Phase 4: 新组件导入
+import RoleSelector from '@/components/RoleSelector.vue';
+import WorkflowProgress from '@/components/WorkflowProgress.vue';
+import ChatMessage from '@/components/ChatMessage.vue';
+import DocumentPanel from '@/components/DocumentPanel.vue';
+import KnowledgeBasePanel from '@/components/KnowledgeBasePanel.vue';
+import HistoryPanel from '@/components/HistoryPanel.vue';
+import BatchUploader from '@/components/BatchUploader.vue';
+import TaskProgressBar from '@/components/TaskProgressBar.vue';
+// Phase 4: Composables 导入
+import { useSession, useRole, useWorkflow, useTaskProgress } from '@/composables';
+// Phase 4: 消息适配器
+import { adaptLegacyMessage, canUndoMessage, getOriginalIndex, getActionType, type AdaptedChatMessage } from '@/utils/messageAdapter';
 import { getLocalAgentUrl } from '@/utils/agentUrl';
 import { browser } from 'wxt/browser';
 import { ensureConnection, sendMessageToContent, getActiveTab, isInjectableTab } from '@/utils/connectionHelper';
@@ -1014,6 +1082,36 @@ interface Message {
 const messages = ref<Message[]>([]);
 const isProcessing = ref(false);
 const statusText = ref('');
+
+// Phase 4: 消息适配（用于 ChatMessage 组件）
+const adaptedMessages = computed<AdaptedChatMessage[]>(() =>
+  messages.value.map((msg, idx) => adaptLegacyMessage(msg, idx))
+);
+
+// Phase 4: ChatMessage 组件事件处理
+function handleMessageRetry(msg: AdaptedChatMessage) {
+  console.log('[App] Message retry:', msg.id);
+}
+
+function handleAttachmentClick(attachment: any) {
+  console.log('[App] Attachment clicked:', attachment);
+}
+
+function handleRefClick(ref: any) {
+  console.log('[App] Ref clicked:', ref);
+}
+
+// Phase 4: QA 工作流步骤索引（用于 WorkflowProgress 组件）
+const qaWorkflowStepIndex = computed(() => {
+  const stepMap: Record<string, number> = {
+    'setup': 0, 'analyzing': 0, 'content_review': 0,
+    'optimizing': 1, 'prd_review': 1,
+    'test_point': 2,
+    'test_case': 3,
+    'auto_test': 4
+  };
+  return stepMap[projectState.currentStep] ?? 0;
+});
 
 const ensureSessionId = (): string => {
   if (projectState.assets.sessionId) return projectState.assets.sessionId;
@@ -1952,6 +2050,63 @@ const USER_ROLE_STORAGE_KEY = 'ai_test_case_user_role';
 
 const userRole = ref<UserRole | null>(null);
 const isRoleMenuOpen = ref(false);
+
+// ================= Phase 4: Composables 初始化 =================
+const { sessionId, initSession, getSessionId } = useSession();
+const { currentRole, switchRole: composableSwitchRole } = useRole();
+const { currentStep: workflowStep, goToStep: workflowGoToStep, progress: workflowProgress, statusText: workflowStatusText, isComplete: workflowIsComplete } = useWorkflow();
+const { taskState, startTracking, stopTracking, isRunning: taskIsRunning } = useTaskProgress();
+
+// 新组件状态
+const showBatchUploader = ref(false);
+const rightPanelTab = ref<'docs' | 'history' | 'knowledge'>('docs');
+
+// 桥接函数：RoleSelector 组件事件处理
+const handleRoleSelectorChange = async (role: UserRole) => {
+  // 调用原有的角色切换逻辑
+  if (userRole.value) {
+    await changeUserRole(role);
+  } else {
+    await selectUserRole(role);
+  }
+  // 同步到 composable（便于其他组件使用）
+  composableSwitchRole(role);
+};
+
+// 桥接函数：WorkflowProgress 组件步骤点击
+const handleWorkflowStepClick = (stepIndex: number) => {
+  const stepMap: Step[] = ['content_review', 'prd_review', 'test_point', 'test_case', 'auto_test'];
+  if (stepIndex >= 0 && stepIndex < stepMap.length) {
+    goToStep(stepMap[stepIndex]);
+  }
+};
+
+// 桥接函数：BatchUploader 上传完成
+const handleBatchUploaded = (docIds: string[]) => {
+  showBatchUploader.value = false;
+  // 刷新文档列表（使用现有逻辑）
+  console.log('[App] Batch uploaded:', docIds);
+};
+
+// 桥接函数：知识库选择
+const handleKnowledgeSelect = (docs: any[]) => {
+  console.log('[App] Knowledge docs selected:', docs);
+};
+
+// P1: 桥接函数：使用历史用例
+const handleHistoryUse = (content: string) => {
+  console.log('[App] History case used:', content.slice(0, 100) + '...');
+  // 将历史用例内容插入到输入框或当前文档
+  if (userRole.value === 'qa') {
+    // QA 模式：可以将内容作为参考
+    userInput.value = `请参考以下历史用例:\n\n${content}\n\n`;
+  } else {
+    // PM/DEV 模式：直接插入到输入框
+    userInput.value += content;
+  }
+  // 切换回文档视图
+  rightPanelTab.value = 'docs';
+};
 
 const isChatOnlyRole = computed(() => userRole.value === 'pm' || userRole.value === 'dev');
 
@@ -6961,6 +7116,24 @@ button {
 }
 
 .editor-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--neo-white);
+}
+
+/* Phase 4: 知识库面板覆盖样式 */
+.knowledge-panel-overlay {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--neo-white);
+}
+
+/* P1: 历史记录面板覆盖样式 */
+.history-panel-overlay {
   flex: 1;
   display: flex;
   flex-direction: column;

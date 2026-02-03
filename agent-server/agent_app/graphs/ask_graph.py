@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import json
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
@@ -8,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple, TypedDict
 from langgraph.graph import END, StateGraph
 
 from agent_app.ask_config import AskTypeConfig, get_ask_config
-from agent_app.session_store import SessionStore
+from agent_app.session_store import SessionStore, ImprovedSessionStore
 
 
 def _sha256(text: str) -> str:
@@ -678,6 +679,67 @@ def build_ask_graph(
                 history_msgs = [{"role": "system", "content": f"【历史摘要】\n{summary}"}] if summary else []
 
         system_prompt = cfg.get_prompt()
+
+        # ========== Week 4: 历史用例自动参考 ==========
+        # 对于测试用例生成，自动检索历史相似用例作为参考
+        historical_context = ""
+        use_history = os.getenv("USE_HISTORY_REFERENCE", "true").lower() == "true"
+
+        if use_history and ask_type in ("testcase", "testpoint") and hasattr(session_store, "search_history"):
+            print(f"📚 [知识库] 开始检索历史用例 (ask_type={ask_type}, USE_HISTORY_REFERENCE=true)")
+            try:
+                # 构建历史检索查询（使用 instruction + main_doc 部分内容）
+                query_parts = []
+                if instruction:
+                    query_parts.append(instruction[:200])  # 限制长度
+                if main_doc_id:
+                    main_doc = session_store.get_doc(main_doc_id)
+                    if main_doc and main_doc.get("content"):
+                        query_parts.append(main_doc["content"][:300])  # 取前300字符
+
+                if query_parts:
+                    history_query = " ".join(query_parts)
+                    print(f"📚 [知识库] 检索查询: {history_query[:100]}...")
+                    history_results = session_store.search_history(history_query, top_k=2)
+
+                    if history_results:
+                        historical_cases = []
+                        for i, record in enumerate(history_results, 1):
+                            similarity = record.get("similarity", 0)
+                            content = record.get("content", "")
+                            metadata = record.get("metadata", {})
+                            tags = metadata.get("tags", "")
+
+                            # 限制每个历史用例的长度
+                            if len(content) > 800:
+                                content = content[:800] + "\n\n... (内容过长，已截断) ..."
+
+                            historical_cases.append(
+                                f"### 参考历史用例 {i}（相似度: {similarity:.2f}）\n"
+                                f"{f'标签: {tags}\n' if tags else ''}"
+                                f"{content}"
+                            )
+
+                        if historical_cases:
+                            historical_context = "\n\n---\n\n## 📚 参考历史测试用例\n\n" + \
+                                "以下是从历史库中检索到的相似测试用例，供参考（可复用测试思路、边界值设计等）：\n\n" + \
+                                "\n\n".join(historical_cases) + "\n\n---\n\n"
+                            # ✅ 添加日志：知识库检索成功
+                            print(f"📚 [知识库] 检索到 {len(history_results)} 个历史用例，注入上下文长度: {len(historical_context)} 字符")
+                            for i, record in enumerate(history_results, 1):
+                                print(f"   - 历史用例 {i}: 相似度={record.get('similarity', 0):.2f}, 长度={len(record.get('content', ''))}字符")
+
+            except Exception as e:
+                print(f"⚠️  历史用例检索失败（将跳过）: {e}")
+                historical_context = ""
+
+        # 注入历史上下文到 system prompt
+        if historical_context:
+            system_prompt = system_prompt + historical_context
+            print(f"📚 [知识库] 已将历史用例注入到 System Prompt")
+        elif use_history and ask_type in ("testcase", "testpoint"):
+            print(f"📚 [知识库] 未检索到相关历史用例（ask_type={ask_type}）")
+
         state["messages"] = [{"role": "system", "content": system_prompt}, *history_msgs, {"role": "user", "content": effective}]
 
         cache_key = _compute_cache_key(state, cfg, main_doc_id, aux_doc_ids)
@@ -841,6 +903,19 @@ def build_ask_graph(
             doc = session_store.get_doc(put["docId"]) or {}
             gen_ref = _doc_to_ref(doc, kind_override="output", logical_override=logical_id)
             state["generatedDocRef"] = gen_ref
+
+            # P1: 自动归档测试用例到历史库
+            if ask_type == "testcase" and isinstance(session_store, ImprovedSessionStore):
+                try:
+                    archived = session_store.archive_to_history(
+                        doc_id=put["docId"],
+                        session_id=sid,
+                        metadata={"tags": ["output", "testcase", "auto-archived"]}
+                    )
+                    if archived:
+                        print(f"[ask_graph] Auto-archived testcase to history: {put['docId'][:16]}...")
+                except Exception as e:
+                    print(f"[ask_graph] Auto-archive failed: {e}")
 
             # update cache with generated ref
             ck = state.get("cacheKey", "")
