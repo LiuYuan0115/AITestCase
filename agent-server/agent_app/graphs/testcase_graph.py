@@ -4,6 +4,7 @@ Test Case Agent LangGraph
 
 from __future__ import annotations
 
+import os
 from typing import Any, Dict, List, TypedDict, Optional
 
 
@@ -14,7 +15,7 @@ class AdditionalPrdItem(TypedDict):
 
 from langgraph.graph import StateGraph, END
 
-from agent_app.prompts import TESTCASE_SYSTEM_PROMPT
+from agent_app.prompts import TESTCASE_SYSTEM_PROMPT, load_skill
 from agent_app.tooling import testcase_tools_schema, parse_first_tool_call, execute_testcase_tool
 from agent_app.config import is_anthropic_model
 
@@ -77,8 +78,19 @@ def build_testcase_graph(openai_client, model_name: str, session_store, max_test
                     content = content[:per_doc_max] + "\n\n... (内容过长，已截断) ..."
                 additional_text += f"### {title}\n\n{content}\n\n---\n\n"
 
-        system_content = f"""{TESTCASE_SYSTEM_PROMPT}
+        # 加载 QA Engineer Skill（可选）
+        qa_skill_content = ""
+        use_qa_skill = os.getenv("USE_QA_SKILL", "true").lower() == "true"
+        if use_qa_skill:
+            try:
+                qa_skill_content = load_skill("qa_engineer_skill")
+                qa_skill_content = f"\n\n---\n\n# QA Engineer Skill - 测试设计最佳实践\n\n{qa_skill_content}\n\n---\n\n"
+            except Exception as e:
+                print(f"⚠️  QA Skill 加载失败（将使用默认 Prompt）: {e}")
+                qa_skill_content = ""
 
+        system_content = f"""{TESTCASE_SYSTEM_PROMPT}
+{qa_skill_content}
 ## 当前测试用例内容 (Markdown)
 ---
 {testcase_text[:max_testcase_length]}

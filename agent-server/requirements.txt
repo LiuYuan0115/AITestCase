@@ -6,3 +6,13 @@ anthropic
 python-dotenv
 langgraph
 pillow
+
+# Week 1: ChromaDB 向量数据库依赖
+chromadb==0.4.22
+sentence-transformers==2.3.1
+numpy<2.0  # chromadb 0.4.x 不兼容 NumPy 2.0
+
+# Week 2: PDF/图片多模态解析依赖
+pdfplumber==0.9.0
+pytesseract==0.3.10
+PyPDF2==3.0.0
