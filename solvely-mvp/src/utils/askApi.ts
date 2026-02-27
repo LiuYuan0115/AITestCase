@@ -6,6 +6,8 @@ const AGENT_URL = getAgentUrl();
 
 export type AskType = 'testprd' | 'testpoint' | 'testcase';
 
+export type TestCaseOutputFormat = 'xmind' | 'table' | 'yaml';
+
 export type AskOptions = {
   sessionId: string;
   type: AskType;
@@ -33,6 +35,12 @@ export type AskOptions = {
    * Optional: PointerRegistry; used to derive main docId and to auto-update pointers on response.
    */
   pointers?: PointerRegistry;
+
+  /**
+   * Output format for testcase generation (xmind/table/yaml).
+   * Only applicable when type='testcase'.
+   */
+  outputFormat?: TestCaseOutputFormat;
 };
 
 export type AskResponseV2 = {
@@ -49,8 +57,8 @@ export type AskResponseV2 = {
 /**
  * Build payload: prefer docRefs > text > pointers.
  */
-export function buildAskPayload(opts: AskOptions): { sessionId: string; type: AskType; params: { text: string }; instruction?: string; additionalPrds?: any; docRefs?: DocRef[] } {
-  const { sessionId, type, instruction, text, additionalPrds, docRefs, auxDocIds = [], pointers } = opts;
+export function buildAskPayload(opts: AskOptions): { sessionId: string; type: AskType; params: { text: string }; instruction?: string; additionalPrds?: any; docRefs?: DocRef[]; outputFormat?: TestCaseOutputFormat } {
+  const { sessionId, type, instruction, text, additionalPrds, docRefs, auxDocIds = [], pointers, outputFormat } = opts;
 
   // 1) Explicit docRefs
   if (docRefs && docRefs.length > 0) {
@@ -63,6 +71,7 @@ export function buildAskPayload(opts: AskOptions): { sessionId: string; type: As
       instruction,
       additionalPrds,
       docRefs: merged,
+      outputFormat,
     };
   }
 
@@ -74,6 +83,7 @@ export function buildAskPayload(opts: AskOptions): { sessionId: string; type: As
       params: { text: text.trim() },
       instruction,
       additionalPrds,
+      outputFormat,
     };
   }
 
@@ -97,6 +107,7 @@ export function buildAskPayload(opts: AskOptions): { sessionId: string; type: As
     instruction,
     additionalPrds,
     docRefs: derived.length ? derived : undefined,
+    outputFormat,
   };
 }
 

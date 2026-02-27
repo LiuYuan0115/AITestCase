@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import json
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
@@ -8,11 +9,33 @@ from typing import Any, Dict, List, Optional, Tuple, TypedDict
 from langgraph.graph import END, StateGraph
 
 from agent_app.ask_config import AskTypeConfig, get_ask_config
-from agent_app.session_store import SessionStore
+from agent_app.session_store import SessionStore, ImprovedSessionStore
 
 
 def _sha256(text: str) -> str:
     return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+
+
+def _extract_title_from_content(content: str, fallback: str = "未命名文档") -> str:
+    """从 Markdown 内容中提取第一个标题作为文档名称"""
+    if not content:
+        return fallback
+    # 匹配第一个 # 开头的标题行
+    match = re.search(r'^#+ +(.+?)$', content, re.MULTILINE)
+    if match:
+        title = match.group(1).strip()
+        # 限制长度，避免过长
+        if len(title) > 50:
+            title = title[:47] + "..."
+        return title
+    # 如果没有标题，取第一行非空内容
+    for line in content.split('\n'):
+        line = line.strip()
+        if line and not line.startswith('```'):
+            if len(line) > 50:
+                line = line[:47] + "..."
+            return line
+    return fallback
 
 
 class DocRefMiss(RuntimeError):
@@ -49,6 +72,7 @@ class AskState(TypedDict, total=False):
     docRefs: List[DocRef]
     instruction: str
     targetLogicalId: str  # chat/edit target (optional)
+    outputFormat: str  # testcase output format: xmind/table/yaml (optional)
 
     # runtime
     effectiveText: str
@@ -88,6 +112,9 @@ def build_ask_graph(
 
     def is_anthropic_model(model: str) -> bool:
         return isinstance(model, str) and (model.startswith("anthropic/") or "claude" in model.lower())
+
+    def is_gemini_model_check(model: str) -> bool:
+        return isinstance(model, str) and ("gemini" in model.lower() or model.startswith("google/"))
 
     def _strip_markdown_fence(text: str) -> str:
         if not text:
@@ -291,20 +318,113 @@ def build_ask_graph(
             "createdAt": int(doc.get("createdAt") or 0),
         }
 
-    # ---------------- Anthropic call ----------------
+    # ---------------- Anthropic call (with multimodal support) ----------------
 
-    def _call_anthropic(messages: List[Dict[str, Any]], model: str, max_tokens: int, temperature: float) -> str:
+    def _call_anthropic(
+        messages: List[Dict[str, Any]],
+        model: str,
+        max_tokens: int,
+        temperature: float,
+        multimodal_docs: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
+        """
+        调用 Anthropic API，支持多模态消息。
+
+        Args:
+            messages: 消息列表
+            model: 模型名称
+            max_tokens: 最大 token 数
+            temperature: 温度
+            multimodal_docs: 多模态文档列表 [{title, content, images: [{base64, media_type}]}]
+        """
         if not anthropic_client:
             raise RuntimeError("Anthropic client not configured")
 
         system_content = ""
-        chat_messages: List[Dict[str, str]] = []
+        chat_messages: List[Dict[str, Any]] = []
+
         for m in messages:
             role = m.get("role")
             if role == "system":
                 system_content += (m.get("content") or "") + "\n"
             elif role in ("user", "assistant"):
-                chat_messages.append({"role": role, "content": m.get("content") or ""})
+                # 检查消息内容类型
+                msg_content = m.get("content")
+                if isinstance(msg_content, list):
+                    # 已经是多模态格式
+                    chat_messages.append({"role": role, "content": msg_content})
+                else:
+                    chat_messages.append({"role": role, "content": msg_content or ""})
+
+        # Week 8: 处理多模态文档 - 将图片注入到用户消息中
+        if multimodal_docs:
+            # 构建多模态内容块
+            multimodal_content = []
+
+            for doc in multimodal_docs:
+                title = doc.get("title") or "文档"
+                text_content = doc.get("content") or ""
+                images = doc.get("images") or []
+
+                if images:
+                    # 添加文档标题和说明
+                    multimodal_content.append({
+                        "type": "text",
+                        "text": f"\n=== {title} (共 {len(images)} 页) ===\n"
+                    })
+
+                    # 添加每页图片
+                    for img in images:
+                        page_num = img.get("page_num", 1)
+                        multimodal_content.append({
+                            "type": "text",
+                            "text": f"--- 第 {page_num} 页 ---"
+                        })
+                        multimodal_content.append({
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": img.get("media_type", "image/png"),
+                                "data": img.get("base64", ""),
+                            }
+                        })
+
+                    # 如果同时有文本内容，也添加
+                    if text_content and text_content.strip():
+                        multimodal_content.append({
+                            "type": "text",
+                            "text": f"\n=== {title} OCR 文本内容 ===\n{text_content[:5000]}"
+                        })
+                elif text_content:
+                    # 纯文本文档
+                    multimodal_content.append({
+                        "type": "text",
+                        "text": f"\n=== {title} ===\n{text_content}"
+                    })
+
+            # 将多模态内容注入到最后一个用户消息中
+            if multimodal_content and chat_messages:
+                # 找到最后一个用户消息
+                for i in range(len(chat_messages) - 1, -1, -1):
+                    if chat_messages[i].get("role") == "user":
+                        original_content = chat_messages[i].get("content", "")
+                        # 构建新的多模态内容
+                        new_content = []
+
+                        # 添加多模态文档内容
+                        new_content.extend(multimodal_content)
+
+                        # 添加原始用户消息
+                        if isinstance(original_content, str) and original_content.strip():
+                            new_content.append({
+                                "type": "text",
+                                "text": f"\n\n[用户指令]\n{original_content}"
+                            })
+                        elif isinstance(original_content, list):
+                            new_content.extend(original_content)
+
+                        chat_messages[i]["content"] = new_content
+                        break
 
         # Prefer streaming when available; fall back to create
         if hasattr(anthropic_client, "messages") and hasattr(anthropic_client.messages, "stream"):
@@ -333,6 +453,83 @@ def build_ask_graph(
             return "".join([b.text for b in resp.content if getattr(b, "type", "") == "text"])
         except Exception:
             return str(resp)
+
+    # ---------------- Gemini multimodal (PDF direct) ----------------
+
+    def _inject_gemini_multimodal(
+        messages: List[Dict[str, Any]],
+        multimodal_docs: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """
+        将 PDF/图片注入到 OpenAI 兼容消息格式（用于 Gemini 模型）。
+
+        Gemini 通过 Google 的 OpenAI 兼容 API 接受 PDF：
+        使用 image_url content part，data URI 为 data:application/pdf;base64,...
+        """
+        import copy
+        new_messages = copy.deepcopy(messages)
+
+        multimodal_parts = []
+        for doc in multimodal_docs:
+            title = doc.get("title") or "文档"
+            pdf_b64 = doc.get("pdf_base64")
+            images = doc.get("images") or []
+
+            if pdf_b64:
+                # Gemini 原生 PDF 支持：data URI 格式
+                multimodal_parts.append({
+                    "type": "text",
+                    "text": f"\n=== {title} (PDF 文档) ===\n"
+                })
+                multimodal_parts.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:application/pdf;base64,{pdf_b64}"
+                    }
+                })
+                print(f"📄 [Gemini PDF] 注入 PDF 文档: {title}")
+            elif images:
+                # 兜底：使用图片（当文档没有 pdf_base64 时）
+                multimodal_parts.append({
+                    "type": "text",
+                    "text": f"\n=== {title} (共 {len(images)} 页) ===\n"
+                })
+                for img in images:
+                    page_num = img.get("page_num", 1)
+                    media_type = img.get("media_type", "image/png")
+                    img_b64 = img.get("base64", "")
+                    multimodal_parts.append({
+                        "type": "text",
+                        "text": f"--- 第 {page_num} 页 ---"
+                    })
+                    multimodal_parts.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{media_type};base64,{img_b64}"
+                        }
+                    })
+
+        if not multimodal_parts:
+            return new_messages
+
+        # 注入到最后一个 user 消息
+        for i in range(len(new_messages) - 1, -1, -1):
+            if new_messages[i].get("role") == "user":
+                original_content = new_messages[i].get("content", "")
+                new_content = list(multimodal_parts)
+
+                if isinstance(original_content, str) and original_content.strip():
+                    new_content.append({
+                        "type": "text",
+                        "text": f"\n\n[用户指令]\n{original_content}"
+                    })
+                elif isinstance(original_content, list):
+                    new_content.extend(original_content)
+
+                new_messages[i]["content"] = new_content
+                break
+
+        return new_messages
 
     # ---------------- History summarizer ----------------
 
@@ -415,9 +612,10 @@ def build_ask_graph(
         if text:
             # For stage0 compatibility: if testprd and no main yet, treat as raw_prd pointer.
             logical_id = "raw_prd" if (ask_type == "testprd" and not main_doc_id) else None
+            main_title = _extract_title_from_content(text, f"[main:{ask_type}]")
             put = session_store.put_doc(
                 content=text,
-                title=f"[main:{ask_type}]",
+                title=main_title,
                 kind="main",
                 session_id=session_id or None,
                 logical_id=logical_id,
@@ -593,7 +791,8 @@ def build_ask_graph(
 
     def build_prompt(state: AskState) -> AskState:
         ask_type = (state.get("type") or "testprd").strip().lower()
-        cfg: AskTypeConfig = get_ask_config(ask_type)
+        output_format = (state.get("outputFormat") or "").strip().lower() or None
+        cfg: AskTypeConfig = get_ask_config(ask_type, output_format)
         state["config"] = cfg
         # ---------------- chat types: analysis/edit with auto doc update ----------------
         if ask_type.endswith("_chat"):
@@ -678,6 +877,67 @@ def build_ask_graph(
                 history_msgs = [{"role": "system", "content": f"【历史摘要】\n{summary}"}] if summary else []
 
         system_prompt = cfg.get_prompt()
+
+        # ========== Week 4: 历史用例自动参考 ==========
+        # 对于测试用例生成，自动检索历史相似用例作为参考
+        historical_context = ""
+        use_history = os.getenv("USE_HISTORY_REFERENCE", "true").lower() == "true"
+
+        if use_history and ask_type in ("testcase", "testpoint") and hasattr(session_store, "search_history"):
+            print(f"📚 [知识库] 开始检索历史用例 (ask_type={ask_type}, USE_HISTORY_REFERENCE=true)")
+            try:
+                # 构建历史检索查询（使用 instruction + main_doc 部分内容）
+                query_parts = []
+                if instruction:
+                    query_parts.append(instruction[:200])  # 限制长度
+                if main_doc_id:
+                    main_doc = session_store.get_doc(main_doc_id)
+                    if main_doc and main_doc.get("content"):
+                        query_parts.append(main_doc["content"][:300])  # 取前300字符
+
+                if query_parts:
+                    history_query = " ".join(query_parts)
+                    print(f"📚 [知识库] 检索查询: {history_query[:100]}...")
+                    history_results = session_store.search_history(history_query, top_k=2)
+
+                    if history_results:
+                        historical_cases = []
+                        for i, record in enumerate(history_results, 1):
+                            similarity = record.get("similarity", 0)
+                            content = record.get("content", "")
+                            metadata = record.get("metadata", {})
+                            tags = metadata.get("tags", "")
+
+                            # 限制每个历史用例的长度
+                            if len(content) > 800:
+                                content = content[:800] + "\n\n... (内容过长，已截断) ..."
+
+                            historical_cases.append(
+                                f"### 参考历史用例 {i}（相似度: {similarity:.2f}）\n"
+                                f"{f'标签: {tags}\n' if tags else ''}"
+                                f"{content}"
+                            )
+
+                        if historical_cases:
+                            historical_context = "\n\n---\n\n## 📚 参考历史测试用例\n\n" + \
+                                "以下是从历史库中检索到的相似测试用例，供参考（可复用测试思路、边界值设计等）：\n\n" + \
+                                "\n\n".join(historical_cases) + "\n\n---\n\n"
+                            # ✅ 添加日志：知识库检索成功
+                            print(f"📚 [知识库] 检索到 {len(history_results)} 个历史用例，注入上下文长度: {len(historical_context)} 字符")
+                            for i, record in enumerate(history_results, 1):
+                                print(f"   - 历史用例 {i}: 相似度={record.get('similarity', 0):.2f}, 长度={len(record.get('content', ''))}字符")
+
+            except Exception as e:
+                print(f"⚠️  历史用例检索失败（将跳过）: {e}")
+                historical_context = ""
+
+        # 注入历史上下文到 system prompt
+        if historical_context:
+            system_prompt = system_prompt + historical_context
+            print(f"📚 [知识库] 已将历史用例注入到 System Prompt")
+        elif use_history and ask_type in ("testcase", "testpoint"):
+            print(f"📚 [知识库] 未检索到相关历史用例（ask_type={ask_type}）")
+
         state["messages"] = [{"role": "system", "content": system_prompt}, *history_msgs, {"role": "user", "content": effective}]
 
         cache_key = _compute_cache_key(state, cfg, main_doc_id, aux_doc_ids)
@@ -709,15 +969,48 @@ def build_ask_graph(
 
         ask_type = (state.get("type") or "testprd").strip().lower()
 
+        # Week 8: 收集多模态文档（支持图片和 PDF 直传）
+        multimodal_docs: List[Dict[str, Any]] = []
+        used_doc_ids = state.get("usedDocIds") or []
+        for doc_id in used_doc_ids:
+            doc = session_store.get_doc(doc_id) or {}
+            if doc.get("multimodal") and (doc.get("images") or doc.get("pdf_base64")):
+                multimodal_docs.append({
+                    "title": doc.get("title") or "文档",
+                    "content": doc.get("content") or "",
+                    "images": doc.get("images") or [],
+                    "pdf_base64": doc.get("pdf_base64"),  # Gemini: PDF 原始数据
+                })
+
+        # 如果有多模态文档，打印日志
+        if multimodal_docs:
+            total_images = sum(len(d.get("images", [])) for d in multimodal_docs)
+            has_pdf = any(d.get("pdf_base64") for d in multimodal_docs)
+            if has_pdf:
+                print(f"📄 [多模态] 检测到 {len(multimodal_docs)} 个多模态文档（含 PDF 直传数据）")
+            else:
+                print(f"📸 [多模态] 检测到 {len(multimodal_docs)} 个多模态文档，共 {total_images} 张图片")
+
         try:
             # call model
             if is_anthropic_model(model) and anthropic_client:
-                raw_content = _call_anthropic(state["messages"], model, max_tokens, temperature)
+                raw_content = _call_anthropic(
+                    state["messages"],
+                    model,
+                    max_tokens,
+                    temperature,
+                    multimodal_docs=multimodal_docs if multimodal_docs else None,
+                )
                 raw_text = _strip_markdown_fence((raw_content or "").strip())
             else:
+                # 构建消息（Gemini 模型注入 PDF/图片多模态内容）
+                call_messages = state["messages"]
+                if is_gemini_model_check(model) and multimodal_docs:
+                    call_messages = _inject_gemini_multimodal(state["messages"], multimodal_docs)
+
                 resp = openai_client.chat.completions.create(
                     model=model,
-                    messages=state["messages"],
+                    messages=call_messages,
                     max_tokens=max_tokens,
                     temperature=temperature,
                 )
@@ -762,10 +1055,11 @@ def build_ask_graph(
                         sid = state.get("sessionId", "") or ""
                         # ✅ 优先使用模型返回的 targetLogicalId
                         logical_id = model_target_logical or (state.get("targetLogicalId") or "").strip() or None
+                        edited_title = _extract_title_from_content(updated, f"[edited:{ask_type}]")
 
                         put = session_store.put_doc(
                             content=updated,
-                            title=f"[edited:{ask_type}]",
+                            title=edited_title,
                             kind="main",
                             session_id=sid or None,
                             logical_id=logical_id,
@@ -788,7 +1082,11 @@ def build_ask_graph(
             else:
                 state["answer"] = raw_text or "处理完成"
         except Exception as e:
-            state["answer"] = f"Error: {str(e)}"
+            import traceback
+            err_detail = f"{type(e).__name__}: {str(e)}"
+            print(f"[ASK_GRAPH] Model call failed (model={model}): {err_detail}")
+            traceback.print_exc()
+            state["answer"] = f"Error: {err_detail}"
             return state
 
         # cache (partial; finalize will add generatedDocRef)
@@ -828,9 +1126,11 @@ def build_ask_graph(
         logical_id = logical_map.get(ask_type)
 
         if sid and answer and not answer.startswith("Error:"):
+            # 从内容中提取标题，fallback 使用类型标识
+            doc_title = _extract_title_from_content(answer, f"[output:{ask_type}]")
             put = session_store.put_doc(
                 content=answer,
-                title=f"[output:{ask_type}]",
+                title=doc_title,
                 kind="output",
                 session_id=sid,
                 logical_id=logical_id,
@@ -841,6 +1141,19 @@ def build_ask_graph(
             doc = session_store.get_doc(put["docId"]) or {}
             gen_ref = _doc_to_ref(doc, kind_override="output", logical_override=logical_id)
             state["generatedDocRef"] = gen_ref
+
+            # P1: 自动归档测试用例到历史库
+            if ask_type == "testcase" and isinstance(session_store, ImprovedSessionStore):
+                try:
+                    archived = session_store.archive_to_history(
+                        doc_id=put["docId"],
+                        session_id=sid,
+                        metadata={"tags": ["output", "testcase", "auto-archived"]}
+                    )
+                    if archived:
+                        print(f"[ask_graph] Auto-archived testcase to history: {put['docId'][:16]}...")
+                except Exception as e:
+                    print(f"[ask_graph] Auto-archive failed: {e}")
 
             # update cache with generated ref
             ck = state.get("cacheKey", "")

@@ -114,6 +114,14 @@ Solvely Browser Extension/
 # 子目录 .idea
 **/.idea/
 
+# 运行时数据（ChromaDB、缓存等）
+**/data/cache/
+**/data/chroma_db/
+**/data/custom_categories.json
+
+# Midscene 运行时报告和缓存
+**/midscene_run/
+
 # 包管理器锁文件（可选，根据团队需求决定）
 # package-lock.json
 # yarn.lock

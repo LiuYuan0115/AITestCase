@@ -7,19 +7,33 @@
       </div>
       
       <div class="debug-drawer-tabs">
-        <button 
-          class="debug-tab" 
+        <button
+          class="debug-tab"
           :class="{ active: activeTab === 'docs' }"
           @click="activeTab = 'docs'"
         >
           文档列表
         </button>
-        <button 
-          class="debug-tab" 
+        <button
+          class="debug-tab"
           :class="{ active: activeTab === 'request' }"
           @click="activeTab = 'request'"
         >
           最近请求
+        </button>
+        <button
+          class="debug-tab"
+          :class="{ active: activeTab === 'telemetry' }"
+          @click="activeTab = 'telemetry'; loadTelemetry()"
+        >
+          遥测数据
+        </button>
+        <button
+          class="debug-tab"
+          :class="{ active: activeTab === 'tasks' }"
+          @click="activeTab = 'tasks'; loadTasks()"
+        >
+          异步任务
         </button>
       </div>
 
@@ -97,6 +111,90 @@
         </div>
       </div>
 
+      <!-- Tab 3: 遥测数据 -->
+      <div v-if="activeTab === 'telemetry'" class="debug-drawer-content">
+        <div v-if="telemetryLoading" class="debug-loading">加载中...</div>
+        <div v-else>
+          <!-- 统计概览 -->
+          <div v-if="telemetryStats" class="debug-request-section">
+            <h4>统计概览</h4>
+            <div class="debug-stats-grid">
+              <div class="debug-stat-card">
+                <span class="stat-value">{{ telemetryStats.total_requests }}</span>
+                <span class="stat-label">总请求</span>
+              </div>
+              <div class="debug-stat-card success">
+                <span class="stat-value">{{ telemetryStats.successful_requests }}</span>
+                <span class="stat-label">成功</span>
+              </div>
+              <div class="debug-stat-card error">
+                <span class="stat-value">{{ telemetryStats.failed_requests }}</span>
+                <span class="stat-label">失败</span>
+              </div>
+              <div class="debug-stat-card">
+                <span class="stat-value">{{ telemetryStats.avg_duration_ms }}ms</span>
+                <span class="stat-label">平均耗时</span>
+              </div>
+              <div class="debug-stat-card">
+                <span class="stat-value">{{ telemetryStats.total_tokens }}</span>
+                <span class="stat-label">总 Token</span>
+              </div>
+              <div class="debug-stat-card">
+                <span class="stat-value">{{ telemetryStats.active_requests }}</span>
+                <span class="stat-label">进行中</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 请求历史 -->
+          <div class="debug-request-section">
+            <h4>请求历史 (最近 20 条)</h4>
+            <div v-if="telemetryHistory.length === 0" class="debug-empty">暂无历史</div>
+            <div v-else class="debug-telemetry-list">
+              <div v-for="item in telemetryHistory" :key="item.request_id" class="debug-telemetry-item">
+                <div class="debug-telemetry-header">
+                  <span class="debug-telemetry-endpoint">{{ item.endpoint }}</span>
+                  <span :class="['debug-telemetry-status', item.status]">{{ item.status }}</span>
+                  <span class="debug-telemetry-duration">{{ item.duration_ms }}ms</span>
+                </div>
+                <div class="debug-telemetry-meta">
+                  <span>ID: {{ item.request_id }}</span>
+                  <span v-if="item.tokens">Tokens: {{ item.tokens.input }}/{{ item.tokens.output }}</span>
+                  <span v-if="item.rag?.enabled">RAG: {{ item.rag.chunks_used }}/{{ item.rag.chunks_retrieved }}</span>
+                  <span>{{ item.timestamp }}</span>
+                </div>
+                <div v-if="item.error" class="debug-telemetry-error">
+                  {{ item.error.code }}: {{ item.error.message }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 4: 异步任务 -->
+      <div v-if="activeTab === 'tasks'" class="debug-drawer-content">
+        <div v-if="tasksLoading" class="debug-loading">加载中...</div>
+        <div v-else-if="tasksList.length === 0" class="debug-empty">暂无任务</div>
+        <div v-else class="debug-tasks-list">
+          <div v-for="task in tasksList" :key="task.task_id" class="debug-task-item">
+            <div class="debug-task-header">
+              <span class="debug-task-type">{{ task.type }}</span>
+              <span :class="['debug-task-status', task.status]">{{ task.status }}</span>
+            </div>
+            <div class="debug-task-meta">
+              <span>ID: {{ task.task_id }}</span>
+              <span v-if="task.progress">进度: {{ task.progress.current }}/{{ task.progress.total }}</span>
+              <span v-if="task.completed_at">耗时: {{ Math.round((task.completed_at - task.started_at) * 1000) }}ms</span>
+            </div>
+            <div v-if="task.status === 'running'" class="debug-task-progress">
+              <div class="progress-bar" :style="{ width: (task.progress?.current || 0) / (task.progress?.total || 100) * 100 + '%' }"></div>
+            </div>
+            <div v-if="task.error" class="debug-task-error">{{ task.error }}</div>
+          </div>
+        </div>
+      </div>
+
       <!-- 预览弹窗 -->
       <div v-if="previewDocId" class="debug-preview-overlay" @click.self="previewDocId = null">
         <div class="debug-preview" @click.stop>
@@ -117,6 +215,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { listSessionDocs, getDocContent } from '@/utils/docStoreApi';
+import { getLocalAgentUrl } from '@/utils/agentUrl';
 import type { DocRef } from '@/utils/refRegistry';
 
 const props = defineProps<{
@@ -135,12 +234,21 @@ const emit = defineEmits<{
 }>();
 
 const isOpen = ref(false);
-const activeTab = ref<'docs' | 'request'>('docs');
+const activeTab = ref<'docs' | 'request' | 'telemetry' | 'tasks'>('docs');
 const docs = ref<any[]>([]);
 const loading = ref(false);
 const previewDocId = ref<string | null>(null);
 const previewContent = ref<string>('');
 const previewLoading = ref(false);
+
+// Phase 7: 遥测数据
+const telemetryLoading = ref(false);
+const telemetryStats = ref<any>(null);
+const telemetryHistory = ref<any[]>([]);
+
+// Phase 6: 任务列表
+const tasksLoading = ref(false);
+const tasksList = ref<any[]>([]);
 
 const open = () => {
   isOpen.value = true;
@@ -185,6 +293,51 @@ const previewDoc = async (docId: string) => {
     previewContent.value = '加载失败';
   } finally {
     previewLoading.value = false;
+  }
+};
+
+// Phase 7: 加载遥测数据
+const loadTelemetry = async () => {
+  telemetryLoading.value = true;
+  try {
+    const baseUrl = await getLocalAgentUrl();
+
+    // 并行加载统计和历史
+    const [statsRes, historyRes] = await Promise.all([
+      fetch(`${baseUrl}/api/telemetry/stats`),
+      fetch(`${baseUrl}/api/telemetry/history?limit=20&session_id=${props.sessionId || ''}`),
+    ]);
+
+    if (statsRes.ok) {
+      telemetryStats.value = await statsRes.json();
+    }
+    if (historyRes.ok) {
+      const data = await historyRes.json();
+      telemetryHistory.value = data.history || [];
+    }
+  } catch (error) {
+    console.error('[DebugDrawer] 加载遥测数据失败:', error);
+  } finally {
+    telemetryLoading.value = false;
+  }
+};
+
+// Phase 6: 加载任务列表
+const loadTasks = async () => {
+  tasksLoading.value = true;
+  try {
+    const baseUrl = await getLocalAgentUrl();
+    const response = await fetch(`${baseUrl}/api/jobs?session_id=${props.sessionId || ''}&limit=20`);
+
+    if (response.ok) {
+      const data = await response.json();
+      tasksList.value = data.tasks || [];
+    }
+  } catch (error) {
+    console.error('[DebugDrawer] 加载任务列表失败:', error);
+    tasksList.value = [];
+  } finally {
+    tasksLoading.value = false;
   }
 };
 
@@ -487,6 +640,199 @@ defineExpose({ open, close });
   word-wrap: break-word;
   font-size: 12px;
   line-height: 1.5;
+}
+
+/* Phase 7: 遥测数据样式 */
+.debug-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.debug-stat-card {
+  background: #f5f5f5;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.debug-stat-card.success {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.debug-stat-card.error {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #666;
+}
+
+.debug-telemetry-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.debug-telemetry-item {
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.debug-telemetry-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.debug-telemetry-endpoint {
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.debug-telemetry-status {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.debug-telemetry-status.success {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.debug-telemetry-status.error,
+.debug-telemetry-status.failed {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.debug-telemetry-status.pending {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.debug-telemetry-duration {
+  color: #666;
+  font-size: 12px;
+}
+
+.debug-telemetry-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #666;
+  flex-wrap: wrap;
+}
+
+.debug-telemetry-error {
+  margin-top: 8px;
+  padding: 8px;
+  background: #ffebee;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #c62828;
+}
+
+/* Phase 6: 任务列表样式 */
+.debug-tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.debug-task-item {
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.debug-task-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.debug-task-type {
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.debug-task-status {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.debug-task-status.running {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.debug-task-status.completed {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.debug-task-status.failed,
+.debug-task-status.timeout {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.debug-task-status.pending {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.debug-task-status.cancelled {
+  background: #f5f5f5;
+  color: #666;
+}
+
+.debug-task-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #666;
+}
+
+.debug-task-progress {
+  margin-top: 8px;
+  height: 4px;
+  background: #e0e0e0;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.debug-task-progress .progress-bar {
+  height: 100%;
+  background: #1565c0;
+  transition: width 0.3s;
+}
+
+.debug-task-error {
+  margin-top: 8px;
+  padding: 8px;
+  background: #ffebee;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #c62828;
 }
 </style>
 

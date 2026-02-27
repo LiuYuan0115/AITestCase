@@ -357,6 +357,7 @@ interface TestCaseAgentOptions {
     text: string;
     instruction?: string;
     additionalPrds?: Array<{ title: string; content: string }>; // 辅助参考文档列表（可多选）
+    outputFormat?: 'xmind' | 'table' | 'yaml'; // 输出格式
 }
 
 interface TestCaseAgentResponse {
@@ -368,9 +369,10 @@ interface TestCaseAgentResponse {
 }
 
 export const testCaseAgent = async (options: TestCaseAgentOptions): Promise<TestCaseAgentResponse> => {
-    const { sessionId, text, instruction, additionalPrds } = options;
+    const { sessionId, text, instruction, additionalPrds, outputFormat } = options;
     console.log(`🧪 Test Case Agent 请求 | Session: ${sessionId}`);
     console.log(`   - 指令: ${instruction || '(首次调用)'}`);
+    console.log(`   - 输出格式: ${outputFormat || 'xmind'}`);
 
     // 1. 尝试本地 Agent
     try {
@@ -383,7 +385,8 @@ export const testCaseAgent = async (options: TestCaseAgentOptions): Promise<Test
                 type: 'testcase',
                 params: { text },
                 additionalPrds: additionalPrds && additionalPrds.length > 0 ? additionalPrds : undefined,
-                instruction
+                instruction,
+                outputFormat
             })
         });
 
@@ -695,6 +698,350 @@ export const runSimpleTest = async (prompt: string, url: string): Promise<Simple
     }
 };
 
+// ================= Midscene VLM UI 自动化接口 =================
+
+export interface MidsceneTestCase {
+    id: string;
+    name: string;
+    scenario: string;
+    expectedResults: string[];
+    preconditions?: string;
+    testData?: Record<string, any>;
+    priority?: string;
+    extractSchema?: string;
+    /** ★ 新增：独立步骤列表（用于混合模式和自由模式降级） */
+    steps?: string[];
+}
+
+interface MidsceneAgentOptions {
+    sessionId: string;
+    instruction?: string;
+    testCases?: MidsceneTestCase[];
+    url?: string;
+    headless?: boolean;
+    useCDP?: boolean;
+    cdpEndpoint?: string;
+    additionalPrds?: Array<{ title: string; content: string }>;
+    deepThink?: boolean;
+    cacheStrategy?: string;
+    aiContext?: string;
+    /** 用于取消正在进行的请求（批量执行停止时使用） */
+    signal?: AbortSignal;
+}
+
+interface MidsceneAssertionResult {
+    expected: string;
+    success: boolean;
+    reason?: string;
+}
+
+interface MidsceneAgentResponse {
+    status: 'success' | 'error';
+    sessionId: string;
+    type: 'plan_generated' | 'report_generated' | 'error';
+    response: string;
+    report?: { type?: string; dir?: string; filePath?: string; logContent?: any };
+    reportLogContent?: any;
+    midsceneResult?: {
+        status: string;
+        testcaseName?: string;
+        durationMs?: number;
+        results?: {
+            steps: Array<{ phase: string; success: boolean; error?: string }>;
+            assertions: MidsceneAssertionResult[];
+            extractions: any[];
+        };
+        report?: { type?: string; dir?: string; filePath?: string; logContent?: any };
+    };
+    testcase?: {
+        name?: string;
+        scenario?: string;
+        expectedResults?: string[];
+        preconditions?: string;
+    };
+}
+
+interface MidsceneBatchResultItem {
+    testcaseId: string;
+    testcaseName: string;
+    status: string;
+    durationMs?: number;
+    assertions?: MidsceneAssertionResult[];
+    error?: string;
+}
+
+interface MidsceneBatchResponse {
+    status: 'success' | 'error';
+    sessionId: string;
+    results: MidsceneBatchResultItem[];
+    summary: {
+        total: number;
+        passed: number;
+        failed: number;
+        errors: number;
+    };
+}
+
+/**
+ * Midscene UI 自动化智能体 — 单条执行
+ *
+ * 支持两种模式:
+ * 1. 自由输入: 传 instruction, LLM 解析为结构化用例
+ * 2. 用例执行: 传 testCases[], 跳过 LLM 直接执行
+ */
+export const midsceneAgent = async (options: MidsceneAgentOptions): Promise<MidsceneAgentResponse> => {
+    const {
+        sessionId, instruction, testCases, url, headless = true,
+        useCDP = false, cdpEndpoint,
+        additionalPrds, deepThink = false,
+        cacheStrategy = 'read-write', aiContext = '',
+        signal,
+    } = options;
+
+    console.log(`[Midscene] Agent request | Session: ${sessionId} | Mode: ${useCDP ? 'CDP' : headless ? 'headless' : 'headed'}`);
+    if (instruction) console.log(`   - instruction: ${instruction}`);
+    if (testCases?.length) console.log(`   - testCases: ${testCases.length} cases`);
+    console.log(`   - URL: ${url}`);
+
+    try {
+        const res = await fetch(`${AGENT_URL}/api/midscene_agent`, {
+            method: 'POST',
+            headers: buildHeaders(),
+            body: JSON.stringify({
+                sessionId,
+                instruction: instruction || '',
+                url: url || '',
+                headless,
+                useCDP,
+                ...(cdpEndpoint ? { cdpEndpoint } : {}),
+                testCases: testCases && testCases.length > 0 ? testCases : undefined,
+                additionalPrds: additionalPrds && additionalPrds.length > 0 ? additionalPrds : undefined,
+                deepThink,
+                cacheStrategy,
+                aiContext,
+            }),
+            // 传入 AbortSignal，支持从外部取消请求（批量执行停止时使用）
+            signal,
+        });
+
+        if (!res.ok) {
+            throw new Error(`Server Error: ${res.status} ${res.statusText}`);
+        }
+
+        return await res.json() as MidsceneAgentResponse;
+
+    } catch (e: any) {
+        console.error('Midscene Agent Error:', e);
+        return {
+            status: 'error',
+            sessionId,
+            type: 'error',
+            response: `Midscene 执行失败: ${e.message}\n\n请确保:\n1. Agent 服务已启动 (Port 8000)\n2. Midscene Sidecar 已启动 (Port 3100)\n   cd agent-server/midscene-sidecar && npm start`
+        };
+    }
+};
+
+/**
+ * Midscene 批量执行 — 多条测试用例
+ */
+export const midsceneAgentBatch = async (options: {
+    sessionId: string;
+    url: string;
+    testCases: MidsceneTestCase[];
+    headless?: boolean;
+    deepThink?: boolean;
+    aiContext?: string;
+}): Promise<MidsceneBatchResponse> => {
+    const { sessionId, url, testCases, headless = true, deepThink = false, aiContext = '' } = options;
+
+    console.log(`[Midscene] Batch request | ${testCases.length} cases | Session: ${sessionId}`);
+
+    try {
+        const res = await fetch(`${AGENT_URL}/api/midscene_agent/batch`, {
+            method: 'POST',
+            headers: buildHeaders(),
+            body: JSON.stringify({
+                sessionId,
+                url,
+                testCases,
+                headless,
+                deepThink,
+                aiContext,
+            })
+        });
+
+        if (!res.ok) {
+            throw new Error(`Server Error: ${res.status} ${res.statusText}`);
+        }
+
+        return await res.json() as MidsceneBatchResponse;
+
+    } catch (e: any) {
+        console.error('Midscene Batch Error:', e);
+        return {
+            status: 'error',
+            sessionId,
+            results: [],
+            summary: { total: 0, passed: 0, failed: 0, errors: testCases.length },
+        };
+    }
+};
+
+/**
+ * Midscene Smart Router — 智能意图路由
+ * 用户输入自然语言 → LLM 判断意图 → 自动执行并返回结果
+ */
+export interface MidsceneSmartResponse {
+    status: 'success' | 'error';
+    sessionId: string;
+    intent: string;     // generate_cases / execute_cases / analyze / free_action / passthrough
+    type: string;       // cases_generated / execute / analysis / free_action / passthrough / error
+    response: string;
+    cases?: any[];
+    formattedCases?: string;
+    midsceneResult?: any;
+    step?: string;      // 前端应跳转的步骤
+}
+
+export const midsceneAgentSmart = async (options: {
+    sessionId: string;
+    instruction: string;
+    url?: string;
+    screenshot?: string;
+    outputFormat?: string;
+}): Promise<MidsceneSmartResponse> => {
+    const { sessionId, instruction, url, screenshot, outputFormat = 'yaml' } = options;
+    console.log(`[Midscene Smart] ${instruction}`);
+
+    try {
+        const res = await fetch(`${AGENT_URL}/api/midscene_agent/smart`, {
+            method: 'POST',
+            headers: buildHeaders(),
+            body: JSON.stringify({
+                sessionId,
+                instruction,
+                url: url || '',
+                screenshot,
+                outputFormat,
+            })
+        });
+
+        if (!res.ok) throw new Error(`Server Error: ${res.status}`);
+        return await res.json() as MidsceneSmartResponse;
+    } catch (e: any) {
+        return {
+            status: 'error', sessionId, intent: 'error', type: 'error',
+            response: `Smart router error: ${e.message}`
+        };
+    }
+};
+
+/**
+ * 检查 Midscene Sidecar 健康状态
+ */
+export const checkMidsceneHealth = async (): Promise<boolean> => {
+    try {
+        const res = await fetch('http://localhost:3100/health', {
+            signal: AbortSignal.timeout(3000)
+        });
+        return res.ok;
+    } catch {
+        return false;
+    }
+};
+
+/**
+ * 获取 Midscene HTML 报告列表
+ */
+export const listMidsceneReports = async (): Promise<Array<{
+    name: string; path: string; size: number;
+    createdAt: string; modifiedAt: string;
+}>> => {
+    try {
+        const res = await fetch('http://localhost:3100/reports', {
+            signal: AbortSignal.timeout(3000)
+        });
+        if (!res.ok) return [];
+        const data = await res.json();
+        return data.reports || [];
+    } catch {
+        return [];
+    }
+};
+
+
+/**
+ * Midscene SSE 流式执行 — 实时接收每步执行状态
+ *
+ * 通过 POST 发送请求到 Sidecar，Sidecar 返回 SSE 流。
+ * 由于 EventSource 只支持 GET，这里用 fetch + ReadableStream 模拟 SSE。
+ */
+export interface MidsceneStreamEvent {
+    event: string;  // step_start | screenshot | step_done | assert_done | done | error | status
+    data: any;
+}
+
+export const midsceneRunTestcaseStream = async (
+    options: {
+        url: string;
+        testcase: MidsceneTestCase;
+        useCDP?: boolean;
+        cdpEndpoint?: string;
+        headless?: boolean;
+        aiContext?: string;
+    },
+    onEvent: (event: MidsceneStreamEvent) => void,
+): Promise<void> => {
+    const sidecarUrl = 'http://localhost:3100';
+
+    const res = await fetch(`${sidecarUrl}/run-testcase/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            url: options.url,
+            testcase: options.testcase,
+            options: {
+                useCDP: options.useCDP ?? false,
+                cdpEndpoint: options.cdpEndpoint,
+                headless: options.headless ?? true,
+                aiContext: options.aiContext || '',
+            },
+        }),
+    });
+
+    if (!res.ok || !res.body) {
+        onEvent({ event: 'error', data: { message: `Stream failed: ${res.status}` } });
+        return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        let currentEvent = '';
+        for (const line of lines) {
+            if (line.startsWith('event: ')) {
+                currentEvent = line.slice(7).trim();
+            } else if (line.startsWith('data: ')) {
+                try {
+                    const data = JSON.parse(line.slice(6));
+                    onEvent({ event: currentEvent || 'message', data });
+                } catch {}
+                currentEvent = '';
+            }
+        }
+    }
+};
+
+
 // ================= 通用 Ask 接口 =================
 
 // New Ask Interface
@@ -715,6 +1062,7 @@ export const ask = async (
     additionalPrds?: Array<{ title: string; content: string }>;  // 辅助PRD列表
     docRefs?: Array<{ docId: string; kind?: string; title?: string; hash?: string; logicalId?: string; length?: number; contentType?: string }>; // docRefs-only 链路
     targetLogicalId?: string; // chat/edit 目标右侧文档 logicalId
+    outputFormat?: 'xmind' | 'table' | 'yaml'; // 测试用例输出格式
   }
 ) => {
   const sessionId = options.sessionId || `mvp-${Date.now()}`;
@@ -734,6 +1082,11 @@ export const ask = async (
   // ✅ chat/edit target
   if (options.targetLogicalId) {
     body.targetLogicalId = options.targetLogicalId;
+  }
+
+  // ✅ 测试用例输出格式
+  if (options.outputFormat) {
+    body.outputFormat = options.outputFormat;
   }
 
   // 下面继续追加其它字段
@@ -846,4 +1199,396 @@ export const ask = async (
     generatedDocRef: data.generatedDocRef,
     usedDocRefs: data.usedDocRefs || [],
   };
+};
+
+// ================= 质量评估接口 =================
+
+import type { EvaluationReport } from '@/types/chat';
+
+interface EvaluateResponse {
+  status: 'success' | 'error';
+  score?: number;
+  summary?: string;
+  coverage_gap?: string[];
+  logic_issues?: Array<{ id: string; issue: string; severity: 'high' | 'medium' | 'low' }>;
+  duplicates?: string[];
+  suggestions?: string[];
+  quality_breakdown?: Record<string, number>;
+  message?: string;
+}
+
+/**
+ * 质量评估 - 评估测试用例质量
+ *
+ * @param prdText PRD 原文
+ * @param testcasesText 测试用例文本（Markdown 格式）
+ * @param ragContext 可选 RAG 上下文
+ */
+export const evaluateTestCases = async (
+  prdText: string,
+  testcasesText: string,
+  ragContext?: string,
+): Promise<EvaluationReport> => {
+  const formData = new FormData();
+  formData.append('prdText', prdText);
+  formData.append('testcasesText', testcasesText);
+  if (ragContext) {
+    formData.append('ragContext', ragContext);
+  }
+
+  const res = await fetch(`${AGENT_URL}/api/evaluate`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Error: evaluate request failed: ${res.status} ${res.statusText}`);
+  }
+
+  const data = (await res.json()) as EvaluateResponse;
+
+  if (data.status !== 'success') {
+    throw new Error(data.message || 'Error: evaluation failed.');
+  }
+
+  return {
+    score: data.score ?? 0,
+    summary: data.summary ?? '',
+    coverage_gap: data.coverage_gap ?? [],
+    logic_issues: (data.logic_issues ?? []).map(i => ({
+      id: i.id,
+      issue: i.issue,
+      severity: i.severity,
+    })),
+    duplicates: data.duplicates ?? [],
+    suggestions: data.suggestions ?? [],
+    risk_points: [],
+    supplementary_cases: [],
+  };
+};
+
+
+// ================= Midscene 缓存管理 API =================
+
+const MIDSCENE_SIDECAR_URL = 'http://localhost:3100';
+
+/** 缓存条目信息 */
+export interface MidsceneCacheItem {
+  id: string;
+  fileName: string;
+  sizeBytes: number;
+  lastModified: string;
+  planCount: number;
+  locateCount: number;
+}
+
+/** 缓存列表响应 */
+export interface MidsceneCacheListResponse {
+  caches: MidsceneCacheItem[];
+  totalSize: number;
+  cacheDir: string;
+}
+
+/** 获取缓存列表 */
+export const getMidsceneCacheList = async (): Promise<MidsceneCacheListResponse> => {
+  try {
+    const res = await fetch(`${MIDSCENE_SIDECAR_URL}/cache/list`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (e: any) {
+    console.error('[cache] 获取缓存列表失败:', e.message);
+    return { caches: [], totalSize: 0, cacheDir: '' };
+  }
+};
+
+/** 删除指定缓存 */
+export const deleteMidsceneCache = async (cacheId: string): Promise<{ success: boolean; message?: string }> => {
+  try {
+    const res = await fetch(`${MIDSCENE_SIDECAR_URL}/cache/${encodeURIComponent(cacheId)}`, {
+      method: 'DELETE',
+      signal: AbortSignal.timeout(5000),
+    });
+    return await res.json();
+  } catch (e: any) {
+    console.error('[cache] 删除缓存失败:', e.message);
+    return { success: false, message: e.message };
+  }
+};
+
+/** 清空所有缓存 */
+export const clearAllMidsceneCache = async (): Promise<{ success: boolean; deleted: number }> => {
+  try {
+    const res = await fetch(`${MIDSCENE_SIDECAR_URL}/cache`, {
+      method: 'DELETE',
+      signal: AbortSignal.timeout(5000),
+    });
+    return await res.json();
+  } catch (e: any) {
+    console.error('[cache] 清空缓存失败:', e.message);
+    return { success: false, deleted: 0 };
+  }
+};
+
+
+// ================= 即时操作 & 三模式执行 API =================
+
+/** 即时操作步骤类型 */
+export type InstantActionType = 'tap' | 'doubleTap' | 'rightClick' | 'hover' | 'input' | 'keypress' | 'scroll' | 'aiAct';
+
+/** 即时操作步骤 */
+export interface InstantStep {
+  type: InstantActionType;
+  target?: string;
+  value?: string;
+  direction?: 'up' | 'down' | 'left' | 'right';
+  original: string;
+  confidence?: number;
+}
+
+/** 逐步执行结果（单步） */
+export interface InstantStepResult {
+  stepIndex: number;
+  type: string;
+  target?: string;
+  value?: string;
+  original: string;
+  success: boolean;
+  method: 'instant' | 'aiAct-single' | 'aiAct-deepThink';
+  error?: string;
+  suggestion?: string;
+  durationMs: number;
+}
+
+/** 回归基线元数据 */
+export interface RegressionBaseline {
+  id: string;
+  caseId: string;
+  caseName: string;
+  url: string;
+  stepsCount: number;
+  assertionsCount: number;
+  fileName: string;
+  createdAt: string;
+  updatedAt: string;
+  lastRunAt?: string;
+  lastRunStatus?: 'passed' | 'failed';
+  lastRunDurationMs?: number;
+}
+
+/** 混合模式执行选项 */
+export interface RunInstantOptions {
+  url: string;
+  steps?: InstantStep[];
+  rawSteps?: string[];
+  assertions?: string[];
+  caseId?: string;
+  caseName?: string;
+  options: {
+    useCDP?: boolean;
+    cdpEndpoint?: string;
+    headless?: boolean;
+    cache?: { strategy: string; id: string };
+    aiContext?: string;
+    deepThink?: boolean;
+    startFromStep?: number;
+  };
+}
+
+/** 混合模式执行结果 */
+export interface RunInstantResult {
+  status: 'passed' | 'failed';
+  totalSteps: number;
+  passedSteps: number;
+  failedSteps: number;
+  durationMs: number;
+  steps: InstantStepResult[];
+  assertions: Array<{ expected: string; success: boolean; reason?: string }>;
+  regressionYaml?: string;
+}
+
+// ---------- 混合模式 API ----------
+
+/** 混合模式执行（同步） */
+export const midsceneRunInstant = async (options: RunInstantOptions): Promise<RunInstantResult> => {
+  const res = await fetch(`${MIDSCENE_SIDECAR_URL}/run-instant`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(options),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
+    throw new Error(err.message || `HTTP ${res.status}`);
+  }
+  return await res.json();
+};
+
+/** 混合模式执行（SSE 流式） */
+export const midsceneRunInstantStream = (
+  options: RunInstantOptions,
+  onEvent: (event: string, data: any) => void,
+  signal?: AbortSignal,
+): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    fetch(`${MIDSCENE_SIDECAR_URL}/run-instant/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options),
+      signal,
+    })
+    .then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      const processChunk = ({ done, value }: ReadableStreamReadResult<Uint8Array>): void | Promise<void> => {
+        if (done) { resolve(); return; }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        let eventName = '';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            eventName = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              onEvent(eventName || 'message', data);
+              if (eventName === 'done' || eventName === 'error') {
+                resolve();
+                return;
+              }
+            } catch {}
+          }
+        }
+        return reader!.read().then(processChunk);
+      };
+
+      reader!.read().then(processChunk);
+    })
+    .catch(reject);
+  });
+};
+
+// ---------- 回归模式 API ----------
+
+/** 回归模式执行（runYaml） */
+export const midsceneRunYaml = async (options: {
+  yamlContent?: string;
+  regressionId?: string;
+  options: {
+    useCDP?: boolean;
+    cdpEndpoint?: string;
+    headless?: boolean;
+    cacheStrategy?: string;
+  };
+}): Promise<any> => {
+  const res = await fetch(`${MIDSCENE_SIDECAR_URL}/run-yaml`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(options),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
+    throw new Error(err.message || `HTTP ${res.status}`);
+  }
+  return await res.json();
+};
+
+// ---------- 回归基线管理 API ----------
+
+/** 列出所有回归基线 */
+export const listRegressionBaselines = async (): Promise<{
+  total: number;
+  baselines: RegressionBaseline[];
+}> => {
+  try {
+    const res = await fetch(`${MIDSCENE_SIDECAR_URL}/regression/list`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return { total: data.total || 0, baselines: data.baselines || [] };
+  } catch (e: any) {
+    console.error('[regression] 获取基线列表失败:', e.message);
+    return { total: 0, baselines: [] };
+  }
+};
+
+/** 获取指定回归基线详情 */
+export const getRegressionBaseline = async (id: string): Promise<{
+  baseline: RegressionBaseline;
+  yamlContent: string;
+  parsed: { url: string; steps: InstantStep[]; assertions: string[] };
+} | null> => {
+  try {
+    const res = await fetch(`${MIDSCENE_SIDECAR_URL}/regression/${encodeURIComponent(id)}`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.status === 'ok' ? data : null;
+  } catch (e: any) {
+    console.error('[regression] 获取基线详情失败:', e.message);
+    return null;
+  }
+};
+
+/** 保存回归基线 */
+export const saveRegressionBaseline = async (data: {
+  yamlContent?: string;
+  steps?: InstantStep[];
+  assertions?: string[];
+  caseId: string;
+  caseName: string;
+  url: string;
+  cacheStrategy?: string;
+}): Promise<{ status: string; baseline?: RegressionBaseline }> => {
+  const res = await fetch(`${MIDSCENE_SIDECAR_URL}/regression/save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return await res.json();
+};
+
+/** 更新回归基线 */
+export const updateRegressionBaseline = async (id: string, data: {
+  yamlContent?: string;
+  steps?: InstantStep[];
+  assertions?: string[];
+}): Promise<{ status: string; baseline?: RegressionBaseline }> => {
+  const res = await fetch(`${MIDSCENE_SIDECAR_URL}/regression/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return await res.json();
+};
+
+/** 删除回归基线 */
+export const deleteRegressionBaseline = async (id: string): Promise<{ status: string }> => {
+  const res = await fetch(`${MIDSCENE_SIDECAR_URL}/regression/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  return await res.json();
+};
+
+/** 刷新回归基线（获取数据供前端重新执行） */
+export const refreshRegressionBaseline = async (id: string): Promise<{
+  baseline: RegressionBaseline;
+  parsed: { url: string; steps: InstantStep[]; assertions: string[] };
+} | null> => {
+  try {
+    const res = await fetch(`${MIDSCENE_SIDECAR_URL}/regression/${encodeURIComponent(id)}/refresh`, {
+      method: 'POST',
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e: any) {
+    console.error('[regression] 刷新基线失败:', e.message);
+    return null;
+  }
 };

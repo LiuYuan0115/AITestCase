@@ -19,7 +19,8 @@ import re
 
 from langgraph.graph import StateGraph, END
 
-from agent_app.prompts import UI_AGENT_SYSTEM_PROMPT
+from agent_app.prompt_manager import UI_AGENT_SYSTEM_PROMPT, load_skill
+from agent_app.config_manager import config
 from agent_app.tooling import ui_agent_tools_schema
 from agent_app.ui.screenshots import get_screenshot_dir
 from agent_app.config import is_anthropic_model
@@ -1660,8 +1661,24 @@ Markdown plan:
                     content = content[:per_doc_max] + f"{NL}{NL}... (truncated) ..."
                 additional_text += f"{NL}#### {title}{NL}{NL}{content}{NL}{NL}---{NL}"
 
+        # Week 8: 加载并集成 Skills（可通过环境变量控制）
+        skills_content = ""
+        if config.USE_UI_SKILLS if hasattr(config, 'USE_UI_SKILLS') else True:
+            try:
+                webapp_skill = load_skill("webapp-testing")
+                playwright_skill = load_skill("playwright")
+                skills_content = (
+                    f"\n\n## Specialized Skills\n\n"
+                    f"### Webapp Testing Best Practices\n{webapp_skill[:4000]}\n\n"
+                    f"### Playwright Automation Guide\n{playwright_skill[:4000]}\n"
+                )
+            except Exception as e:
+                # Skills 加载失败不阻塞正常流程
+                print(f"[ui_graph] Warning: Failed to load skills: {e}")
+
         system_content = (
             f"{UI_AGENT_SYSTEM_PROMPT}\n\n"
+            f"{skills_content}"
             f"## Current State\n\n"
             f"### Page Info\n{state.get('pageInfo','')}{state.get('pageAccessibility','')}\n\n"
             f"### Existing Plan\n"

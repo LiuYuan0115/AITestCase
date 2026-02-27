@@ -1,4 +1,4 @@
-import { convertDOMToMarkdown } from '@/utils/page'
+import { convertDOMToMarkdown, convertDOMToMarkdownWithImages } from '@/utils/page'
 
 type ScrollTarget =
   | { type: 'window'; el: null; originalTop: number }
@@ -463,14 +463,14 @@ export default defineContentScript({
       }
 
       if (message.type === 'GET_DOM') {
-        const result = convertDOMToMarkdown(document.body, { 
-            checkSelectors: true, 
-            onlyInViewport: message.onlyInViewport || false 
+        const result = convertDOMToMarkdownWithImages(document.body, {
+            checkSelectors: true,
+            onlyInViewport: message.onlyInViewport || false
         })
-        
+
              sendResponse({
                  markdown: result.markdown,
-            images: [] // No longer extracting images from DOM
+            images: result.images
         });
         return false;
       }
