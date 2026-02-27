@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, TypedDict
 
 from langgraph.graph import StateGraph, END
 
-from agent_app.prompts import PM_CHAT_SYSTEM_PROMPT, DEV_CHAT_SYSTEM_PROMPT
+from agent_app.prompt_manager import PM_CHAT_SYSTEM_PROMPT, DEV_CHAT_SYSTEM_PROMPT
 from agent_app.config import is_anthropic_model
 
 

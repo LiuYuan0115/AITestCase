@@ -19,7 +19,7 @@ import re
 
 from langgraph.graph import StateGraph, END
 
-from agent_app.prompts import UI_AGENT_SYSTEM_PROMPT, load_skill
+from agent_app.prompt_manager import UI_AGENT_SYSTEM_PROMPT, load_skill
 from agent_app.config_manager import config
 from agent_app.tooling import ui_agent_tools_schema
 from agent_app.ui.screenshots import get_screenshot_dir

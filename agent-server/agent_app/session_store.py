@@ -26,6 +26,67 @@ def _sha256(text: str) -> str:
     return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
 
 
+def auto_classify_doc(content: str, title: str = "", logical_id: str = "", kind: str = "") -> str:
+    """
+    自动分类文档
+
+    Args:
+        content: 文档内容
+        title: 文档标题
+        logical_id: 逻辑 ID
+        kind: 文档类型 (main/aux/output)
+
+    Returns:
+        分类: prd/测试用例/测试点/其他
+    """
+    # 合并用于检测的文本
+    check_text = f"{title} {logical_id} {content[:2000]}".lower()
+
+    # 基于 logical_id 判断
+    if logical_id:
+        lid = logical_id.lower()
+        if 'testcase' in lid or 'test_case' in lid or '用例' in lid:
+            return "测试用例"
+        if 'testpoint' in lid or 'test_point' in lid or '测试点' in lid:
+            return "测试点"
+        if 'prd' in lid or 'raw_prd' in lid:
+            return "prd"
+
+    # 基于 kind 判断
+    if kind == 'output':
+        # output 通常是生成的测试用例或测试点
+        if '测试用例' in check_text or 'testcase' in check_text or '用例编号' in check_text:
+            return "测试用例"
+        if '测试点' in check_text or 'testpoint' in check_text:
+            return "测试点"
+
+    # 基于标题判断
+    if title:
+        title_lower = title.lower()
+        if '测试用例' in title_lower or 'testcase' in title_lower:
+            return "测试用例"
+        if '测试点' in title_lower or 'testpoint' in title_lower:
+            return "测试点"
+        if 'prd' in title_lower or '需求' in title_lower or '产品文档' in title_lower:
+            return "prd"
+
+    # 基于内容关键词判断
+    if '用例编号' in check_text or '测试步骤' in check_text or '预期结果' in check_text:
+        return "测试用例"
+    if '测试点' in check_text and ('覆盖' in check_text or '验证' in check_text):
+        return "测试点"
+    if '需求描述' in check_text or '功能需求' in check_text or '业务需求' in check_text:
+        return "prd"
+
+    # 基于 kind 的默认分类
+    if kind == 'main':
+        return "prd"
+    if kind == 'aux':
+        return "prd"  # 辅助文档通常也是参考资料，归为 prd
+
+    return "其他"
+
+
 def _stable_dumps(obj: Any) -> str:
     """Stable JSON stringify for cache keys."""
     return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -138,10 +199,25 @@ class SessionStore:
         logical_id: Optional[str] = None,
         content_type: Optional[str] = None,
         tags: Optional[List[str]] = None,
+        images: Optional[List[Dict[str, Any]]] = None,  # Week 8: 多模态图片数据
+        category: Optional[str] = None,  # 文档分类: prd/测试用例/测试点/其他
+        pdf_base64: Optional[str] = None,  # Gemini: PDF 原始 base64 数据
     ) -> Dict[str, Any]:
         """
         Store a doc (dedupe by content hash). If (session_id + logical_id) is provided,
         automatically updates pointer logical_id -> docId for that session.
+
+        Args:
+            content: 文档文本内容
+            title: 文档标题
+            kind: 文档类型 (main/aux/output)
+            session_id: 会话 ID
+            logical_id: 逻辑 ID（指针）
+            content_type: 内容类型
+            tags: 标签列表
+            images: 多模态图片数据列表 [{base64, media_type, page_num, width, height}]
+            category: 文档分类（如不提供则自动分类）
+            pdf_base64: PDF 原始 base64 数据（Gemini 模型直传用）
         """
         content = content or ""
         h = _sha256(content)
@@ -149,6 +225,10 @@ class SessionStore:
         now = int(time.time())
         length = len(content)
         ctype = content_type or "text/markdown"
+
+        # 自动分类（如果未提供）
+        if not category:
+            category = auto_classify_doc(content, title or "", logical_id or "", kind or "")
 
         with self._lock:
             is_new = False
@@ -159,20 +239,26 @@ class SessionStore:
                     "hash": h,
                     "title": title,
                     "kind": kind,
+                    "category": category,  # 文档分类
                     "logicalId": logical_id,
                     "contentType": ctype,
                     "length": length,
                     "tags": tags or [],
                     "content": content,
                     "createdAt": now,
+                    "images": images or [],  # Week 8: 存储图片数据
+                    "pdf_base64": pdf_base64,  # Gemini: PDF 原始数据
+                    "multimodal": bool((images and len(images) > 0) or pdf_base64),
                 }
             else:
-                # allow backfill title/kind/logicalId/contentType/tags
+                # allow backfill title/kind/logicalId/contentType/tags/images/category
                 d = self._docs[doc_id]
                 if title and not d.get("title"):
                     d["title"] = title
                 if kind and not d.get("kind"):
                     d["kind"] = kind
+                if category and not d.get("category"):
+                    d["category"] = category
                 if logical_id and not d.get("logicalId"):
                     d["logicalId"] = logical_id
                 if ctype and not d.get("contentType"):
@@ -183,6 +269,14 @@ class SessionStore:
                         if t not in exist:
                             exist.add(t)
                     d["tags"] = list(exist)
+                # 补充图片数据（如果之前没有）
+                if images and not d.get("images"):
+                    d["images"] = images
+                    d["multimodal"] = True
+                # 补充 PDF 原始数据（如果之前没有）
+                if pdf_base64 and not d.get("pdf_base64"):
+                    d["pdf_base64"] = pdf_base64
+                    d["multimodal"] = True
 
             # bind to session
             if session_id:
@@ -200,6 +294,7 @@ class SessionStore:
                 "hash": doc.get("hash"),
                 "title": doc.get("title"),
                 "kind": doc.get("kind"),
+                "category": doc.get("category"),  # 返回分类
                 "logicalId": logical_id or doc.get("logicalId"),
                 "length": doc.get("length"),
                 "contentType": doc.get("contentType"),
@@ -268,10 +363,12 @@ class SessionStore:
                     "hash": d.get("hash"),
                     "title": d.get("title"),
                     "kind": d.get("kind"),
+                    "category": d.get("category"),  # 文档分类
                     "logicalId": d.get("logicalId"),
                     "length": d.get("length"),
                     "contentType": d.get("contentType"),
                     "createdAt": d.get("createdAt"),
+                    "multimodal": d.get("multimodal", False),  # 是否多模态文档
                 })
             return docs
 
@@ -457,11 +554,26 @@ class ImprovedSessionStore(SessionStore):
         logical_id: Optional[str] = None,
         content_type: Optional[str] = None,
         tags: Optional[List[str]] = None,
+        images: Optional[List[Dict[str, Any]]] = None,  # Week 8: 多模态图片数据
+        category: Optional[str] = None,  # 文档分类: prd/测试用例/测试点/其他
+        pdf_base64: Optional[str] = None,  # Gemini: PDF 原始 base64 数据
     ) -> Dict[str, Any]:
         """
         Store document in both in-memory store and ChromaDB.
 
         Override of SessionStore.put_doc() with vector storage.
+
+        Args:
+            content: 文档文本内容
+            title: 文档标题
+            kind: 文档类型 (main/aux/output)
+            session_id: 会话 ID
+            logical_id: 逻辑 ID（指针）
+            content_type: 内容类型
+            tags: 标签列表
+            images: 多模态图片数据列表 [{base64, media_type, page_num, width, height}]
+            category: 文档分类（如不提供则自动分类）
+            pdf_base64: PDF 原始 base64 数据（Gemini 模型直传用）
         """
         # First, store in parent class (in-memory)
         result = super().put_doc(
@@ -472,6 +584,9 @@ class ImprovedSessionStore(SessionStore):
             logical_id=logical_id,
             content_type=content_type,
             tags=tags,
+            images=images,  # Week 8: 传递图片数据
+            category=category,  # 传递分类
+            pdf_base64=pdf_base64,  # Gemini: 传递 PDF 原始数据
         )
 
         doc_id = result["docId"]
@@ -486,6 +601,7 @@ class ImprovedSessionStore(SessionStore):
             metadata = {
                 "title": title or "",
                 "kind": kind or "unknown",
+                "category": result.get("category") or "其他",  # 文档分类
                 "session_id": session_id or "",
                 "logical_id": logical_id or "",
                 "content_type": content_type or "text/markdown",
@@ -672,35 +788,30 @@ class ImprovedSessionStore(SessionStore):
         # First delete from parent (in-memory)
         if super().delete_doc(doc_id, session_id):
             deleted = True
+            print(f"[ImprovedSessionStore] Deleted from memory: {doc_id[:30]}...")
 
         # Then delete from ChromaDB collections
-        try:
-            # Try to delete from session_docs collection
-            try:
-                self.docs_collection.delete(ids=[doc_id])
-                deleted = True
-                print(f"[ImprovedSessionStore] Deleted from session_docs: {doc_id[:20]}...")
-            except Exception:
-                pass  # Not in this collection
+        # ChromaDB's delete() does NOT throw if the id doesn't exist,
+        # so we check existence first with get() then delete.
+        collections = [
+            ("session_docs", self.docs_collection),
+            ("history_cases", self.history_collection),
+            ("company_knowledge", self.knowledge_collection),
+        ]
 
-            # Try to delete from history_cases collection
+        for col_name, collection in collections:
             try:
-                self.history_collection.delete(ids=[doc_id])
-                deleted = True
-                print(f"[ImprovedSessionStore] Deleted from history_cases: {doc_id[:20]}...")
-            except Exception:
-                pass  # Not in this collection
+                # Check if doc exists in this collection before deleting
+                existing = collection.get(ids=[doc_id])
+                if existing and existing.get("ids") and len(existing["ids"]) > 0:
+                    collection.delete(ids=[doc_id])
+                    deleted = True
+                    print(f"[ImprovedSessionStore] Deleted from {col_name}: {doc_id[:30]}...")
+            except Exception as e:
+                print(f"[ImprovedSessionStore] Failed to delete from {col_name}: {e}")
 
-            # Try to delete from company_knowledge collection
-            try:
-                self.knowledge_collection.delete(ids=[doc_id])
-                deleted = True
-                print(f"[ImprovedSessionStore] Deleted from company_knowledge: {doc_id[:20]}...")
-            except Exception:
-                pass  # Not in this collection
-
-        except Exception as e:
-            print(f"[ImprovedSessionStore] ChromaDB delete failed: {e}")
+        if not deleted:
+            print(f"[ImprovedSessionStore] Doc not found in any store: {doc_id[:30]}...")
 
         return deleted
 
@@ -910,3 +1021,280 @@ class ImprovedSessionStore(SessionStore):
             print(f"[ImprovedSessionStore] list_all_docs failed: {e}")
             # Fallback to parent implementation
             return super().list_all_docs(limit=limit, category=category)
+
+    # ==================================================================
+    # 知识库专用方法
+    # ==================================================================
+
+    def put_knowledge_doc(
+        self,
+        *,
+        content: str,
+        title: Optional[str] = None,
+        category: Optional[str] = None,
+        content_type: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        images: Optional[List[Dict[str, Any]]] = None,
+        pdf_base64: Optional[str] = None,  # Gemini: PDF 原始 base64 数据
+    ) -> Dict[str, Any]:
+        """
+        直接存储文档到 company_knowledge collection（知识库专用）
+
+        Args:
+            content: 文档文本内容
+            title: 文档标题
+            category: 文档分类
+            content_type: 内容类型
+            tags: 标签列表
+            images: 多模态图片数据
+            pdf_base64: PDF 原始 base64 数据（Gemini 模型直传用）
+
+        Returns:
+            文档引用信息
+        """
+        content = content or ""
+        h = _sha256(content)
+        doc_id = f"sha256:{h}"
+        now = int(time.time())
+
+        # 自动分类（如果未提供）
+        if not category:
+            category = auto_classify_doc(content, title or "", "", "knowledge")
+
+        try:
+            # 准备 metadata
+            metadata = {
+                "title": title or "",
+                "kind": "knowledge",
+                "category": category,
+                "content_type": content_type or "text/markdown",
+                "tags": json.dumps(tags or []),
+                "created_at": now,
+            }
+
+            # 检查是否已存在
+            existing = self.knowledge_collection.get(ids=[doc_id])
+            is_new = not (existing and existing.get("ids") and len(existing["ids"]) > 0)
+
+            if is_new:
+                # 直接添加到 company_knowledge collection
+                self.knowledge_collection.add(
+                    documents=[content],
+                    metadatas=[metadata],
+                    ids=[doc_id]
+                )
+            else:
+                # 更新已存在的文档
+                self.knowledge_collection.update(
+                    ids=[doc_id],
+                    documents=[content],
+                    metadatas=[metadata]
+                )
+
+            # 同时存入内存（兼容性）
+            with self._lock:
+                if doc_id not in self._docs:
+                    self._docs[doc_id] = {
+                        "docId": doc_id,
+                        "hash": h,
+                        "title": title,
+                        "kind": "knowledge",
+                        "category": category,
+                        "contentType": content_type or "text/markdown",
+                        "length": len(content),
+                        "tags": tags or [],
+                        "content": content,
+                        "createdAt": now,
+                        "images": images or [],
+                        "pdf_base64": pdf_base64,  # Gemini: PDF 原始数据
+                        "multimodal": bool(images or pdf_base64),
+                        "source": "company_knowledge",
+                    }
+
+            return {
+                "docId": doc_id,
+                "hash": h,
+                "title": title,
+                "kind": "knowledge",
+                "category": category,
+                "length": len(content),
+                "contentType": content_type or "text/markdown",
+                "createdAt": now,
+                "isNew": is_new,
+                "source": "company_knowledge",
+            }
+
+        except Exception as e:
+            print(f"[ImprovedSessionStore] Knowledge add failed: {e}")
+            raise
+
+    # ==================================================================
+    # 批量删除方法
+    # ==================================================================
+
+    def batch_delete_docs(
+        self,
+        doc_ids: List[str],
+        session_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        批量删除文档
+
+        Args:
+            doc_ids: 文档 ID 列表
+            session_id: 可选会话 ID
+
+        Returns:
+            删除结果统计
+        """
+        results = {
+            "total": len(doc_ids),
+            "deleted": 0,
+            "failed": 0,
+            "errors": []
+        }
+
+        for doc_id in doc_ids:
+            try:
+                if self.delete_doc(doc_id, session_id):
+                    results["deleted"] += 1
+                else:
+                    results["failed"] += 1
+                    results["errors"].append({"docId": doc_id, "error": "未找到"})
+            except Exception as e:
+                results["failed"] += 1
+                results["errors"].append({"docId": doc_id, "error": str(e)})
+
+        return results
+
+    # ==================================================================
+    # 分类管理方法
+    # ==================================================================
+
+    # 默认分类（不可删除/修改）
+    DEFAULT_CATEGORIES = ['prd', '测试用例', '测试点', '其他']
+
+    def _get_categories_file_path(self) -> str:
+        """获取分类配置文件路径"""
+        import os
+        return os.path.join(
+            os.path.dirname(__file__),
+            '..', 'data', 'custom_categories.json'
+        )
+
+    def _load_custom_categories(self) -> List[str]:
+        """从文件加载自定义分类"""
+        import os
+        categories_file = self._get_categories_file_path()
+        try:
+            if os.path.exists(categories_file):
+                with open(categories_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"[ImprovedSessionStore] Load categories failed: {e}")
+        return []
+
+    def _save_custom_categories(self, categories: List[str]) -> None:
+        """保存自定义分类到文件"""
+        import os
+        categories_file = self._get_categories_file_path()
+        try:
+            os.makedirs(os.path.dirname(categories_file), exist_ok=True)
+            with open(categories_file, 'w', encoding='utf-8') as f:
+                json.dump(categories, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"[ImprovedSessionStore] Save categories failed: {e}")
+
+    def get_all_categories(self) -> List[str]:
+        """获取所有分类（默认 + 自定义）"""
+        custom = self._load_custom_categories()
+        return self.DEFAULT_CATEGORIES + custom
+
+    def add_category(self, name: str) -> bool:
+        """添加自定义分类"""
+        name = name.strip()
+        if not name:
+            return False
+        all_cats = self.get_all_categories()
+        if name in all_cats:
+            return False  # 已存在
+        custom = self._load_custom_categories()
+        custom.append(name)
+        self._save_custom_categories(custom)
+        return True
+
+    def update_category(self, old_name: str, new_name: str) -> bool:
+        """更新自定义分类名称"""
+        old_name = old_name.strip()
+        new_name = new_name.strip()
+        if not new_name:
+            return False
+        if old_name in self.DEFAULT_CATEGORIES:
+            return False  # 不能修改默认分类
+        custom = self._load_custom_categories()
+        if old_name not in custom:
+            return False
+        if new_name in self.get_all_categories():
+            return False  # 新名称已存在
+
+        idx = custom.index(old_name)
+        custom[idx] = new_name
+        self._save_custom_categories(custom)
+
+        # 更新所有使用该分类的文档
+        self._update_docs_category(old_name, new_name)
+        return True
+
+    def delete_category(self, name: str, move_to: str = '其他') -> bool:
+        """删除自定义分类，将文档移动到指定分类"""
+        name = name.strip()
+        if name in self.DEFAULT_CATEGORIES:
+            return False  # 不能删除默认分类
+        custom = self._load_custom_categories()
+        if name not in custom:
+            return False
+
+        custom.remove(name)
+        self._save_custom_categories(custom)
+
+        # 将该分类下的文档移动到目标分类
+        self._update_docs_category(name, move_to)
+        return True
+
+    def _update_docs_category(self, old_category: str, new_category: str) -> None:
+        """更新所有使用指定分类的文档"""
+        try:
+            # 更新 company_knowledge collection
+            results = self.knowledge_collection.get(
+                where={"category": old_category},
+                include=["metadatas"]
+            )
+            if results and results.get("ids"):
+                for doc_id, metadata in zip(results["ids"], results["metadatas"]):
+                    metadata["category"] = new_category
+                    self.knowledge_collection.update(
+                        ids=[doc_id],
+                        metadatas=[metadata]
+                    )
+
+            # 更新 session_docs collection
+            results = self.docs_collection.get(
+                where={"category": old_category},
+                include=["metadatas"]
+            )
+            if results and results.get("ids"):
+                for doc_id, metadata in zip(results["ids"], results["metadatas"]):
+                    metadata["category"] = new_category
+                    self.docs_collection.update(
+                        ids=[doc_id],
+                        metadatas=[metadata]
+                    )
+
+            # 更新内存中的文档
+            with self._lock:
+                for doc in self._docs.values():
+                    if doc.get("category") == old_category:
+                        doc["category"] = new_category
+
+        except Exception as e:
+            print(f"[ImprovedSessionStore] Update docs category failed: {e}")

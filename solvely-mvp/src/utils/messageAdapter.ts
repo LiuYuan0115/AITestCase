@@ -5,6 +5,12 @@
 import type { ChatMessage, MessageStatus } from '@/composables';
 import type { DocRef } from '@/utils/refRegistry';
 
+// 附件信息类型
+export interface LegacyMessageAttachment {
+  type: 'file' | 'image' | 'document';
+  name: string;
+}
+
 // 旧消息类型（App.vue 中的 Message 接口）
 export interface LegacyMessage {
   role: 'user' | 'ai';
@@ -12,6 +18,7 @@ export interface LegacyMessage {
   actionType?: 'edit' | 'delete' | 'add' | 'query' | 'testcase_edit';
   canUndo?: boolean;
   undoData?: string;
+  attachments?: LegacyMessageAttachment[];
 }
 
 // 旧属性存储
@@ -34,12 +41,19 @@ export interface AdaptedChatMessage extends ChatMessage {
  * @returns 适配后的 ChatMessage
  */
 export function adaptLegacyMessage(msg: LegacyMessage, index: number): AdaptedChatMessage {
+  // 转换附件格式
+  const attachments = msg.attachments?.map(att => ({
+    type: att.type,
+    name: att.name,
+  }));
+
   return {
     id: `msg-${index}-${Date.now()}`,
     role: msg.role === 'ai' ? 'assistant' : 'user',
     content: msg.content,
     status: 'complete' as MessageStatus,
     timestamp: Date.now(),
+    attachments: attachments,
     _legacy: {
       actionType: msg.actionType,
       canUndo: msg.canUndo,
@@ -100,11 +114,18 @@ export function getOriginalIndex(msg: AdaptedChatMessage): number {
  * @returns 旧消息格式
  */
 export function adaptToLegacyMessage(msg: AdaptedChatMessage): LegacyMessage {
+  // 转换附件格式
+  const attachments = msg.attachments?.map(att => ({
+    type: att.type as 'file' | 'image' | 'document',
+    name: att.name,
+  }));
+
   return {
     role: msg.role === 'assistant' ? 'ai' : 'user',
     content: msg.content,
     actionType: msg._legacy?.actionType as LegacyMessage['actionType'],
     canUndo: msg._legacy?.canUndo,
-    undoData: msg._legacy?.undoData
+    undoData: msg._legacy?.undoData,
+    attachments: attachments
   };
 }

@@ -2,7 +2,7 @@
   <div class="mindmap-container">
     <svg ref="svgRef" class="mindmap-svg"></svg>
     <div class="custom-controls">
-        <button class="copy-root-btn" @click="copyRoot" title="复制完整思维导图">
+        <button class="copy-root-btn" @click="copyRoot" v-tooltip="'复制完整思维导图'">
            <span v-if="isCopied">✅ 已复制</span>
            <span v-else>📋 复制全部</span>
         </button>
@@ -17,7 +17,8 @@ import { Transformer } from 'markmap-lib';
 import { Markmap } from 'markmap-view';
 import { Toolbar } from 'markmap-toolbar';
 import 'markmap-toolbar/dist/style.css';
-import * as d3 from 'd3';
+// 注意：已通过使用空插件列表的 Transformer 来避免 CSP 问题
+// 不再需要覆盖 markmap-common 的 loadJS/loadCSS 函数
 
 const props = defineProps<{
   content: string;
@@ -27,7 +28,10 @@ const props = defineProps<{
 const svgRef = ref<SVGElement | null>(null);
 const toolbarRef = ref<HTMLElement | null>(null);
 let markmapInstance: Markmap | null = null;
-const transformer = new Transformer();
+
+// 创建 Transformer 时使用空插件列表，避免 CSP 阻止 KaTeX/hljs 等 CDN 资源加载
+// 对于测试用例思维导图，我们不需要数学公式和代码高亮功能
+const transformer = new Transformer([]);
 
 // Selection State
 const selectedNodeData = ref<any>(null);
@@ -318,36 +322,39 @@ const parseTableToTree = (markdown: string): string => {
 const updateMarkmap = () => {
   if (!svgRef.value || !props.content) return;
 
-  let markdown = props.content.trim();
+  try {
+    let markdown = props.content.trim();
 
-  // Clean up: Remove markdown code block wrappers if AI returned them
-  if (markdown.startsWith('```')) {
-      markdown = markdown.replace(/^```(?:markdown|md)?\s*/i, '').replace(/\s*```$/, '');
-  }
-  
-  // Pre-processing
-  if (props.type === 'test_case' && markdown.includes('|')) {
-      markdown = parseTableToTree(markdown);
-  } 
-  
-  // Fallback for non-table test_case AND test_point
-  if (!markdown.startsWith('#')) {
-      const title = props.type === 'test_case' ? '测试用例' : '测试点拆解';
-      markdown = `# ${title}\n${markdown}`;
-  }
+    // Clean up: Remove markdown code block wrappers if AI returned them
+    if (markdown.startsWith('```')) {
+        markdown = markdown.replace(/^```(?:markdown|md)?\s*/i, '').replace(/\s*```$/, '');
+    }
 
-  const { root } = transformer.transform(markdown);
-  currentRoot.value = root;
-  
-  if (markmapInstance) {
-    markmapInstance.setData(root);
-    markmapInstance.fit();
-  } else {
-    markmapInstance = Markmap.create(svgRef.value, {
-        autoFit: true,
-        // fitRatio: 0.95,
-        duration: 500,
-    }, root);
+    // Pre-processing
+    if (props.type === 'test_case' && markdown.includes('|')) {
+        markdown = parseTableToTree(markdown);
+    }
+
+    // Fallback for non-table test_case AND test_point
+    if (!markdown.startsWith('#')) {
+        const title = props.type === 'test_case' ? '测试用例' : '测试点拆解';
+        markdown = `# ${title}\n${markdown}`;
+    }
+
+    const { root } = transformer.transform(markdown);
+    currentRoot.value = root;
+
+    if (markmapInstance) {
+      markmapInstance.setData(root);
+      markmapInstance.fit();
+    } else {
+      // 禁用外部资源加载，避免 CSP 阻止 KaTeX CDN
+      markmapInstance = Markmap.create(svgRef.value, {
+          autoFit: true,
+          // fitRatio: 0.95,
+          duration: 500,
+          embedGlobalCSS: false,  // 不嵌入全局 CSS
+      }, root);
     
     if (toolbarRef.value) {
         const { el } = Toolbar.create(markmapInstance);
@@ -356,6 +363,11 @@ const updateMarkmap = () => {
         el.style.right = '20px';
         toolbarRef.value.appendChild(el);
     }
+  }
+  } catch (error) {
+    // 忽略 CSP 相关错误（如 KaTeX CDN 加载失败）
+    // 思维导图仍然可以正常渲染，只是没有数学公式支持
+    console.warn('[MindMapPreview] 渲染时出现非致命错误:', error);
   }
 };
 

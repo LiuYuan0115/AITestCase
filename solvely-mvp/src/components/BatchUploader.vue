@@ -84,11 +84,10 @@
         <!-- 上传选项 -->
         <div class="upload-options" v-if="files.length > 0">
           <div class="option-row">
-            <label>目标位置:</label>
-            <select v-model="targetKind">
-              <option value="aux">辅助文档</option>
-              <option value="main">主文档</option>
-              <option value="knowledge">知识库</option>
+            <label>文档分类:</label>
+            <select v-model="selectedCategory">
+              <option value="">自动分类</option>
+              <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
             </select>
           </div>
           <div class="option-row">
@@ -118,9 +117,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { useDocuments } from '@/composables/useDocuments';
-import { uploadFile } from '@/utils/docStoreApi';
-import { useSession } from '@/composables/useSession';
+import { uploadToKnowledge, getCategories } from '@/utils/docStoreApi';
 
 interface FileItem {
   id: string;
@@ -155,17 +152,27 @@ const isOpen = ref(false);
 const isDragOver = ref(false);
 const files = ref<FileItem[]>([]);
 const fileInput = ref<HTMLInputElement | null>(null);
-const targetKind = ref<'aux' | 'main' | 'knowledge'>('aux');
 const parallelCount = ref(4);
 const isUploading = ref(false);
+const selectedCategory = ref('');
+const categories = ref<string[]>([]);
 
-const { uploadDocument } = useDocuments();
-const { getSessionId } = useSession();
+// 加载分类列表
+const loadCategories = async () => {
+  try {
+    const data = await getCategories();
+    categories.value = data.categories;
+  } catch (e) {
+    console.error('[BatchUploader] Load categories failed:', e);
+  }
+};
 
 // 方法
 const open = () => {
   isOpen.value = true;
   files.value = [];
+  // 每次打开时重新加载分类，确保获取最新列表
+  loadCategories();
 };
 
 const close = () => {
@@ -255,7 +262,6 @@ const startUpload = async () => {
 
   isUploading.value = true;
   const uploadedDocIds: string[] = [];
-  const sessionId = getSessionId();
 
   // 分批并行上传
   for (let i = 0; i < pendingFiles.length; i += parallelCount.value) {
@@ -266,13 +272,10 @@ const startUpload = async () => {
         fileItem.status = 'uploading';
         fileItem.progress = 0;
 
-        const kind = targetKind.value === 'knowledge' ? 'aux' : targetKind.value;
-
-        // P1 优化：使用 uploadFile 并传入进度回调
-        const docRef = await uploadFile(sessionId, fileItem.file, {
-          kind,
+        // 上传到知识库
+        const docRef = await uploadToKnowledge(fileItem.file, {
+          category: selectedCategory.value || undefined,
           onProgress: (percent) => {
-            // 上传进度占 0-90%，处理阶段占 90-100%
             fileItem.progress = Math.round(percent * 0.9);
           }
         });
@@ -316,9 +319,10 @@ const getFileIcon = (type: string): string => {
   return '📎';
 };
 
-// 挂载时自动打开（因为外部通过 v-if 控制）
+// 挂载时自动打开并加载分类
 onMounted(() => {
   open();
+  loadCategories();
 });
 
 defineExpose({ open, close });

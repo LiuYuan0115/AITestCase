@@ -49,14 +49,14 @@
               v-if="version.docId !== currentDocId"
               class="btn-action"
               @click.stop="rollbackTo(version)"
-              title="回滚到此版本"
+              v-tooltip="'回滚到此版本'"
             >
               ↩️
             </button>
             <button
               class="btn-action"
               @click.stop="previewVersion(version)"
-              title="预览内容"
+              v-tooltip="'预览内容'"
             >
               👁
             </button>

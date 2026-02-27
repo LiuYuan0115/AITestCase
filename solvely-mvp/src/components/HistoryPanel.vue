@@ -6,7 +6,7 @@
         <span>历史记录</span>
       </div>
       <div class="panel-actions">
-        <button class="btn-icon" @click="loadStats" :disabled="isLoading" title="刷新">
+        <button class="btn-icon" @click="loadStats" :disabled="isLoading" v-tooltip="'刷新'">
           <span :class="{ 'spinning': isLoading }">🔄</span>
         </button>
       </div>
@@ -74,8 +74,8 @@
             </div>
           </div>
           <div class="result-actions">
-            <button class="btn-tiny" @click.stop="useResult(result)" title="使用此用例">📋</button>
-            <button class="btn-tiny btn-delete" @click.stop="confirmDeleteResult(result, index)" title="删除">🗑️</button>
+            <button class="btn-tiny" @click.stop="useResult(result)" v-tooltip="'使用此用例'">📋</button>
+            <button class="btn-tiny btn-delete" @click.stop="confirmDeleteResult(result, index)" v-tooltip="'删除'">🗑️</button>
           </div>
         </div>
       </div>

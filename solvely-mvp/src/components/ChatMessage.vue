@@ -85,7 +85,7 @@
         v-if="message.role === 'assistant' && message.status === 'complete'"
         class="btn-action"
         @click="copyContent"
-        title="复制"
+        v-tooltip="'复制'"
       >
         {{ copied ? '✓' : '📋' }}
       </button>

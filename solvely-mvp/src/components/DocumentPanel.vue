@@ -6,10 +6,10 @@
         <span>文档</span>
       </div>
       <div class="panel-actions">
-        <button class="btn-icon" @click="refresh" :disabled="isLoading" title="刷新">
+        <button class="btn-icon" @click="refresh" :disabled="isLoading" v-tooltip="'刷新'">
           <span :class="{ 'spinning': isLoading }">🔄</span>
         </button>
-        <button class="btn-icon" @click="$emit('upload')" title="上传">+</button>
+        <button class="btn-icon" @click="$emit('upload')" v-tooltip="'上传'">+</button>
       </div>
     </div>
 

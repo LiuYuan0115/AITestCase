@@ -15,6 +15,10 @@ interface ProcessContext {
   onlyInViewport?: boolean
   // 用于追踪提取的内容数量，帮助调试
   extractedCount?: number
+  // 图片提取相关
+  extractImages?: boolean
+  images?: ExtractedImage[]
+  imageIndex?: number
 }
 
 export interface ImageInfo {
@@ -23,8 +27,32 @@ export interface ImageInfo {
   height: number
 }
 
+/** 提取的图片信息（用于 PDF 合成） */
+export interface ExtractedImage {
+  /** 占位符，如 "[IMAGE_001]" */
+  placeholder: string;
+  /** 原始 src URL */
+  src: string;
+  /** alt 文本 */
+  alt: string;
+  /** 宽度 */
+  width: number;
+  /** 高度 */
+  height: number;
+  /** 位置类型 */
+  position: 'inline' | 'block';
+  /** 在文档中的顺序 */
+  index: number;
+}
+
 export interface ConvertResult {
   markdown: string
+}
+
+/** 扩展的转换结果（包含图片信息） */
+export interface ConvertResultWithImages extends ConvertResult {
+  /** 提取的图片列表 */
+  images: ExtractedImage[];
 }
 
 /**
@@ -137,6 +165,126 @@ export function convertDOMToMarkdown(rootNode: Node, options: { checkSelectors?:
     return {
         markdown,
       }
+}
+
+/**
+ * 带图片提取的 DOM 转 Markdown
+ * 图片会被替换为占位符 [IMAGE_001]，并收集图片信息用于后续下载和 PDF 合成
+ *
+ * @param rootNode 文档根节点
+ * @param options 配置项
+ * @returns 包含 markdown 和提取的图片列表
+ */
+export function convertDOMToMarkdownWithImages(
+  rootNode: Node,
+  options: { checkSelectors?: boolean; onlyInViewport?: boolean } = {
+    checkSelectors: true,
+    onlyInViewport: false,
+  }
+): ConvertResultWithImages {
+  const images: ExtractedImage[] = [];
+
+  const context: ProcessContext = {
+    depth: 0,
+    onlyInViewport: options.onlyInViewport,
+    extractImages: true,
+    images,
+    imageIndex: 0,
+  };
+
+  // 1. 智能容器定位 (复用现有逻辑)
+  let targetNode = rootNode;
+  if (options.checkSelectors && rootNode instanceof Element) {
+    const feishuSelectors = [
+      '.docs-reader-root',
+      '.docs-reader-container',
+      '.docs-reader',
+      '.wiki-content',
+      '.doc-render-container',
+      '.docx-block-container',
+      '.docx-core-block',
+      '.page-main-in-wiki-md',
+      '.page-main',
+      '[data-page-id]',
+      '.docx-container',
+      '.lark-editor',
+      '.editor-content-container',
+      '.fe-render-container',
+      '.render-container',
+      '.page-block-children',
+      '.block-container',
+      '[data-block-type]',
+    ];
+
+    const genericSelectors = [
+      'article',
+      '[role="main"]',
+      'main',
+      '#content',
+      '.content',
+      '.main-content',
+      '.article-content',
+      '.post-content',
+    ];
+
+    const allSelectors = [...feishuSelectors, ...genericSelectors];
+
+    for (const selector of allSelectors) {
+      try {
+        const found = (rootNode as Element).querySelector(selector);
+        if (found && found.textContent && found.textContent.trim().length > 100) {
+          console.log(
+            `[DOM Extractor] Located main container: ${selector} (${found.textContent.length} chars)`
+          );
+          targetNode = found;
+          break;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+
+    if (targetNode === rootNode) {
+      const candidates = (rootNode as Element).querySelectorAll('div, section, article');
+      let best: Element | null = null;
+      let bestLength = 0;
+
+      candidates.forEach((el) => {
+        const text = el.textContent || '';
+        if (text.length > bestLength) {
+          if (el !== rootNode && !el.querySelector('body')) {
+            const cleanText = text.replace(/\s+/g, '');
+            if (cleanText.length > 50) {
+              bestLength = text.length;
+              best = el;
+            }
+          }
+        }
+      });
+
+      if (best && bestLength > 200) {
+        console.log(`[DOM Extractor] Fallback to largest text block (${bestLength} chars)`);
+        targetNode = best;
+      }
+    }
+
+    if (targetNode !== rootNode) {
+      const tagName = (targetNode as Element).tagName?.toLowerCase() || 'unknown';
+      const className = (targetNode as Element).className || '';
+      console.log(`[DOM Extractor] Final container: <${tagName} class="${className}">`);
+    }
+  }
+
+  // 2. 递归处理
+  const result = processNode(targetNode, context);
+  const markdown = result.replace(/\n{3,}/g, '\n\n').trim();
+
+  console.log(`[DOM Extractor] Extracted ${images.length} images`);
+
+  return {
+    markdown,
+    images,
+  };
 }
 
 function isElementInViewport(el: Element): boolean {
@@ -253,9 +401,34 @@ function processNode(
             return processFeishuList(element, context, 'unordered');
         }
         
-        // ========== 飞书图片块 (跳过提取) ==========
+        // ========== 飞书图片块 ==========
         if (className.includes('docx-image-block') || className.includes('image-block')) {
-             return '';
+            // 如果启用图片提取，查找块内的 img 元素
+            if (context.extractImages && context.images) {
+                const imgElement = element.querySelector('img') as HTMLImageElement | null;
+                if (imgElement) {
+                    const src = imgElement.src || imgElement.getAttribute('data-src') || '';
+                    if (src && !(src.startsWith('data:') && src.length < 1000)) {
+                        const index = context.imageIndex ?? 0;
+                        context.imageIndex = index + 1;
+
+                        const placeholder = `[IMAGE_${String(index + 1).padStart(3, '0')}]`;
+                        const extractedImage: ExtractedImage = {
+                            placeholder,
+                            src,
+                            alt: imgElement.alt || '',
+                            width: imgElement.naturalWidth || imgElement.width || 0,
+                            height: imgElement.naturalHeight || imgElement.height || 0,
+                            position: 'block',
+                            index,
+                        };
+
+                        context.images.push(extractedImage);
+                        return `\n${placeholder}\n`;
+                    }
+                }
+            }
+            return '';
         }
         
         // ========== 飞书代码块 ==========
@@ -340,7 +513,42 @@ function processNode(
         return ` [INPUT: ${type} | ${placeholder}] `;
     }
     if (tagName === 'img') {
-        // Skip all images per new requirement
+        // 如果启用图片提取，生成占位符并收集图片信息
+        if (context.extractImages && context.images) {
+            const imgElement = element as HTMLImageElement;
+            const src = imgElement.src || imgElement.getAttribute('data-src') || '';
+
+            // 跳过空 src 或 data URI（太小的图片）
+            if (!src || (src.startsWith('data:') && src.length < 1000)) {
+                return '';
+            }
+
+            // 跳过太小的图片（可能是图标）
+            const width = imgElement.naturalWidth || imgElement.width || 0;
+            const height = imgElement.naturalHeight || imgElement.height || 0;
+            if (width > 0 && height > 0 && width < 50 && height < 50) {
+                return '';
+            }
+
+            const index = context.imageIndex ?? 0;
+            context.imageIndex = index + 1;
+
+            const placeholder = `[IMAGE_${String(index + 1).padStart(3, '0')}]`;
+            const extractedImage: ExtractedImage = {
+                placeholder,
+                src,
+                alt: imgElement.alt || '',
+                width,
+                height,
+                position: 'block',
+                index,
+            };
+
+            context.images.push(extractedImage);
+            return `\n${placeholder}\n`;
+        }
+
+        // 不提取图片时跳过
         return '';
     }
 

@@ -17,18 +17,33 @@ load_dotenv()
 
 # ============================================================================
 # Prompt 文件路径（相对于 agent-server 目录）
+# Phase 6: 统一目录结构 - prompts/system, prompts/templates, prompts/skills
 # ============================================================================
 PROMPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "prompts")
+TEMPLATES_DIR = os.path.join(PROMPTS_DIR, "templates")
+SYSTEM_DIR = os.path.join(PROMPTS_DIR, "system")
+SKILLS_DIR = os.path.join(PROMPTS_DIR, "skills")
 
 
 @lru_cache(maxsize=64)
 def _load_prompt_file(filename: str) -> str:
-    """从 prompts 目录加载 prompt 文件（带缓存，减少磁盘 IO）"""
-    filepath = os.path.join(PROMPTS_DIR, filename)
-    if os.path.exists(filepath):
-        with open(filepath, "r", encoding="utf-8") as f:
-            return f.read().strip()
-    raise FileNotFoundError(f"Error: Prompt file not found: {filepath}")
+    """从 prompts 目录加载 prompt 文件（带缓存，减少磁盘 IO）
+
+    搜索顺序：templates/ -> system/ -> skills/ -> 根目录
+    """
+    search_paths = [
+        os.path.join(TEMPLATES_DIR, filename),
+        os.path.join(SYSTEM_DIR, filename),
+        os.path.join(SKILLS_DIR, filename),
+        os.path.join(PROMPTS_DIR, filename),  # 兼容旧路径
+    ]
+
+    for filepath in search_paths:
+        if os.path.exists(filepath):
+            with open(filepath, "r", encoding="utf-8") as f:
+                return f.read().strip()
+
+    raise FileNotFoundError(f"Error: Prompt file not found: {filename} (searched in {search_paths})")
 
 
 # ============================================================================
@@ -60,6 +75,16 @@ class AskTypeConfig:
         if self.prompt_file:
             return _load_prompt_file(self.prompt_file)
         return self.prompt_text
+
+
+# ============================================================================
+# 测试用例输出格式到 prompt 文件的映射
+# ============================================================================
+TESTCASE_FORMAT_PROMPTS: Dict[str, str] = {
+    "xmind": "ask_testcase.md",       # H1-H6 层级结构，兼容 XMind 导入
+    "table": "ask_testcase_table.md",  # Markdown 表格格式
+    "yaml": "ask_testcase_yaml.md",    # YAML 结构化格式
+}
 
 
 # ============================================================================
@@ -132,15 +157,44 @@ _FALLBACK_CONFIG = AskTypeConfig(
 )
 
 
-def get_ask_config(ask_type: str) -> AskTypeConfig:
+def get_ask_config(ask_type: str, output_format: Optional[str] = None) -> AskTypeConfig:
     """
-    根据 ask_type 获取配置
+    根据 ask_type 和 output_format 获取配置
 
     支持的类型：testprd, testpoint, testcase
     不匹配时返回默认配置
+
+    Args:
+        ask_type: 请求类型（testprd/testpoint/testcase等）
+        output_format: 输出格式（仅 testcase 类型有效：xmind/table/yaml）
+
+    Returns:
+        AskTypeConfig: 对应的配置对象
     """
     t = (ask_type or "").strip().lower()
-    return _DEFAULT_CONFIGS.get(t, _FALLBACK_CONFIG)
+    config = _DEFAULT_CONFIGS.get(t, _FALLBACK_CONFIG)
+
+    # 当 ask_type == "testcase" 且指定了 output_format 时，使用对应的 prompt 文件
+    if output_format and t == "testcase":
+        fmt = output_format.strip().lower()
+        prompt_file = TESTCASE_FORMAT_PROMPTS.get(fmt)
+        if prompt_file and prompt_file != config.prompt_file:
+            # 创建新的配置对象，仅替换 prompt_file
+            return AskTypeConfig(
+                model=config.model,
+                temperature=config.temperature,
+                max_tokens=config.max_tokens,
+                thinking_budget=config.thinking_budget,
+                include_thoughts=config.include_thoughts,
+                prompt_file=prompt_file,
+                prompt_text=config.prompt_text,
+                use_session_history=config.use_session_history,
+                max_history_rounds=config.max_history_rounds,
+                max_input_chars=config.max_input_chars,
+                summarize_on_overflow=config.summarize_on_overflow,
+            )
+
+    return config
 
 
 # ============================================================================

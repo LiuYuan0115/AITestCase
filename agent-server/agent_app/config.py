@@ -22,7 +22,8 @@ def build_openai_client() -> OpenAI:
     if not api_key:
         raise ValueError("Error: OPENAI_API_KEY is not set. Please configure it in .env")
 
-    return OpenAI(api_key=api_key, base_url=base_url)
+    timeout = float(os.getenv("OPENAI_TIMEOUT", "300"))
+    return OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
 
 
 def build_anthropic_client() -> Anthropic:
@@ -62,5 +63,13 @@ def get_model_for(agent_key: str) -> str:
 def is_anthropic_model(model: str) -> bool:
     """判断是否为 Anthropic 模型"""
     return model.startswith("anthropic/") or "claude" in model.lower()
+
+
+def is_gemini_model(model: str) -> bool:
+    """判断是否为 Gemini 模型（支持 PDF 直传）"""
+    if not model:
+        return False
+    m = model.lower()
+    return "gemini" in m or model.startswith("google/")
 
 

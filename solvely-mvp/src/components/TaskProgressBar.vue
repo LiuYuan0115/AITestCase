@@ -11,7 +11,7 @@
           v-if="cancelable && isRunning"
           class="btn-cancel"
           @click="handleCancel"
-          title="取消任务"
+          v-tooltip="'取消任务'"
         >
           ×
         </button>

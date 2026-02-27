@@ -84,7 +84,10 @@ class BatchUploadProcessor:
         self,
         file: UploadFile,
         session_id: str,
-        session_store=None
+        session_store=None,
+        multimodal: bool = True,
+        dpi: int = 150,
+        max_pages: int = 20
     ) -> Dict[str, Any]:
         """处理单个文件
 
@@ -92,11 +95,15 @@ class BatchUploadProcessor:
             file: 上传的文件
             session_id: 会话 ID
             session_store: SessionStore 实例 (可选)
+            multimodal: 是否启用多模态处理
+            dpi: PDF 转图片分辨率
+            max_pages: 最大处理页数
 
         Returns:
             dict: 处理结果
         """
         temp_file_path = None
+        import io
 
         try:
             # 读取文件内容到临时文件
@@ -106,18 +113,29 @@ class BatchUploadProcessor:
                 tmp_file.write(content)
                 temp_file_path = tmp_file.name
 
-            # 获取文件类型
-            file_type = FileProcessor.detect_file_type(temp_file_path)
+            # 使用 FileProcessor.process_file 统一处理（支持多模态）
+            file_obj = io.BytesIO(content)
+            result = FileProcessor.process_file(
+                file_obj,
+                file.filename,
+                auto_detect=True,
+                use_ocr=True,
+                multimodal=multimodal,
+                dpi=dpi,
+                max_pages=max_pages
+            )
 
-            # 解析文件
-            if file_type == 'pdf':
-                extracted_text = FileProcessor.extract_pdf_text(temp_file_path)
-            elif file_type in ['png', 'jpg', 'jpeg', 'webp']:
-                extracted_text = FileProcessor.extract_image_text(temp_file_path)
-            elif file_type in ['txt', 'md']:
-                extracted_text = FileProcessor.extract_text(temp_file_path)
-            else:
-                extracted_text = content.decode('utf-8', errors='ignore')
+            if not result['success']:
+                return {
+                    "filename": file.filename,
+                    "status": "failed",
+                    "error": result.get('error', 'Unknown error'),
+                    "message": f"处理失败: {result.get('error')}"
+                }
+
+            extracted_text = result['content']
+            extracted_images = result.get('images') or []
+            file_type = result['file_type']
 
             # 存储到 SessionStore (如果提供)
             doc_ref = None
@@ -126,7 +144,8 @@ class BatchUploadProcessor:
                     content=extracted_text,
                     title=file.filename or "未命名文档",
                     kind="prd",
-                    session_id=session_id
+                    session_id=session_id,
+                    images=extracted_images
                 )
 
             return {
@@ -135,7 +154,8 @@ class BatchUploadProcessor:
                 "docRef": doc_ref,
                 "fileType": file_type,
                 "size": len(extracted_text),
-                "message": f"成功解析 {len(extracted_text)} 字符"
+                "imageCount": len(extracted_images),
+                "message": f"成功解析 {len(extracted_text)} 字符" + (f"，{len(extracted_images)} 页图片" if extracted_images else "")
             }
 
         except Exception as e:
@@ -228,7 +248,10 @@ async def process_batch_async(
         files: List[UploadFile],
         session_id: str,
         kind: str = None,
-        use_ocr: bool = True
+        use_ocr: bool = True,
+        multimodal: bool = True,  # 默认启用多模态处理
+        dpi: int = 150,
+        max_pages: int = 20
     ) -> Dict[str, Any]:
         """异步批量处理文件 (Week 8)
 
@@ -240,6 +263,9 @@ async def process_batch_async(
             session_id: 会话 ID
             kind: 文档类型 (可选)
             use_ocr: 是否使用 OCR
+            multimodal: 是否启用多模态处理（将 PDF/图片转为 base64）
+            dpi: PDF 转图片分辨率
+            max_pages: 最大处理页数
 
         Returns:
             dict: 批量处理结果
@@ -269,12 +295,15 @@ async def process_batch_async(
                 # 获取文件类型
                 file_type = FileProcessor.get_file_type(file.filename)
 
-                # 处理文件
+                # 处理文件（支持多模态）
                 result = FileProcessor.process_file(
                     file_obj,
                     file.filename,
                     auto_detect=True,
-                    use_ocr=use_ocr
+                    use_ocr=use_ocr,
+                    multimodal=multimodal,  # 启用多模态处理
+                    dpi=dpi,
+                    max_pages=max_pages
                 )
 
                 if not result['success']:
@@ -286,6 +315,7 @@ async def process_batch_async(
                     }
 
                 extracted_text = result['content']
+                extracted_images = result.get('images') or []  # 多模态图片
 
                 # 存储到 SessionStore
                 doc_ref = None
@@ -296,8 +326,19 @@ async def process_batch_async(
                         kind=kind or file_type or "prd",
                         session_id=session_id,
                         content_type=file.content_type or "application/octet-stream",
-                        tags=[file_type, "uploaded", "batch"]
+                        tags=[file_type, "uploaded", "batch"] + (["multimodal"] if extracted_images else []),
+                        images=extracted_images  # 保存多模态图片数据
                     )
+
+                # 多模态信息
+                multimodal_info = {}
+                if extracted_images:
+                    multimodal_info = {
+                        "enabled": True,
+                        "pageCount": len(extracted_images),
+                        "mode": result['metadata'].get('mode', 'multimodal'),
+                    }
+                    print(f"📸 [批量上传-多模态] {file.filename}: {len(extracted_images)} 页图片已保存")
 
                 return {
                     "filename": file.filename,
@@ -307,7 +348,8 @@ async def process_batch_async(
                     "size": len(file_content),
                     "extractedLength": len(extracted_text),
                     "ocrUsed": result['metadata'].get('ocr_used', False),
-                    "message": f"成功解析 {len(extracted_text)} 字符"
+                    "multimodal": multimodal_info if multimodal_info else None,
+                    "message": f"成功解析 {len(extracted_text)} 字符" + (f"，{len(extracted_images)} 页图片" if extracted_images else "")
                 }
 
             except Exception as e:

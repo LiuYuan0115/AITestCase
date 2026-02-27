@@ -29,7 +29,7 @@
       <button
         class="btn-action"
         @click.stop="$emit('versions')"
-        title="版本历史"
+        v-tooltip="'版本历史'"
         :disabled="doc.status !== 'ready'"
       >
         📋
@@ -37,7 +37,7 @@
       <button
         class="btn-action"
         @click.stop="$emit('edit')"
-        title="编辑"
+        v-tooltip="'编辑'"
         :disabled="doc.status !== 'ready'"
       >
         ✏️
