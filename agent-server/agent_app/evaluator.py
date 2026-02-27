@@ -39,10 +39,17 @@ class Evaluator:
         self.system_prompt = self._load_evaluator_prompt()
 
     def _load_evaluator_prompt(self) -> str:
-        """加载评估系统 Prompt"""
+        """加载评估系统 Prompt（Phase 6: 使用新的统一目录结构）"""
         try:
-            prompt_path = Path(__file__).parent / "prompts" / "evaluator_system.md"
-            return prompt_path.read_text(encoding="utf-8")
+            # 新路径: prompts/skills/evaluator.md
+            prompt_path = Path(__file__).parent.parent / "prompts" / "skills" / "evaluator.md"
+            if prompt_path.exists():
+                return prompt_path.read_text(encoding="utf-8")
+            # 兼容旧路径
+            old_path = Path(__file__).parent / "prompts" / "evaluator_system.md"
+            if old_path.exists():
+                return old_path.read_text(encoding="utf-8")
+            raise FileNotFoundError(f"Evaluator prompt not found at {prompt_path} or {old_path}")
         except Exception as e:
             raise RuntimeError(f"Failed to load evaluator prompt: {e}")
 

@@ -15,7 +15,7 @@ class AdditionalPrdItem(TypedDict):
 
 from langgraph.graph import StateGraph, END
 
-from agent_app.prompts import TESTCASE_SYSTEM_PROMPT, load_skill
+from agent_app.prompt_manager import TESTCASE_SYSTEM_PROMPT, load_skill
 from agent_app.tooling import testcase_tools_schema, parse_first_tool_call, execute_testcase_tool
 from agent_app.config import is_anthropic_model
 

@@ -71,7 +71,7 @@
     </div>
 
     <div class="diff-footer">
-      <button class="btn-swap" @click="swapVersions" title="交换左右版本">
+      <button class="btn-swap" @click="swapVersions" v-tooltip="'交换左右版本'">
         ⇄ 交换
       </button>
       <button class="btn-close-footer" @click="$emit('close')">

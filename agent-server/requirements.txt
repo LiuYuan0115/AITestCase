@@ -16,3 +16,10 @@ numpy<2.0  # chromadb 0.4.x 不兼容 NumPy 2.0
 pdfplumber==0.9.0
 pytesseract==0.3.10
 PyPDF2==3.0.0
+
+# Week 8: PDF 转图片多模态支持
+# 注意: pdf2image 依赖 poppler，需要单独安装:
+#   - macOS: brew install poppler
+#   - Ubuntu: apt-get install poppler-utils
+#   - Windows: 下载 poppler for Windows
+pdf2image==1.16.3

@@ -1,15 +1,237 @@
 """
 异步任务队列
 Week 7: 长时间任务异步执行,提升并发能力
-支持任务提交、状态查询、结果获取
+Phase 6: 扩展支持 SSE 流式输出和异步任务
+
+支持任务提交、状态查询、结果获取、流式输出
 """
 import uuid
-from typing import Callable, Any, Dict, Optional
+import asyncio
+import json
+import time
+import logging
+from typing import Callable, Any, Dict, Optional, List, AsyncGenerator
 from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime
 from threading import Lock
+from enum import Enum
+from dataclasses import dataclass, field
 
 from agent_app.config_manager import config
+
+logger = logging.getLogger(__name__)
+
+
+# ==========================================
+# Phase 6: 流式任务支持
+# ==========================================
+
+class TaskType(str, Enum):
+    """任务类型"""
+    CHAT = "chat"                   # 聊天生成
+    PARSE_PDF = "parse_pdf"         # PDF 解析
+    PARSE_IMAGE = "parse_image"     # 图片 OCR
+    COMPOSE_PDF = "compose_pdf"     # PDF 合成
+    EVALUATE = "evaluate"           # Critic 评估
+    GENERATE = "generate"           # 通用生成
+    UI_AUTOMATION = "ui_automation" # UI 自动化
+
+
+@dataclass
+class StreamBuffer:
+    """流式输出缓冲区"""
+    chunks: List[str] = field(default_factory=list)
+    is_complete: bool = False
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+    async def append(self, chunk: str):
+        async with self._lock:
+            self.chunks.append(chunk)
+
+    async def get_all(self) -> List[str]:
+        async with self._lock:
+            return list(self.chunks)
+
+    def mark_complete(self):
+        self.is_complete = True
+
+
+class AsyncTaskQueue:
+    """异步任务队列（支持流式输出）"""
+
+    def __init__(self, max_concurrent: int = 5):
+        self._tasks: Dict[str, Dict] = {}
+        self._streams: Dict[str, StreamBuffer] = {}
+        self._handlers: Dict[TaskType, Callable] = {}
+        self._max_concurrent = max_concurrent
+        self._running_count = 0
+        self._lock = asyncio.Lock()
+
+    def register_handler(self, task_type: TaskType, handler: Callable):
+        """注册异步任务处理器"""
+        self._handlers[task_type] = handler
+        logger.info(f"Registered async handler for {task_type.value}")
+
+    async def create_async_task(
+        self,
+        task_type: TaskType,
+        params: Dict,
+        session_id: Optional[str] = None,
+        timeout: int = 300,
+    ) -> str:
+        """创建异步任务"""
+        task_id = f"async_{uuid.uuid4().hex[:12]}"
+
+        async with self._lock:
+            self._tasks[task_id] = {
+                "task_id": task_id,
+                "type": task_type.value,
+                "status": "pending",
+                "params": params,
+                "session_id": session_id,
+                "created_at": time.time(),
+                "started_at": None,
+                "completed_at": None,
+                "result": None,
+                "error": None,
+                "progress": {"current": 0, "total": 100, "message": ""},
+                "timeout": timeout,
+            }
+            self._streams[task_id] = StreamBuffer()
+
+        # 启动任务执行
+        asyncio.create_task(self._execute_async_task(task_id))
+
+        return task_id
+
+    async def _execute_async_task(self, task_id: str):
+        """执行异步任务"""
+        task = self._tasks.get(task_id)
+        if not task:
+            return
+
+        handler = self._handlers.get(TaskType(task["type"]))
+        if not handler:
+            task["status"] = "failed"
+            task["error"] = f"No handler for task type: {task['type']}"
+            task["completed_at"] = time.time()
+            self._streams[task_id].mark_complete()
+            return
+
+        # 等待并发槽
+        while self._running_count >= self._max_concurrent:
+            await asyncio.sleep(0.1)
+
+        async with self._lock:
+            self._running_count += 1
+
+        try:
+            task["status"] = "running"
+            task["started_at"] = time.time()
+
+            stream_buffer = self._streams[task_id]
+
+            # 进度回调
+            def update_progress(current: int, total: int, message: str = ""):
+                task["progress"] = {"current": current, "total": total, "message": message}
+
+            # 流式输出回调
+            async def stream_output(chunk: str):
+                await stream_buffer.append(chunk)
+
+            # 执行任务
+            try:
+                result = await asyncio.wait_for(
+                    handler(task["params"], update_progress, stream_output),
+                    timeout=task["timeout"],
+                )
+                task["status"] = "completed"
+                task["result"] = result
+
+            except asyncio.TimeoutError:
+                task["status"] = "timeout"
+                task["error"] = "Task timed out"
+
+            except asyncio.CancelledError:
+                task["status"] = "cancelled"
+                task["error"] = "Task cancelled"
+
+            except Exception as e:
+                task["status"] = "failed"
+                task["error"] = str(e)
+                logger.error(f"Async task {task_id} failed: {e}")
+
+        finally:
+            task["completed_at"] = time.time()
+            self._streams[task_id].mark_complete()
+
+            async with self._lock:
+                self._running_count -= 1
+
+    async def get_task_status(self, task_id: str) -> Optional[Dict]:
+        """获取任务状态"""
+        return self._tasks.get(task_id)
+
+    async def stream_task_output(self, task_id: str) -> AsyncGenerator[str, None]:
+        """流式获取任务输出（SSE 格式）"""
+        stream = self._streams.get(task_id)
+        task = self._tasks.get(task_id)
+
+        if not stream or not task:
+            yield f"data: {json.dumps({'error': 'Task not found'})}\n\n"
+            return
+
+        last_index = 0
+        while not stream.is_complete:
+            chunks = await stream.get_all()
+            while last_index < len(chunks):
+                chunk = chunks[last_index]
+                yield f"data: {json.dumps({'chunk': chunk, 'progress': task['progress']})}\n\n"
+                last_index += 1
+            await asyncio.sleep(0.05)
+
+        # 发送剩余数据
+        chunks = await stream.get_all()
+        while last_index < len(chunks):
+            chunk = chunks[last_index]
+            yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+            last_index += 1
+
+        # 发送完成信号
+        yield f"data: {json.dumps({'done': True, 'status': task['status'], 'result': task.get('result')})}\n\n"
+
+    async def cancel_task(self, task_id: str) -> bool:
+        """取消任务"""
+        task = self._tasks.get(task_id)
+        if not task:
+            return False
+
+        if task["status"] in ("pending", "running"):
+            task["status"] = "cancelled"
+            task["completed_at"] = time.time()
+            self._streams[task_id].mark_complete()
+            return True
+        return False
+
+    def list_tasks(self, session_id: Optional[str] = None, limit: int = 50) -> List[Dict]:
+        """列出任务"""
+        tasks = list(self._tasks.values())
+        if session_id:
+            tasks = [t for t in tasks if t.get("session_id") == session_id]
+        tasks.sort(key=lambda t: t["created_at"], reverse=True)
+        return tasks[:limit]
+
+
+# 全局异步任务队列
+_async_queue: Optional[AsyncTaskQueue] = None
+
+
+def get_async_queue() -> AsyncTaskQueue:
+    """获取异步任务队列"""
+    global _async_queue
+    if _async_queue is None:
+        _async_queue = AsyncTaskQueue()
+    return _async_queue
 
 
 class TaskQueue:

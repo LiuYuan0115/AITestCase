@@ -14,7 +14,7 @@ class AdditionalPrdItem(TypedDict):
 
 from langgraph.graph import StateGraph, END
 
-from agent_app.prompts import PRD_SYSTEM_PROMPT
+from agent_app.prompt_manager import PRD_SYSTEM_PROMPT
 from agent_app.tooling import prd_tools_schema, parse_first_tool_call, execute_prd_tool
 from agent_app.config import is_anthropic_model
 

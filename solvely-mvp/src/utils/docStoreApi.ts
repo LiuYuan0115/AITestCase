@@ -209,6 +209,9 @@ export type BatchUploadResponse = {
 export type BatchUploadOptions = {
     kind?: 'main' | 'aux';
     useOcr?: boolean;
+    multimodal?: boolean;  // 启用多模态处理（PDF/图片转 base64）
+    dpi?: number;          // PDF 转图片分辨率
+    maxPages?: number;     // 最大处理页数
     onProgress?: (completed: number, total: number) => void;
 };
 
@@ -236,6 +239,15 @@ export async function batchUploadFiles(
 
     formData.append('useOcr', String(options?.useOcr ?? true));
 
+    // 多模态参数
+    formData.append('multimodal', String(options?.multimodal ?? true));  // 默认启用
+    if (options?.dpi) {
+        formData.append('dpi', String(options.dpi));
+    }
+    if (options?.maxPages) {
+        formData.append('maxPages', String(options.maxPages));
+    }
+
     for (const file of files) {
         formData.append('files', file);
     }
@@ -257,15 +269,23 @@ export async function batchUploadFiles(
     return res.json();
 }
 
+/** 文件上传结果（包含 docRef 和多模态模式信息） */
+export type UploadFileResult = {
+    docRef: DocRef;
+    /** 多模态模式：'gemini_pdf_direct' | 'multimodal' 等 */
+    multimodalMode?: string;
+};
+
 /**
  * 上传单个文件（使用 /api/docs/upload）
  *
  * P1 优化：支持上传进度回调，使用 XMLHttpRequest 实现
+ * Week 8: 支持多模态处理（PDF/图片转 base64 供 AI 处理）
  *
  * @param sessionId 会话 ID
  * @param file 文件
  * @param options 可选配置
- * @returns 文档引用
+ * @returns 上传结果（包含 docRef 和多模态模式）
  */
 export async function uploadFile(
     sessionId: string,
@@ -275,9 +295,12 @@ export async function uploadFile(
         kind?: string;
         logicalId?: string;
         useOcr?: boolean;
+        multimodal?: boolean;  // Week 8: 启用多模态处理
+        dpi?: number;          // PDF 转图片分辨率
+        maxPages?: number;     // 最大处理页数
         onProgress?: (percent: number) => void;
     }
-): Promise<DocRef> {
+): Promise<UploadFileResult> {
     const formData = new FormData();
     formData.append('sessionId', sessionId);
     formData.append('file', file);
@@ -292,6 +315,15 @@ export async function uploadFile(
         formData.append('logicalId', options.logicalId);
     }
     formData.append('useOcr', String(options?.useOcr ?? true));
+
+    // Week 8: 多模态参数
+    formData.append('multimodal', String(options?.multimodal ?? true));  // 默认启用
+    if (options?.dpi) {
+        formData.append('dpi', String(options.dpi));
+    }
+    if (options?.maxPages) {
+        formData.append('maxPages', String(options.maxPages));
+    }
 
     // 如果有进度回调，使用 XMLHttpRequest
     if (options?.onProgress) {
@@ -318,7 +350,10 @@ export async function uploadFile(
         throw new Error(result.message || '上传失败');
     }
 
-    return result.docRef;
+    return {
+        docRef: result.docRef,
+        multimodalMode: result.multimodal?.mode,
+    };
 }
 
 /**
@@ -327,7 +362,7 @@ export async function uploadFile(
 function uploadFileWithProgress(
     formData: FormData,
     onProgress: (percent: number) => void
-): Promise<DocRef> {
+): Promise<UploadFileResult> {
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
 
@@ -345,7 +380,10 @@ function uploadFileWithProgress(
                 try {
                     const result = JSON.parse(xhr.responseText);
                     if (result.status === 'success' && result.docRef) {
-                        resolve(result.docRef);
+                        resolve({
+                            docRef: result.docRef,
+                            multimodalMode: result.multimodal?.mode,
+                        });
                     } else {
                         reject(new Error(result.message || '上传失败'));
                     }
@@ -466,7 +504,223 @@ export async function listKnowledgeDocs(
     return res.json();
 }
 
+// -----------------------------
+// 知识库上传 API
+// -----------------------------
 
+export type KnowledgeUploadOptions = {
+    title?: string;
+    category?: string;
+    useOcr?: boolean;
+    multimodal?: boolean;
+    dpi?: number;
+    maxPages?: number;
+    onProgress?: (percent: number) => void;
+};
 
+/**
+ * 上传文件到知识库（直接存入 company_knowledge collection）
+ */
+export async function uploadToKnowledge(
+    file: File,
+    options?: KnowledgeUploadOptions
+): Promise<DocRef> {
+    const formData = new FormData();
+    formData.append('file', file);
 
+    if (options?.title) {
+        formData.append('title', options.title);
+    }
+    if (options?.category) {
+        formData.append('category', options.category);
+    }
+    formData.append('useOcr', String(options?.useOcr ?? true));
+    formData.append('multimodal', String(options?.multimodal ?? true));
+    if (options?.dpi) {
+        formData.append('dpi', String(options.dpi));
+    }
+    if (options?.maxPages) {
+        formData.append('maxPages', String(options.maxPages));
+    }
+
+    // 如果有进度回调，使用 XMLHttpRequest
+    if (options?.onProgress) {
+        return uploadKnowledgeWithProgress(formData, options.onProgress);
+    }
+
+    const headers = buildHeaders();
+    delete (headers as Record<string, string>)['Content-Type'];
+
+    const res = await fetch(`${AGENT_URL}/api/knowledge/upload`, {
+        method: 'POST',
+        headers,
+        body: formData
+    });
+
+    if (!res.ok) {
+        throw new Error(`知识库上传失败: ${res.statusText}`);
+    }
+
+    const result = await res.json();
+
+    if (result.status !== 'success' || !result.docRef) {
+        throw new Error(result.message || '上传失败');
+    }
+
+    return result.docRef;
+}
+
+function uploadKnowledgeWithProgress(
+    formData: FormData,
+    onProgress: (percent: number) => void
+): Promise<DocRef> {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+                const percent = Math.round((event.loaded / event.total) * 100);
+                onProgress(percent);
+            }
+        };
+
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    const result = JSON.parse(xhr.responseText);
+                    if (result.status === 'success' && result.docRef) {
+                        resolve(result.docRef);
+                    } else {
+                        reject(new Error(result.message || '上传失败'));
+                    }
+                } catch (e) {
+                    reject(new Error('解析响应失败'));
+                }
+            } else {
+                reject(new Error(`上传失败: ${xhr.statusText}`));
+            }
+        };
+
+        xhr.onerror = () => reject(new Error('网络错误'));
+        xhr.onabort = () => reject(new Error('上传已取消'));
+
+        xhr.open('POST', `${AGENT_URL}/api/knowledge/upload`);
+
+        const headers = buildHeaders();
+        delete (headers as Record<string, string>)['Content-Type'];
+        for (const [key, value] of Object.entries(headers)) {
+            if (value) xhr.setRequestHeader(key, value);
+        }
+
+        xhr.send(formData);
+    });
+}
+
+// -----------------------------
+// 分类管理 API
+// -----------------------------
+
+export type CategoriesResponse = {
+    status: string;
+    categories: string[];
+    defaultCategories: string[];
+    customCategories: string[];
+};
+
+/**
+ * 获取所有分类
+ */
+export async function getCategories(): Promise<CategoriesResponse> {
+    const res = await fetch(`${AGENT_URL}/api/categories`, {
+        method: 'GET',
+        headers: buildHeaders(),
+    });
+    if (!res.ok) {
+        throw new Error(`获取分类失败: ${res.statusText}`);
+    }
+    return res.json();
+}
+
+/**
+ * 添加自定义分类
+ */
+export async function addCategory(name: string): Promise<{ status: string; message: string }> {
+    const res = await fetch(`${AGENT_URL}/api/categories`, {
+        method: 'POST',
+        headers: buildHeaders(),
+        body: JSON.stringify({ name }),
+    });
+    return res.json();
+}
+
+/**
+ * 更新分类名称
+ */
+export async function updateCategory(
+    oldName: string,
+    newName: string
+): Promise<{ status: string; message: string }> {
+    const res = await fetch(`${AGENT_URL}/api/categories/${encodeURIComponent(oldName)}`, {
+        method: 'PUT',
+        headers: buildHeaders(),
+        body: JSON.stringify({ new_name: newName }),
+    });
+    return res.json();
+}
+
+/**
+ * 删除分类
+ */
+export async function deleteCategory(
+    name: string,
+    moveTo: string = '其他'
+): Promise<{ status: string; message: string }> {
+    const params = new URLSearchParams({ move_to: moveTo });
+    const res = await fetch(
+        `${AGENT_URL}/api/categories/${encodeURIComponent(name)}?${params}`,
+        {
+            method: 'DELETE',
+            headers: buildHeaders(),
+        }
+    );
+    return res.json();
+}
+
+// -----------------------------
+// 批量删除 API
+// -----------------------------
+
+export type BatchDeleteResponse = {
+    status: 'success' | 'partial' | 'error';
+    results?: {
+        total: number;
+        deleted: number;
+        failed: number;
+        errors: Array<{ docId: string; error: string }>;
+    };
+    message?: string;
+};
+
+/**
+ * 批量删除文档
+ */
+export async function batchDeleteDocs(
+    docIds: string[],
+    sessionId?: string
+): Promise<BatchDeleteResponse> {
+    const res = await fetch(`${AGENT_URL}/api/docs/batch-delete`, {
+        method: 'POST',
+        headers: buildHeaders(),
+        body: JSON.stringify({
+            doc_ids: docIds,
+            session_id: sessionId
+        }),
+    });
+
+    if (!res.ok) {
+        throw new Error(`批量删除失败: ${res.statusText}`);
+    }
+
+    return res.json();
+}
 

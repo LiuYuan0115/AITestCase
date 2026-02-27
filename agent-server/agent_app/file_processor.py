@@ -2,10 +2,12 @@
 文件处理器：PDF/图片多模态解析
 Week 2: 支持 PDF 和图片文件上传分析
 Week 7: 集成 PDF 解析缓存，避免重复解析
+Week 8: 支持 PDF 转图片，用于多模态 AI 处理
 """
 import io
 import os
-from typing import Dict, Any, Optional, Union, BinaryIO
+import base64
+from typing import Dict, Any, Optional, Union, BinaryIO, List, Tuple
 from pathlib import Path
 from agent_app.cache_manager import pdf_cache
 
@@ -16,6 +18,13 @@ try:
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
+
+# PDF 转图片
+try:
+    import pdf2image
+    PDF2IMAGE_AVAILABLE = True
+except ImportError:
+    PDF2IMAGE_AVAILABLE = False
 
 # 图片处理
 try:
@@ -57,6 +66,7 @@ class FileProcessor:
         """
         return {
             'pdf': PDF_AVAILABLE,
+            'pdf2image': PDF2IMAGE_AVAILABLE,
             'image': IMAGE_AVAILABLE,
             'ocr': OCR_AVAILABLE,
         }
@@ -149,6 +159,208 @@ class FileProcessor:
                 return "⚠️  PDF 处理失败，无法提取任何文本内容。"
 
         return "\n\n".join(text_parts)
+
+    @staticmethod
+    def pdf_to_images(
+        file_obj: Union[str, BinaryIO],
+        dpi: int = 150,
+        max_pages: int = 20,
+        image_format: str = "PNG"
+    ) -> List[Dict[str, Any]]:
+        """
+        将 PDF 转换为图片列表（用于多模态 AI 处理）
+
+        Args:
+            file_obj: 文件路径或文件对象
+            dpi: 图片分辨率，默认 150（平衡质量和大小）
+            max_pages: 最大处理页数，默认 20 页
+            image_format: 图片格式，支持 PNG/JPEG
+
+        Returns:
+            图片列表，每项包含:
+            - page_num: 页码
+            - base64: base64 编码的图片数据
+            - media_type: MIME 类型
+            - width: 图片宽度
+            - height: 图片高度
+        """
+        if not PDF2IMAGE_AVAILABLE:
+            raise RuntimeError(
+                "pdf2image 未安装。请安装: pip install pdf2image\n"
+                "注意: pdf2image 依赖 poppler，需要单独安装:\n"
+                "  - macOS: brew install poppler\n"
+                "  - Ubuntu: apt-get install poppler-utils\n"
+                "  - Windows: 下载 poppler for Windows"
+            )
+
+        images_data = []
+        media_type = "image/png" if image_format.upper() == "PNG" else "image/jpeg"
+
+        try:
+            # 使用 pdf2image 转换
+            if isinstance(file_obj, str):
+                # 文件路径
+                images = pdf2image.convert_from_path(
+                    file_obj,
+                    dpi=dpi,
+                    first_page=1,
+                    last_page=max_pages,
+                    fmt=image_format.lower()
+                )
+            else:
+                # 文件对象
+                file_obj.seek(0)
+                pdf_bytes = file_obj.read()
+                images = pdf2image.convert_from_bytes(
+                    pdf_bytes,
+                    dpi=dpi,
+                    first_page=1,
+                    last_page=max_pages,
+                    fmt=image_format.lower()
+                )
+
+            for page_num, img in enumerate(images, 1):
+                # 转为 base64
+                buffer = io.BytesIO()
+                img.save(buffer, format=image_format.upper())
+                img_base64 = base64.standard_b64encode(buffer.getvalue()).decode('utf-8')
+
+                images_data.append({
+                    "page_num": page_num,
+                    "base64": img_base64,
+                    "media_type": media_type,
+                    "width": img.width,
+                    "height": img.height,
+                })
+
+            print(f"✅ PDF 转图片完成: {len(images_data)} 页")
+            return images_data
+
+        except Exception as e:
+            print(f"⚠️ PDF 转图片失败: {e}")
+            raise RuntimeError(f"PDF 转图片失败: {e}")
+
+    @staticmethod
+    def pdf_to_images_with_text(
+        file_obj: Union[str, BinaryIO],
+        dpi: int = 150,
+        max_pages: int = 20,
+        extract_text: bool = True
+    ) -> Dict[str, Any]:
+        """
+        将 PDF 转换为图片，同时提取文本（混合模式）
+
+        适用于需要同时使用图片和文本的场景
+
+        Args:
+            file_obj: 文件路径或文件对象
+            dpi: 图片分辨率
+            max_pages: 最大处理页数
+            extract_text: 是否同时提取文本
+
+        Returns:
+            {
+                'images': [...],      # 图片列表
+                'text': str,          # 提取的文本
+                'page_count': int,    # 总页数
+                'mode': 'multimodal'  # 处理模式
+            }
+        """
+        result = {
+            'images': [],
+            'text': '',
+            'page_count': 0,
+            'mode': 'multimodal'
+        }
+
+        # 提取图片
+        try:
+            result['images'] = FileProcessor.pdf_to_images(
+                file_obj, dpi=dpi, max_pages=max_pages
+            )
+            result['page_count'] = len(result['images'])
+        except Exception as e:
+            print(f"⚠️ PDF 图片提取失败，回退到纯文本模式: {e}")
+            result['mode'] = 'text_only'
+
+        # 提取文本
+        if extract_text:
+            try:
+                # 重置文件指针
+                if hasattr(file_obj, 'seek'):
+                    file_obj.seek(0)
+                result['text'] = FileProcessor.extract_pdf_text(file_obj, use_ocr=False)
+            except Exception as e:
+                print(f"⚠️ PDF 文本提取失败: {e}")
+
+        return result
+
+    @staticmethod
+    def image_to_base64(
+        file_obj: Union[str, BinaryIO],
+        max_size: Tuple[int, int] = (1568, 1568),
+        quality: int = 85
+    ) -> Dict[str, Any]:
+        """
+        将图片转换为 base64（用于多模态 AI 处理）
+
+        Args:
+            file_obj: 文件路径或文件对象
+            max_size: 最大尺寸，超过会等比缩放
+            quality: JPEG 质量
+
+        Returns:
+            {
+                'base64': str,
+                'media_type': str,
+                'width': int,
+                'height': int
+            }
+        """
+        if not IMAGE_AVAILABLE:
+            raise RuntimeError("Pillow 未安装。请安装: pip install Pillow")
+
+        try:
+            if isinstance(file_obj, str):
+                img = Image.open(file_obj)
+            else:
+                file_obj.seek(0)
+                img = Image.open(file_obj)
+
+            # 转换模式
+            if img.mode in ('RGBA', 'LA', 'P'):
+                # 有透明通道，使用 PNG
+                output_format = 'PNG'
+                media_type = 'image/png'
+            else:
+                # 无透明通道，使用 JPEG
+                output_format = 'JPEG'
+                media_type = 'image/jpeg'
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+
+            # 缩放（如果超过最大尺寸）
+            if img.width > max_size[0] or img.height > max_size[1]:
+                img.thumbnail(max_size, Image.Resampling.LANCZOS)
+
+            # 转为 base64
+            buffer = io.BytesIO()
+            if output_format == 'JPEG':
+                img.save(buffer, format=output_format, quality=quality)
+            else:
+                img.save(buffer, format=output_format)
+
+            img_base64 = base64.standard_b64encode(buffer.getvalue()).decode('utf-8')
+
+            return {
+                'base64': img_base64,
+                'media_type': media_type,
+                'width': img.width,
+                'height': img.height
+            }
+
+        except Exception as e:
+            raise RuntimeError(f"图片处理失败: {e}")
 
     @staticmethod
     def _ocr_pdf_page(page) -> str:
@@ -285,7 +497,11 @@ class FileProcessor:
         file_obj: Union[str, BinaryIO],
         filename: str,
         auto_detect: bool = True,
-        use_ocr: bool = True
+        use_ocr: bool = True,
+        multimodal: bool = False,
+        dpi: int = 150,
+        max_pages: int = 20,
+        skip_image_conversion: bool = False,  # Gemini: 跳过图片转换，PDF 直传
     ) -> Dict[str, Any]:
         """
         智能处理文件（自动识别类型）
@@ -295,6 +511,10 @@ class FileProcessor:
             filename: 文件名（用于类型判断）
             auto_detect: 是否自动检测文件类型
             use_ocr: 是否对扫描件 PDF 和图片使用 OCR
+            multimodal: 是否启用多模态模式（将 PDF/图片转为 base64）
+            dpi: 多模态模式下 PDF 转图片的分辨率
+            max_pages: 多模态模式下最大处理页数
+            skip_image_conversion: 是否跳过图片转换（Gemini 模型支持 PDF 直传）
 
         Returns:
             处理结果字典
@@ -302,6 +522,8 @@ class FileProcessor:
                 'success': bool,
                 'file_type': str,
                 'content': str,
+                'images': list (if multimodal),
+                'pdf_base64': str or None (raw PDF for Gemini),
                 'metadata': dict,
                 'error': str (if failed)
             }
@@ -312,9 +534,12 @@ class FileProcessor:
             'success': False,
             'file_type': file_type,
             'content': '',
+            'images': [],
+            'pdf_base64': None,  # Gemini: PDF 原始 base64 数据
             'metadata': {
                 'filename': filename,
                 'ocr_used': False,
+                'multimodal': multimodal,
             },
             'error': None
         }
@@ -324,21 +549,60 @@ class FileProcessor:
                 if not PDF_AVAILABLE:
                     raise RuntimeError("PDF 解析功能未安装。请安装: pip install pdfplumber PyPDF2")
 
-                content = FileProcessor.extract_pdf_text(file_obj, use_ocr=use_ocr)
-                result['content'] = content
-                result['metadata']['ocr_used'] = use_ocr and OCR_AVAILABLE
+                # 始终保存 PDF 原始 base64（供 Gemini 模型直传使用）
+                if hasattr(file_obj, 'seek'):
+                    file_obj.seek(0)
+                if hasattr(file_obj, 'read'):
+                    raw_bytes = file_obj.read()
+                else:
+                    with open(file_obj, 'rb') as f:
+                        raw_bytes = f.read()
+                result['pdf_base64'] = base64.standard_b64encode(raw_bytes).decode('utf-8')
+                if hasattr(file_obj, 'seek'):
+                    file_obj.seek(0)
+
+                if multimodal and not skip_image_conversion:
+                    # 现有路径：提取文本 + 转图片（Claude 等模型）
+                    multimodal_result = FileProcessor.pdf_to_images_with_text(
+                        file_obj, dpi=dpi, max_pages=max_pages, extract_text=True
+                    )
+                    result['content'] = multimodal_result['text']
+                    result['images'] = multimodal_result['images']
+                    result['metadata']['page_count'] = multimodal_result['page_count']
+                    result['metadata']['mode'] = multimodal_result['mode']
+                elif multimodal and skip_image_conversion:
+                    # Gemini 路径：仅提取文本，跳过图片转换（PDF 原始数据已保存）
+                    result['content'] = FileProcessor.extract_pdf_text(file_obj, use_ocr=False)
+                    result['metadata']['mode'] = 'gemini_pdf_direct'
+                    print(f"⚡ [Gemini直传] {filename}: 跳过图片转换，使用 PDF 直传模式")
+                else:
+                    # 传统模式：仅提取文本
+                    content = FileProcessor.extract_pdf_text(file_obj, use_ocr=use_ocr)
+                    result['content'] = content
+                    result['metadata']['ocr_used'] = use_ocr and OCR_AVAILABLE
+
                 result['success'] = True
 
             elif file_type == 'image':
                 if not IMAGE_AVAILABLE:
                     raise RuntimeError("图片处理功能未安装。请安装: pip install Pillow")
 
-                if not OCR_AVAILABLE:
-                    raise RuntimeError("OCR 功能未安装。请安装: pip install pytesseract")
+                if multimodal:
+                    # 多模态模式：转为 base64
+                    img_data = FileProcessor.image_to_base64(file_obj)
+                    result['images'] = [{
+                        'page_num': 1,
+                        **img_data
+                    }]
+                    result['metadata']['mode'] = 'multimodal'
+                else:
+                    # 传统模式：OCR 提取文本
+                    if not OCR_AVAILABLE:
+                        raise RuntimeError("OCR 功能未安装。请安装: pip install pytesseract")
+                    content = FileProcessor.extract_image_text(file_obj, preprocess=True)
+                    result['content'] = content
+                    result['metadata']['ocr_used'] = True
 
-                content = FileProcessor.extract_image_text(file_obj, preprocess=True)
-                result['content'] = content
-                result['metadata']['ocr_used'] = True
                 result['success'] = True
 
             elif file_type == 'text':

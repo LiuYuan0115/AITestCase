@@ -9,7 +9,7 @@
           <img class="role-card-avatar" :src="pmAvatarUrl" alt="产品经理头像" />
           <div class="role-card-name">产品经理</div>
           <div class="role-card-tip">更关注需求、范围、优先级</div>
-      </button>
+        </button>
         <button class="role-card" @click="selectUserRole('dev')">
           <img class="role-card-avatar" :src="devAvatarUrl" alt="开发头像" />
           <div class="role-card-name">开发</div>
@@ -19,18 +19,21 @@
           <img class="role-card-avatar" :src="qaAvatarUrl" alt="测试头像" />
           <div class="role-card-name">测试</div>
           <div class="role-card-tip">更关注覆盖、异常、可测性</div>
-      </button>
+        </button>
+      </div>
     </div>
   </div>
-        </div>
 
   <!-- 统一布局：PM / DEV / QA 共用 -->
   <div v-else class="unified-layout">
     <!-- 顶部栏 -->
     <div class="unified-header">
       <div class="header-title">{{ userRoleLabel }}模式</div>
+      <button class="new-chat-btn" @click="reset" v-tooltip="'新建会话'">
+        <Plus :size="14" /> New
+      </button>
       <div class="role-area" @click.stop>
-        <button class="role-avatar-btn" @click="toggleRoleMenu" :title="`当前角色：${userRoleLabel}`">
+        <button class="role-avatar-btn" @click="toggleRoleMenu" v-tooltip="`当前角色：${userRoleLabel}`">
           <img class="role-avatar" :src="userRoleAvatarUrl" :alt="`${userRoleLabel}头像`" />
         </button>
         <div v-if="isRoleMenuOpen" class="role-menu">
@@ -66,6 +69,20 @@
             <button class="role-menu-item workflow-step" :class="{ active: projectState.currentStep === 'auto_test' }" @click="goToStep('auto_test'); isRoleMenuOpen = false">
               <span>5. 测试</span>
             </button>
+            <div class="role-menu-divider"></div>
+            <div class="role-menu-title">用例输出格式</div>
+            <div class="format-selector-inline">
+              <button
+                v-for="opt in testCaseFormatOptions"
+                :key="opt.value"
+                :class="['format-option-btn', { active: testCaseOutputFormat === opt.value }]"
+                @click="selectTestCaseFormat(opt.value)"
+                v-tooltip="opt.description"
+              >
+                <span class="format-icon">{{ opt.icon }}</span>
+                <span class="format-label">{{ opt.label }}</span>
+              </button>
+            </div>
           </template>
         </div>
         </div>
@@ -75,8 +92,378 @@
     <div class="unified-body">
       <!-- 左侧面板：聊天 + 输入 -->
       <div class="left-panel" :style="{ width: leftPanelWidth + 'px' }">
+
+        <!-- ===== Midscene 全屏面板 (Step 5 + Midscene 引擎) ===== -->
+        <div v-if="projectState.currentStep === 'auto_test' && uiEngine === 'midscene'" class="midscene-full-panel">
+          <!-- 顶部状态栏 -->
+          <div class="midscene-topbar">
+            <button class="midscene-topbar-btn" @click="projectState.currentStep = 'test_case'" v-tooltip="'返回测试用例'">
+              <ChevronLeft :size="13" />
+            </button>
+            <span class="midscene-topbar-title">Midscene</span>
+            <span class="midscene-topbar-status" :class="{ ok: midsceneSidecarReady }">
+              {{ midsceneSidecarReady ? 'OK' : 'OFF' }}
+            </span>
+
+            <div class="midscene-topbar-spacer"></div>
+
+            <!-- 当前模式标签（快速可视化） -->
+            <span class="midscene-mode-tag" :class="midsceneExecutionMode">
+              {{ midsceneExecutionMode === 'free' ? '自由' : midsceneExecutionMode === 'mixed' ? '混合' : '回归' }}
+            </span>
+
+            <!-- 基线覆盖率（仅有基线时显示） -->
+            <span v-if="baselineCoverage.total > 0 && baselineCoverage.covered > 0" class="midscene-baseline-tag" v-tooltip="'回归基线覆盖率'">
+              R {{ baselineCoverage.covered }}/{{ baselineCoverage.total }}
+            </span>
+
+            <!-- 停止按钮 -->
+            <button v-if="midsceneExecuting" class="midscene-topbar-btn midscene-stop-btn" @click.stop="stopMidsceneExecution" v-tooltip="'停止执行'">
+              <Square :size="11" />
+            </button>
+
+            <!-- 设置按钮 -->
+            <div class="midscene-settings-wrap" @click.stop>
+              <button class="midscene-topbar-btn" :class="{ active: midsceneSettingsVisible }" @click="toggleSettingsPanel" v-tooltip="'设置'">
+                <Settings :size="13" />
+              </button>
+
+              <!-- 设置下拉面板 -->
+              <transition name="settings-fade">
+                <div v-if="midsceneSettingsVisible" class="midscene-settings-dropdown">
+                  <div class="settings-section">
+                    <div class="settings-label">执行模式</div>
+                    <div class="settings-desc" v-if="modeRecommendationTip">{{ modeRecommendationTip }}</div>
+                    <div class="settings-mode-group">
+                      <button class="settings-mode-btn" :class="{ active: midsceneExecutionMode === 'free' }" @click="midsceneExecutionMode = 'free'" :disabled="midsceneExecuting">
+                        <Zap :size="12" /> 自由
+                      </button>
+                      <button class="settings-mode-btn" :class="{ active: midsceneExecutionMode === 'mixed' }" @click="midsceneExecutionMode = 'mixed'" :disabled="midsceneExecuting">
+                        <Puzzle :size="12" /> 混合
+                      </button>
+                      <button class="settings-mode-btn" :class="{ active: midsceneExecutionMode === 'regression' }" @click="midsceneExecutionMode = 'regression'" :disabled="midsceneExecuting">
+                        <ShieldCheck :size="12" /> 回归
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="settings-divider"></div>
+
+                  <div class="settings-section">
+                    <div class="settings-label">缓存策略</div>
+                    <div class="settings-cache-group">
+                      <button v-for="opt in [
+                        { val: 'smart', label: '智能' },
+                        { val: 'read-write', label: '读写' },
+                        { val: 'read-only', label: '只读' },
+                        { val: 'write-only', label: '仅写' },
+                        { val: 'false', label: '关闭' }
+                      ]" :key="opt.val"
+                        class="settings-cache-btn" :class="{ active: midsceneCacheStrategy === opt.val }"
+                        @click="midsceneCacheStrategy = opt.val as any" :disabled="midsceneExecuting">
+                        {{ opt.label }}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="settings-divider"></div>
+
+                  <div class="settings-section">
+                    <div class="settings-label">浏览器</div>
+                    <div class="settings-row">
+                      <button class="settings-toggle-btn" :class="{ active: !isHeadlessMode }" @click="isHeadlessMode = false">
+                        <Monitor :size="12" /> CDP
+                      </button>
+                      <button class="settings-toggle-btn" :class="{ active: isHeadlessMode }" @click="isHeadlessMode = true">
+                        <Ghost :size="12" /> Headless
+                      </button>
+                      <div class="settings-row-spacer"></div>
+                      <button class="settings-toggle-btn" @click="switchUiEngine" v-tooltip="'切换到传统引擎'">
+                        <Gamepad2 :size="12" /> 传统
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="settings-divider"></div>
+
+                  <div class="settings-section">
+                    <div class="settings-label">数据管理</div>
+                    <div class="settings-row">
+                      <button class="settings-action-btn" @click="toggleCachePanel(); midsceneSettingsVisible = false;">
+                        <Database :size="12" /> 缓存管理
+                      </button>
+                      <button class="settings-action-btn" @click="toggleRegressionPanel(); midsceneSettingsVisible = false;">
+                        <ClipboardList :size="12" /> 基线管理
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- 基线覆盖率统计 -->
+                  <div v-if="baselineCoverage.total > 0" class="settings-coverage">
+                    <div class="settings-coverage-bar">
+                      <div class="settings-coverage-fill" :style="{ width: baselineCoverage.percentage + '%' }"></div>
+                    </div>
+                    <span class="settings-coverage-text">
+                      基线覆盖 {{ baselineCoverage.covered }}/{{ baselineCoverage.total }} ({{ baselineCoverage.percentage }}%)
+                    </span>
+                  </div>
+                </div>
+              </transition>
+            </div>
+          </div>
+
+          <!-- ★ 缓存管理面板（展开/收起） -->
+          <div v-if="midsceneCachePanelVisible" class="midscene-cache-panel">
+            <div class="midscene-cache-header">
+              <span class="midscene-cache-title">缓存管理</span>
+              <span class="midscene-cache-size">总计: {{ formatBytes(midsceneCacheTotalSize) }}</span>
+              <button class="midscene-cache-clear-btn" @click="handleClearAllCache" :disabled="midsceneCacheList.length === 0">清空全部</button>
+            </div>
+            <div v-if="midsceneCacheLoading" class="midscene-cache-loading">加载中...</div>
+            <div v-else-if="midsceneCacheList.length === 0" class="midscene-cache-empty">暂无缓存文件</div>
+            <div v-else class="midscene-cache-list">
+              <div v-for="cache in midsceneCacheList" :key="cache.id" class="midscene-cache-item">
+                <div class="midscene-cache-item-info">
+                  <span class="midscene-cache-item-id" :title="cache.id">{{ cache.id }}</span>
+                  <span class="midscene-cache-item-meta">{{ cache.planCount }}P / {{ cache.locateCount }}L · {{ formatBytes(cache.sizeBytes) }}</span>
+                </div>
+                <button class="midscene-cache-item-del" @click="handleDeleteCache(cache.id)" v-tooltip="'删除此缓存'">×</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ★ 回归基线管理面板 -->
+          <div v-if="regressionPanelVisible" class="midscene-cache-panel">
+            <div class="midscene-cache-header">
+              <span class="midscene-cache-title">回归基线管理</span>
+              <span class="midscene-cache-size">共 {{ regressionBaselines.length }} 条</span>
+            </div>
+            <div v-if="regressionLoading" class="midscene-cache-loading">加载中...</div>
+            <div v-else-if="regressionBaselines.length === 0" class="midscene-cache-empty">暂无回归基线。请先在混合模式执行成功后保存。</div>
+            <div v-else class="midscene-cache-list">
+              <div v-for="bl in regressionBaselines" :key="bl.id" class="midscene-cache-item">
+                <div class="midscene-cache-item-info" style="flex: 1;">
+                  <span class="midscene-cache-item-id" :title="bl.fileName">{{ bl.caseId }}: {{ bl.caseName }}</span>
+                  <span class="midscene-cache-item-meta">
+                    {{ bl.stepsCount }}步 · {{ bl.assertionsCount }}断言
+                    <span v-if="bl.lastRunStatus" :style="{ color: bl.lastRunStatus === 'passed' ? '#4caf50' : '#f44336' }">
+                      · {{ bl.lastRunStatus === 'passed' ? 'PASS' : 'FAIL' }}
+                    </span>
+                  </span>
+                </div>
+                <button class="midscene-topbar-btn" @click="handleRunBaseline(bl)" v-tooltip="'执行'" style="margin: 0 2px;"><Play :size="10" /></button>
+                <button class="midscene-topbar-btn" @click="handleEditBaseline(bl.id)" v-tooltip="'编辑'" style="margin: 0 2px;"><Settings :size="10" /></button>
+                <button class="midscene-cache-item-del" @click="handleDeleteBaseline(bl.id)" v-tooltip="'删除'">×</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ★ 步骤编辑器面板 -->
+          <div v-if="stepEditorVisible" class="midscene-step-editor">
+            <div class="midscene-cache-header">
+              <span class="midscene-cache-title">步骤编辑器</span>
+              <button class="midscene-topbar-btn" @click="stepEditorVisible = false" v-tooltip="'关闭'" style="margin-left: auto;">✕</button>
+            </div>
+            <div class="midscene-step-editor-meta">
+              <input v-model="stepEditorCaseId" placeholder="用例 ID" class="midscene-step-input" style="width: 80px;" />
+              <input v-model="stepEditorCaseName" placeholder="用例名称" class="midscene-step-input" style="flex: 1;" />
+            </div>
+            <div class="midscene-step-list">
+              <div v-for="(step, i) in stepEditorSteps" :key="i" class="midscene-step-item" :class="{ 'step-failed': instantStepResults[i]?.success === false, 'step-passed': instantStepResults[i]?.success === true }">
+                <span class="midscene-step-index">{{ i + 1 }}</span>
+                <select v-model="step.type" class="midscene-step-type-select">
+                  <option value="tap">点击</option>
+                  <option value="doubleTap">双击</option>
+                  <option value="rightClick">右键</option>
+                  <option value="hover">悬停</option>
+                  <option value="input">输入</option>
+                  <option value="keypress">按键</option>
+                  <option value="scroll">滚动</option>
+                  <option value="aiAct">自由</option>
+                </select>
+                <input v-model="step.target" placeholder="目标描述" class="midscene-step-input" style="flex: 1;" />
+                <input v-if="step.type === 'input' || step.type === 'keypress'" v-model="step.value" placeholder="输入值/按键名" class="midscene-step-input" style="width: 80px;" />
+                <span v-if="instantStepResults[i]" class="midscene-step-method" :title="instantStepResults[i].method">
+                  {{ instantStepResults[i].success ? '✓' : '✗' }}
+                  {{ instantStepResults[i].method === 'instant' ? '即时' : instantStepResults[i].method === 'aiAct-single' ? 'AI' : 'DT' }}
+                </span>
+                <button class="midscene-topbar-btn" @click="runFromStep(i)" v-tooltip="'从此步重跑'" style="margin: 0 1px;"><RotateCcw :size="9" /></button>
+                <button class="midscene-topbar-btn" @click="moveStepUp(i)" :disabled="i === 0" v-tooltip="'上移'" style="margin: 0 1px;">↑</button>
+                <button class="midscene-topbar-btn" @click="moveStepDown(i)" :disabled="i === stepEditorSteps.length - 1" v-tooltip="'下移'" style="margin: 0 1px;">↓</button>
+                <button class="midscene-cache-item-del" @click="removeStep(i)" v-tooltip="'删除'">×</button>
+              </div>
+            </div>
+            <div class="midscene-step-editor-actions">
+              <button class="midscene-step-btn" @click="addNewStep">+ 添加步骤</button>
+              <button class="midscene-step-btn" @click="runFromStep(0)">全部运行</button>
+              <button class="midscene-step-btn midscene-step-btn-primary" @click="saveStepsAsBaseline">保存为回归基线</button>
+            </div>
+          </div>
+
+          <!-- ★ 逐步执行结果展示（混合/回归模式） -->
+          <div v-if="instantStepResults.length > 0" class="midscene-instant-results">
+            <div class="midscene-cache-header">
+              <span class="midscene-cache-title">逐步执行详情</span>
+              <button class="midscene-topbar-btn" @click="instantStepResults = []" v-tooltip="'关闭'">✕</button>
+            </div>
+            <div v-for="sr in instantStepResults" :key="sr.stepIndex" class="midscene-instant-step" :class="{ 'step-passed': sr.success, 'step-failed': !sr.success }">
+              <span class="midscene-step-index">{{ sr.stepIndex + 1 }}</span>
+              <span class="midscene-step-status">{{ sr.success ? '✓' : '✗' }}</span>
+              <span class="midscene-step-desc">{{ sr.original }}</span>
+              <span class="midscene-step-method" :title="sr.method">
+                {{ sr.method === 'instant' ? '即时' : sr.method === 'aiAct-single' ? 'AI单步' : 'DeepThink' }}
+              </span>
+              <span class="midscene-step-time">{{ sr.durationMs > 0 ? (sr.durationMs / 1000).toFixed(1) + 's' : '' }}</span>
+              <div v-if="sr.error" class="midscene-step-error">{{ sr.error }}</div>
+              <div v-if="sr.suggestion" class="midscene-step-suggestion">💡 {{ sr.suggestion }}</div>
+            </div>
+          </div>
+
+          <!-- ★ 回归模式基线覆盖率提示 -->
+          <div v-if="midsceneExecutionMode === 'regression' && midsceneParsedCases.length > 0" class="midscene-regression-summary">
+            <span class="midscene-regression-summary-text">
+              基线覆盖: {{ regressionBaselineMap.size }} / {{ midsceneParsedCases.length }} 条用例
+            </span>
+            <span v-if="regressionBaselineMap.size < midsceneParsedCases.length" class="midscene-regression-summary-hint">
+              (无基线的用例将降级为混合模式，成功后自动保存基线)
+            </span>
+            <span v-else class="midscene-regression-summary-ok">
+              全部就绪
+            </span>
+          </div>
+
+          <!-- 用例列表 -->
+          <div class="midscene-case-section">
+            <div v-if="midsceneParsedCases.length === 0 && !quickCreateVisible" class="midscene-empty-guide">
+              <div class="midscene-empty-title">暂无测试用例</div>
+              <div class="midscene-empty-desc">请通过以下方式添加用例：</div>
+              <button class="midscene-guide-btn" @click="quickCreateVisible = true; resetQuickCreateForm()">
+                <PlusCircle :size="13" /> 快速创建用例
+              </button>
+              <button class="midscene-guide-btn" @click="goToStep('test_case')">
+                <FileEdit :size="13" /> 批量编写用例
+              </button>
+              <button class="midscene-guide-btn" @click="toggleRightPanel('knowledge')">
+                <Library :size="13" /> 从知识库加载
+              </button>
+              <div class="midscene-empty-hint">
+                知识库：点击已保存的测试用例文档即可导入
+              </div>
+            </div>
+            <!-- ★ 快速创建用例表单 -->
+            <div v-if="midsceneParsedCases.length === 0 && quickCreateVisible" class="quick-create-panel">
+              <div class="quick-create-header">
+                <span class="quick-create-title"><PlusCircle :size="13" /> 快速创建测试用例</span>
+                <button class="case-detail-edit-btn" @click="quickCreateVisible = false">取消</button>
+              </div>
+              <div class="quick-create-field">
+                <label>用例名称 <span class="required">*</span></label>
+                <input v-model="quickCreateForm.name" placeholder="如：登录功能测试" class="quick-create-input" />
+              </div>
+              <div class="quick-create-field">
+                <label>场景描述</label>
+                <input v-model="quickCreateForm.scenario" placeholder="如：验证用户可以正常登录（可选，不填则自动生成）" class="quick-create-input" />
+              </div>
+              <div class="quick-create-field">
+                <label>操作步骤 <span class="quick-create-tip">具体步骤可提升混合模式执行效果</span></label>
+                <div v-for="(s, si) in quickCreateForm.steps" :key="si" class="quick-create-list-row">
+                  <span class="case-step-num">{{ si + 1 }}</span>
+                  <input v-model="quickCreateForm.steps[si]" :placeholder="si === 0 ? '如：点击登录按钮' : '下一步操作...'" class="quick-create-input" />
+                  <button class="case-step-action case-step-del" @click="removeQuickCreateStep(si)" v-tooltip="'删除'"><X :size="10" /></button>
+                </div>
+                <button class="case-step-add-btn" @click="addQuickCreateStep"><Plus :size="11" /> 添加步骤</button>
+              </div>
+              <div class="quick-create-field">
+                <label>预期结果</label>
+                <div v-for="(e, ei) in quickCreateForm.expectedResults" :key="ei" class="quick-create-list-row">
+                  <input v-model="quickCreateForm.expectedResults[ei]" :placeholder="ei === 0 ? '如：页面跳转到首页' : '其他预期...'" class="quick-create-input" />
+                  <button class="case-step-action case-step-del" @click="removeQuickCreateExpected(ei)" v-tooltip="'删除'"><X :size="10" /></button>
+                </div>
+                <button class="case-step-add-btn" @click="addQuickCreateExpected"><Plus :size="11" /> 添加预期结果</button>
+              </div>
+              <div class="quick-create-actions">
+                <button class="midscene-guide-btn quick-create-submit" @click="submitQuickCreate"><Check :size="13" /> 创建并添加</button>
+              </div>
+              <div class="quick-create-mode-info">
+                <Lightbulb :size="11" />
+                <div>
+                  <div><strong>自由模式</strong>：只需场景描述即可执行，不需要具体步骤</div>
+                  <div><strong>混合模式</strong>：需要具体步骤（如"点击X"、"输入Y"），执行更可控</div>
+                </div>
+              </div>
+            </div>
+            <div v-for="tc in midsceneParsedCases" :key="tc.id"
+                 class="midscene-case-item" :class="[getCaseResultClass(tc.id), { selected: midsceneSelectedCaseId === tc.id }]"
+                 @click="midsceneSelectedCaseId = tc.id">
+              <input type="checkbox" :checked="midsceneSelectedCases.has(tc.id)" @change.stop="toggleCaseSelection(tc.id)" :disabled="midsceneExecuting" />
+              <div class="midscene-case-info">
+                <span class="midscene-case-id">{{ tc.id }}</span>
+                <span v-if="regressionBaselineMap.has(tc.id)" class="midscene-baseline-badge" v-tooltip="'已有回归基线'">R</span>
+                <span class="midscene-case-name">{{ tc.name }}</span>
+                <span v-if="tc.priority" class="midscene-case-priority" :class="tc.priority?.toLowerCase()">{{ tc.priority }}</span>
+              </div>
+              <div class="midscene-case-status">
+                <span v-if="getCaseResult(tc.id)?.status === 'passed'" class="status-pass">PASS</span>
+                <span v-else-if="getCaseResult(tc.id)?.status === 'failed'" class="status-fail">FAIL</span>
+                <span v-else-if="getCaseResult(tc.id)?.status === 'running'" class="status-running">...</span>
+                <span v-else-if="midsceneExecutionMode === 'regression' && !regressionBaselineMap.has(tc.id)" class="status-no-baseline" v-tooltip="'无基线，将降级为混合模式'">无基线</span>
+              </div>
+              <button class="midscene-btn-run" @click.stop="runOneCaseOnly(tc)" :disabled="midsceneExecuting"><Play :size="11" /></button>
+            </div>
+            <div v-if="midsceneParsedCases.length > 0" class="midscene-batch-bar">
+              <button @click="selectAllCases" class="midscene-batch-btn">全选</button>
+              <button @click="deselectAllCases" class="midscene-batch-btn">清除</button>
+              <button class="midscene-batch-btn midscene-btn-primary" @click="runSelectedCases" :disabled="midsceneSelectedCases.size === 0 || midsceneExecuting">
+                <Play :size="11" /> 执行 ({{ midsceneSelectedCases.size }})
+              </button>
+              <span v-if="midsceneExecuting" class="midscene-executing-label">{{ midsceneCurrentCase }}...</span>
+            </div>
+          </div>
+
+          <!-- 执行时间线 -->
+          <div v-if="midsceneTimeline.length > 0" class="midscene-timeline-section">
+            <div class="midscene-timeline-header">执行时间线</div>
+            <div class="midscene-timeline-list">
+              <div v-for="card in midsceneTimeline" :key="card.id" class="timeline-card" :class="card.status">
+                <div class="timeline-card-header">
+                  <span class="timeline-card-type"
+                        :style="{ color: (stepTypeMap[card.type] || stepTypeMap['aiAct']).color }">
+                    {{ (stepTypeMap[card.type] || stepTypeMap['aiAct']).label }}
+                  </span>
+                  <span class="timeline-card-desc">{{ card.description }}</span>
+                  <span v-if="card.durationMs" class="timeline-card-duration">{{ (card.durationMs / 1000).toFixed(1) }}s</span>
+                  <span class="timeline-card-icon">
+                    {{ card.status === 'success' ? 'PASS' : card.status === 'failed' ? 'FAIL' : card.status === 'running' ? '...' : '' }}
+                  </span>
+                </div>
+                <img v-if="card.screenshot" :src="card.screenshot" class="timeline-card-screenshot" alt="screenshot" />
+                <div v-if="card.error" class="timeline-card-error">{{ card.error }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 结果汇总 -->
+          <div v-if="midsceneResults.length > 0" class="midscene-summary-bar">
+            <span class="summary-passed">PASS {{ midscenePassedCount }}</span>
+            <span class="summary-failed">FAIL {{ midsceneFailedCount }}</span>
+            <span class="summary-total">/ {{ midsceneResults.length }}</span>
+            <span v-if="midsceneTotalDuration" class="summary-duration">{{ midsceneTotalDuration }}s</span>
+            <div style="margin-left:auto; display:flex; gap:4px;">
+              <!-- 打开右侧结果面板 -->
+              <button @click="rightPanelTab = 'midscene'; midsceneViewType = 'results'" class="midscene-btn-secondary" style="font-size:11px;" v-tooltip="'在右侧面板查看详细执行结果'">
+                <BarChart3 :size="11" /> 详情
+              </button>
+              <!-- HTML 报告按钮 -->
+              <button v-if="midsceneReportUrls.length > 0 || midsceneReportUrl" @click="openMidsceneHtmlReport" class="midscene-btn-primary" style="font-size:11px;">
+                <ExternalLink :size="11" /> HTML报告
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== 正常聊天面板 (非 Midscene Step 5) ===== -->
         <!-- 聊天消息区（Phase 4: 使用 ChatMessage 组件） -->
-      <div class="chat-container" ref="chatContainer">
+      <div v-show="!(projectState.currentStep === 'auto_test' && uiEngine === 'midscene')" class="chat-container" ref="chatContainer">
         <template v-for="adaptedMsg in adaptedMessages" :key="adaptedMsg.id">
           <ChatMessage
             :message="adaptedMsg"
@@ -91,9 +478,9 @@
               ? undoTestCaseEdit(getOriginalIndex(adaptedMsg))
               : undoPrdEdit(getOriginalIndex(adaptedMsg))"
             class="undo-btn"
-            title="撤回此操作"
+            v-tooltip="'撤回此操作'"
           >
-            ↩️ 撤回
+            <Undo2 :size="14" /> 撤回
           </button>
         </template>
         <div v-if="isProcessing" class="msg ai">
@@ -104,175 +491,24 @@
         </div>
       </div>
 
-        <!-- 统一输入区（固定底部） -->
+        <!-- 统一输入区（固定底部）- Phase 5: 使用 ChatInput 组件 -->
         <div class="unified-input-area">
-          <!-- 已引用文档（通过 @ 选择） -->
-          <div v-if="selectedRefDocs.length > 0" class="ref-chip-row">
-            <div class="ref-chip" v-for="d in selectedRefDocs" :key="d.id" :title="d.title">
-              <span class="ref-chip-title">@{{ d.title }}</span>
-              <button class="ref-chip-remove" @click="removeRefDoc(d.id)" title="移除">×</button>
-            </div>
-            <button class="ref-chip-clear" @click="clearAllRefDocs" title="清空引用">清空</button>
-          </div>
+          <ChatInput
+            v-model="unifiedInput"
+            :placeholder="unifiedInputPlaceholder"
+            :disabled="isProcessing"
+            :attachments="attachments"
+            :available-docs="allRightDocsForRef"
+            :active-role="userRole"
+            :hints="currentRoleHints"
+            @send="handleChatInputSend"
+            @extract-page="startFullPageAnalysis"
+            @show-extract-modal="showExtractModal = true"
+            @add-attachment="handleAddAttachment"
+            @remove-attachment="(id: string) => fileUpload.removeAttachment(id)"
+            @quick-generate="handleQuickGenerateFromAttachment"
+          />
 
-          <div class="input-row">
-            <textarea
-              v-model="unifiedInput"
-              class="unified-textarea"
-              :placeholder="unifiedInputPlaceholder"
-              :disabled="isProcessing"
-              @keydown="handleUnifiedKeydown"
-            ></textarea>
-            <button class="btn-primary send-btn" :disabled="isProcessing || !unifiedInput.trim()" @click="sendUnifiedMessage">
-              发送
-          </button>
-        </div>
-
-          <!-- @ 引用弹窗：展示右侧文档列表（按标题搜索） -->
-          <div v-if="showAtDocPicker" class="ref-picker" @mousedown.prevent>
-            <div class="ref-picker-header">
-              <span>引用右侧文档（输入 @ 后可按标题搜索）</span>
-              <button class="ref-picker-close" @click="clearAtPicker">×</button>
-            </div>
-            <div v-if="filteredRightDocsForAt.length === 0" class="ref-picker-empty">
-              暂无可引用文档
-            </div>
-            <div v-else class="ref-picker-list">
-              <button
-                v-for="doc in filteredRightDocsForAt"
-                :key="doc.id"
-                class="ref-picker-item"
-                :class="{ 'unsaved': !isDocSaved(doc) }"
-                :disabled="selectedRefDocs.some(d => d.id === doc.id)"
-                @mousedown.prevent="addRefDoc(doc)"
-              >
-                <span class="ref-picker-title">{{ doc.title }}</span>
-                <span v-if="!isDocSaved(doc)" class="ref-picker-unsaved" title="未入库，引用时将使用内容传输">⚠️</span>
-                <span class="ref-picker-meta">{{ doc.kind }}</span>
-              </button>
-            </div>
-        </div>
-
-          <!-- 操作按钮行（精简） -->
-          <div class="action-row">
-            <button class="action-btn" @click="showExtractModal = true" title="提取文档（链接/参考/Figma）">
-              📚 提取
-            </button>
-            <button class="action-btn" @click="startFullPageAnalysis" :disabled="isProcessing" title="一键滑动提取当前页面">
-              📸 当前页
-            </button>
-            <button class="action-btn hints-btn" @click="showHintsPopup = !showHintsPopup" title="快捷提示词">
-              💡 提示
-              </button>
-            </div>
-          
-          <!-- 提示词弹窗 -->
-          <div v-if="showHintsPopup" class="hints-popup">
-            <div class="hints-popup-header">
-              <span>💡 {{ currentHintsTitle }}</span>
-              <button class="hints-close" @click="showHintsPopup = false">×</button>
-            </div>
-            <div class="hints-list">
-              <!-- PM 产品经理提示词 -->
-              <template v-if="userRole === 'pm'">
-                <div class="hints-category">📋 需求分析</div>
-                <span class="hint-item" @click="setHint('梳理需求范围和优先级')">梳理范围</span>
-                <span class="hint-item" @click="setHint('拆解功能模块，列出核心功能和子功能')">拆解模块</span>
-                <span class="hint-item" @click="setHint('补充边界条件和约束')">边界条件</span>
-                <span class="hint-item" @click="setHint('明确用户角色和使用场景')">用户场景</span>
-                <div class="hints-category">⚠️ 风险识别</div>
-                <span class="hint-item" @click="setHint('识别需求风险点和潜在问题')">识别风险</span>
-                <span class="hint-item" @click="setHint('分析需求依赖和影响范围')">依赖分析</span>
-                <span class="hint-item" @click="setHint('评估需求优先级和排期建议')">优先级排期</span>
-                <div class="hints-category">📝 文档优化</div>
-                <span class="hint-item" @click="setHint('优化需求文档结构和表述')">优化文档</span>
-                <span class="hint-item" @click="setHint('补充验收标准和成功指标')">验收标准</span>
-              </template>
-              
-              <!-- DEV 开发者提示词 -->
-              <template v-else-if="userRole === 'dev'">
-                <div class="hints-category">💻 技术分析</div>
-                <span class="hint-item" @click="setHint('分析技术方案和实现思路')">技术方案</span>
-                <span class="hint-item" @click="setHint('识别技术风险和难点')">技术风险</span>
-                <span class="hint-item" @click="setHint('评估技术可行性')">可行性分析</span>
-                <div class="hints-category">⏱️ 工时估算</div>
-                <span class="hint-item" @click="setHint('评估开发工时和里程碑')">工时评估</span>
-                <span class="hint-item" @click="setHint('拆分开发任务和子任务')">任务拆分</span>
-                <div class="hints-category">📡 接口设计</div>
-                <span class="hint-item" @click="setHint('设计接口规范和参数定义')">接口设计</span>
-                <span class="hint-item" @click="setHint('分析数据模型和表结构')">数据模型</span>
-                <span class="hint-item" @click="setHint('梳理系统架构和模块划分')">架构设计</span>
-              </template>
-              
-              <!-- QA 测试角色提示词 - 根据步骤分类 -->
-              <template v-else-if="userRole === 'qa'">
-                <!-- 1. 分析步骤 -->
-                <template v-if="['setup', 'analyzing', 'content_review'].includes(projectState.currentStep) || !projectState.currentStep">
-                  <div class="hints-category">📋 内容分析</div>
-                  <span class="hint-item" @click="setHint('提取核心功能点和业务逻辑')">提取功能点</span>
-                  <span class="hint-item" @click="setHint('整理文档结构，按模块分类')">整理结构</span>
-                  <span class="hint-item" @click="setHint('识别文档中缺失的信息')">缺失信息</span>
-                  <div class="hints-category">🔍 深度分析</div>
-                  <span class="hint-item" @click="setHint('分析业务流程和状态流转')">业务流程</span>
-                  <span class="hint-item" @click="setHint('提取关键数据和约束条件')">数据约束</span>
-                  <span class="hint-item" @click="setHint('识别边界情况和异常场景')">边界场景</span>
-                </template>
-                
-                <!-- 2. 优化步骤 -->
-                <template v-else-if="['optimizing', 'prd_review'].includes(projectState.currentStep)">
-                  <div class="hints-category">🔍 PRD评审</div>
-                  <span class="hint-item" @click="setHint('检测当前PRD的逻辑冲突和矛盾')">检测冲突</span>
-                  <span class="hint-item" @click="setHint('识别潜在风险点和遗漏')">识别风险</span>
-                  <span class="hint-item" @click="setHint('检查需求完整性和一致性')">完整性检查</span>
-                  <div class="hints-category">📝 优化建议</div>
-                  <span class="hint-item" @click="setHint('结构化输出功能点清单')">功能点清单</span>
-                  <span class="hint-item" @click="setHint('补充测试相关的验收标准')">验收标准</span>
-                  <span class="hint-item" @click="setHint('优化需求描述的清晰度')">优化描述</span>
-                </template>
-                
-                <!-- 3. 测试点步骤 -->
-                <template v-else-if="projectState.currentStep === 'test_point'">
-                  <div class="hints-category">📊 测试点分析</div>
-                  <span class="hint-item" @click="setHint('补充边界值测试点')">边界测试点</span>
-                  <span class="hint-item" @click="setHint('检查测试点覆盖率是否完整')">覆盖率检查</span>
-                  <span class="hint-item" @click="setHint('补充异常和错误场景测试点')">异常场景</span>
-                  <div class="hints-category">🔧 测试点优化</div>
-                  <span class="hint-item" @click="setHint('按功能模块重新组织测试点')">重组测试点</span>
-                  <span class="hint-item" @click="setHint('补充兼容性测试点')">兼容性测试</span>
-                  <span class="hint-item" @click="setHint('补充性能相关测试点')">性能测试点</span>
-                </template>
-                
-                <!-- 4. 测试用例步骤 -->
-                <template v-else-if="projectState.currentStep === 'test_case'">
-                  <div class="hints-category">📊 用例评审</div>
-                  <span class="hint-item" @click="setHint('评审当前用例的覆盖率和完整性')">评审用例</span>
-                  <span class="hint-item" @click="setHint('检查测试步骤和预期结果是否清晰')">检查步骤</span>
-                  <span class="hint-item" @click="setHint('识别用例中的逻辑漏洞')">检查漏洞</span>
-                  <div class="hints-category">➕ 用例补充</div>
-                  <span class="hint-item" @click="setHint('补充异常和边界测试用例')">补充异常</span>
-                  <span class="hint-item" @click="setHint('补充回归测试用例')">回归用例</span>
-                  <span class="hint-item" @click="setHint('优化用例优先级和分类')">优化分类</span>
-                </template>
-                
-                <!-- 5. 自动化测试步骤 -->
-                <template v-else-if="projectState.currentStep === 'auto_test'">
-                  <div class="hints-category">🔍 页面分析</div>
-                  <span class="hint-item" @click="setHint('分析当前页面结构和元素')">分析页面</span>
-                  <span class="hint-item" @click="setHint('识别页面中的可交互元素')">识别元素</span>
-                  <span class="hint-item" @click="setHint('截取当前页面截图')">截图</span>
-                  <div class="hints-category">📋 测试计划</div>
-                  <span class="hint-item" @click="setHint('生成UI自动化测试计划')">生成计划</span>
-                  <span class="hint-item" @click="setHint('执行测试计划并生成报告')">执行测试</span>
-                  <div class="hints-category">👆 操作指令</div>
-                  <span class="hint-item" @click="setHint('点击登录按钮')">点击按钮</span>
-                  <span class="hint-item" @click="setHint('在用户名输入框输入admin')">输入文本</span>
-                  <span class="hint-item" @click="setHint('跳转到首页')">页面跳转</span>
-                  <span class="hint-item" @click="setHint('验证页面包含指定文本')">验证文本</span>
-                </template>
-              </template>
-            </div>
-          </div>
-          
           <!-- QA特有的步骤操作按钮 -->
           <div v-if="userRole === 'qa'" class="step-actions">
             <!-- 分析步骤 -->
@@ -280,77 +516,42 @@
               <template v-if="!projectState.documents.prd">
                 <!-- 无PRD时，显示提取按钮 -->
                 <button @click="startFullPageAnalysis" class="btn-primary step-action-btn" :disabled="isProcessing">
-                  📸 提取当前PRD
+                  <Camera :size="14" /> 提取当前PRD
                 </button>
               </template>
               <template v-else-if="!hasGeneratedPRD">
-                <button @click="startOptimizePRD" class="btn-primary step-action-btn" :disabled="isProcessing">✨ 优化需求文档</button>
+                <button @click="startOptimizePRD" class="btn-primary step-action-btn" :disabled="isProcessing"><Sparkles :size="14" /> 优化需求文档</button>
               </template>
               <template v-else>
-                <button @click="forwardToPRDReview" class="btn-secondary step-action-btn" :disabled="isProcessing">查看优化PRD →</button>
+                <button @click="forwardToPRDReview" class="btn-secondary step-action-btn" :disabled="isProcessing">查看优化PRD <ChevronRight :size="14" /></button>
               </template>
             </template>
             <!-- PRD步骤 -->
             <template v-else-if="['optimizing', 'prd_review'].includes(projectState.currentStep)">
-              <button @click="backToContentReview" class="btn-secondary step-action-btn" :disabled="isProcessing">← 返回分析</button>
+              <button @click="backToContentReview" class="btn-secondary step-action-btn" :disabled="isProcessing"><ChevronLeft :size="14" /> 返回分析</button>
               <button @click="regeneratePRD" class="btn-secondary step-action-btn" :disabled="isProcessing">重新优化</button>
               <button @click="proceedToTestPoints" class="btn-secondary step-action-btn" :disabled="isProcessing">生成测试点</button>
               <button @click="startGenerateTestCases" class="btn-primary step-action-btn" :disabled="isProcessing">直接生成用例</button>
             </template>
             <!-- 测试点步骤 -->
             <template v-else-if="projectState.currentStep === 'test_point'">
-              <button @click="backToPRD" class="btn-secondary step-action-btn" :disabled="isProcessing">← 返回PRD</button>
+              <button @click="backToPRD" class="btn-secondary step-action-btn" :disabled="isProcessing"><ChevronLeft :size="14" /> 返回PRD</button>
               <button @click="proceedToTestCases" class="btn-primary step-action-btn" :disabled="isProcessing">确认并生成用例</button>
             </template>
             <!-- 测试用例步骤 -->
             <template v-else-if="projectState.currentStep === 'test_case'">
-              <button @click="backToTestPoints" class="btn-secondary step-action-btn" :disabled="isProcessing">← 返回测试点</button>
+              <button @click="backToTestPoints" class="btn-secondary step-action-btn" :disabled="isProcessing"><ChevronLeft :size="14" /> 返回测试点</button>
+              <button @click="runQualityEvaluation" class="btn-evaluate step-action-btn" :disabled="isProcessing || qualityLoading"><ShieldCheck :size="14" /> 质量评估</button>
               <button @click="exportResults" class="btn-success step-action-btn">导出结果</button>
-              <button @click="projectState.currentStep = 'auto_test'" class="btn-primary step-action-btn">进入自动化测试</button>
+              <button @click="enterAutoTest()" class="btn-primary step-action-btn">进入自动化测试</button>
             </template>
-            <!-- 自动化测试步骤 -->
-            <template v-else-if="projectState.currentStep === 'auto_test'">
-              <button @click="projectState.currentStep = 'test_case'" class="btn-secondary step-action-btn">← 返回测试用例</button>
-              <button @click="showScreenshots" class="btn-secondary step-action-btn">📸 查看截图</button>
-              <button v-if="projectState.documents.uiPlan" @click="toggleUiDoc('plan')" class="btn-secondary step-action-btn">📋 测试计划</button>
-              <button v-if="projectState.documents.uiPlanJson" @click="toggleUiDoc('plan_json')" class="btn-secondary step-action-btn">🧩 Plan JSON</button>
-              <button v-if="projectState.documents.uiReport" @click="toggleUiDoc('report')" class="btn-secondary step-action-btn">📊 测试报告</button>
-              <!-- 有头/无头模式标识（实际模式由启动脚本决定：run_chrome.sh 或 run_chrome_headless.sh） -->
-              <button 
-                @click="isHeadlessMode = !isHeadlessMode" 
-                class="btn-mode-toggle step-action-btn"
-                :class="{ 'headless': isHeadlessMode }"
-                :title="isHeadlessMode ? '标识：已启动 run_chrome_headless.sh（新无头模式）' : '标识：已启动 run_chrome.sh（有头模式）'"
-              >
-                {{ isHeadlessMode ? '👻 无头' : '🖥️ 有头' }}
-              </button>
-              <!-- 工作流模式切换：direct vs closed_loop -->
-              <button
-                @click="uiWorkflowMode = (uiWorkflowMode === 'closed_loop' ? 'direct' : 'closed_loop')"
-                class="btn-mode-toggle step-action-btn"
-                :class="{ 'headless': uiWorkflowMode === 'direct' }"
-                :title="uiWorkflowMode === 'closed_loop' ? '闭环模式：自然语言→Plan JSON→执行→报告' : '直接模式：模型边想边操作工具'"
-              >
-                {{ uiWorkflowMode === 'closed_loop' ? '🔁 闭环' : '🎮 直接' }}
-              </button>
-              <template v-if="uiWorkflowMode === 'closed_loop'">
-                <button
-                  @click="uiAutoHeal = !uiAutoHeal"
-                  class="btn-mode-toggle step-action-btn"
-                  :class="{ 'headless': !uiAutoHeal }"
-                  :title="uiAutoHeal ? '自愈开启：失败时自动修正 Plan 并重试' : '自愈关闭：失败后不自动修复'"
-                >
-                  {{ uiAutoHeal ? '🩹 自愈' : '🧯 不自愈' }}
-                </button>
-                <button
-                  @click="uiMaxHealRounds = Math.min(3, uiMaxHealRounds + 1)"
-                  @contextmenu.prevent="uiMaxHealRounds = Math.max(0, uiMaxHealRounds - 1)"
-                  class="btn-mode-toggle step-action-btn"
-                  :title="'最大自愈轮数：' + uiMaxHealRounds + '（左键+1，右键-1，0=不重试）'"
-                >
-                  ♻️ {{ uiMaxHealRounds }}
-                </button>
-              </template>
+            <!-- 自动化测试步骤 — 仅传统引擎显示工具栏（Midscene 模式用全屏面板自带的 topbar） -->
+            <template v-else-if="projectState.currentStep === 'auto_test' && uiEngine !== 'midscene'">
+              <button @click="projectState.currentStep = 'test_case'" class="btn-secondary step-action-btn"><ChevronLeft :size="14" /> 返回</button>
+              <button @click="switchUiEngine" class="btn-mode-toggle step-action-btn"><Zap :size="14" /> Midscene</button>
+              <button @click="showScreenshots" class="btn-secondary step-action-btn"><ImageIcon :size="14" /> 截图</button>
+              <button v-if="projectState.documents.uiPlan" @click="toggleUiDoc('plan')" class="btn-secondary step-action-btn"><ClipboardList :size="14" /> 计划</button>
+              <button v-if="projectState.documents.uiReport" @click="toggleUiDoc('report')" class="btn-secondary step-action-btn"><BarChart3 :size="14" /> 报告</button>
             </template>
           </div>
           </div>
@@ -364,35 +565,35 @@
         <!-- 文档列表侧边栏 -->
         <div class="doc-list-sidebar" v-if="showDocList">
           <div class="doc-list-header">
-            <span>📚 文档列表</span>
-            <button class="doc-list-close" @click="showDocList = false">×</button>
+            <span class="doc-list-title"><Library :size="16" /> 文档列表</span>
+            <button class="doc-list-close" @click="showDocList = false" v-tooltip="'关闭'"><X :size="14" /></button>
         </div>
           <div class="doc-list-items">
             <!-- QA角色的主文档 -->
             <template v-if="userRole === 'qa'">
-              <div class="doc-list-item main-doc" :class="{ active: activeRightTab === 'main' && activeMainDocType === 'prd', 'is-url-main': !!urlDocs.find(d => d.isMainPrd) }" @click="activeRightTab = 'main'; activeMainDocType = 'prd'" @dblclick.stop="renameQaMainDocTitle('prd')">
-                <span class="doc-icon">{{ urlDocs.find(d => d.isMainPrd) ? '⭐' : '📄' }}</span>
+              <div class="doc-list-item main-doc" :class="{ active: activeRightTab === 'main' && activeMainDocType === 'prd', 'is-url-main': !!urlDocs.find(d => d.isMainPrd) }" @click="activeRightTab = 'main'; activeMainDocType = 'prd'; switchToDocView()" @dblclick.stop="renameQaMainDocTitle('prd')">
+                <span class="doc-icon"><component :is="urlDocs.find(d => d.isMainPrd) ? Star : FileText" :size="16" /></span>
                 <div class="doc-info">
                   <div class="doc-title">{{ currentPrdTitle || '主需求文档' }}</div>
                   <div class="doc-meta">主PRD · {{ urlDocs.find(d => d.isMainPrd) ? 'URL文档' : '可编辑' }}</div>
                 </div>
               </div>
-              <div v-if="hasGeneratedPRD" class="doc-list-item optimized-doc" :class="{ active: activeRightTab === 'main' && activeMainDocType === 'optimizedPrd' }" @click="activeRightTab = 'main'; activeMainDocType = 'optimizedPrd'" @dblclick.stop="renameQaMainDocTitle('optimizedPrd')">
-                <span class="doc-icon">✨</span>
+              <div v-if="hasGeneratedPRD" class="doc-list-item optimized-doc" :class="{ active: activeRightTab === 'main' && activeMainDocType === 'optimizedPrd' }" @click="activeRightTab = 'main'; activeMainDocType = 'optimizedPrd'; switchToDocView()" @dblclick.stop="renameQaMainDocTitle('optimizedPrd')">
+                <span class="doc-icon"><Sparkles :size="16" /></span>
                 <div class="doc-info">
                   <div class="doc-title">{{ optimizedPrdTitle }}</div>
                   <div class="doc-meta">优化PRD · 可编辑</div>
                 </div>
               </div>
-              <div v-if="hasGeneratedTestPoints" class="doc-list-item testpoint-doc" :class="{ active: activeRightTab === 'main' && activeMainDocType === 'testPoints' }" @click="activeRightTab = 'main'; activeMainDocType = 'testPoints'" @dblclick.stop="renameQaMainDocTitle('testPoints')">
-                <span class="doc-icon">🎯</span>
+              <div v-if="hasGeneratedTestPoints" class="doc-list-item testpoint-doc" :class="{ active: activeRightTab === 'main' && activeMainDocType === 'testPoints' }" @click="activeRightTab = 'main'; activeMainDocType = 'testPoints'; switchToDocView()" @dblclick.stop="renameQaMainDocTitle('testPoints')">
+                <span class="doc-icon"><Target :size="16" /></span>
                 <div class="doc-info">
                   <div class="doc-title">{{ testPointsTitle }}</div>
                   <div class="doc-meta">测试点 · 可编辑</div>
                 </div>
               </div>
-              <div v-if="hasGeneratedTestCases" class="doc-list-item testcase-doc" :class="{ active: activeRightTab === 'main' && activeMainDocType === 'testCases' }" @click="activeRightTab = 'main'; activeMainDocType = 'testCases'" @dblclick.stop="renameQaMainDocTitle('testCases')">
-                <span class="doc-icon">📋</span>
+              <div v-if="hasGeneratedTestCases" class="doc-list-item testcase-doc" :class="{ active: activeRightTab === 'main' && activeMainDocType === 'testCases' }" @click="activeRightTab = 'main'; activeMainDocType = 'testCases'; switchToDocView()" @dblclick.stop="renameQaMainDocTitle('testCases')">
+                <span class="doc-icon"><ClipboardList :size="16" /></span>
                 <div class="doc-info">
                   <div class="doc-title">{{ testCasesTitle }}</div>
                   <div class="doc-meta">测试用例 · 可编辑</div>
@@ -401,71 +602,71 @@
             </template>
             <!-- PM/DEV角色的提取文档 -->
             <template v-else>
-              <div v-for="(doc, idx) in chatOnlyDocuments" :key="doc.id" class="doc-list-item main-doc" :class="{ active: activeRightTab === 'chatDoc' && activeChatDocId === doc.id }" @click="activeRightTab = 'chatDoc'; activeChatDocId = doc.id" @dblclick.stop="renameChatDocTitle(doc.id)">
-                <span class="doc-icon">📄</span>
+              <div v-for="(doc, idx) in chatOnlyDocuments" :key="doc.id" class="doc-list-item main-doc" :class="{ active: activeRightTab === 'chatDoc' && activeChatDocId === doc.id }" @click="activeRightTab = 'chatDoc'; activeChatDocId = doc.id; switchToDocView()" @dblclick.stop="renameChatDocTitle(doc.id)">
+                <span class="doc-icon"><FileText :size="16" /></span>
                 <div class="doc-info">
                   <div class="doc-title">{{ doc.title || `文档 ${idx + 1}` }}</div>
                   <div class="doc-meta">{{ doc.type }} · 可编辑</div>
                 </div>
-                <button class="doc-delete" @click.stop="removeChatOnlyDoc(doc.id)" title="删除">×</button>
+                <button class="doc-delete" @click.stop="removeChatOnlyDoc(doc.id)" v-tooltip="'删除'"><Trash2 :size="12" /></button>
               </div>
             </template>
             
             <!-- URL 文档列表（所有角色可用：链接提取/提取当前页/输入框URL，QA角色排除已设为主PRD的） -->
             <template v-if="urlDocs.filter(d => userRole !== 'qa' || !d.isMainPrd).length > 0">
-              <div class="doc-list-divider">🔗 URL 文档</div>
-              <div v-for="doc in urlDocs.filter(d => userRole !== 'qa' || !d.isMainPrd)" :key="doc.id" class="doc-list-item url-doc" :class="{ active: activeRightTab === 'url' && activeUrlDocId === doc.id }" @click="doc.status === 'success' && (activeRightTab = 'url', activeUrlDocId = doc.id)" @dblclick.stop="doc.status === 'success' && renameUrlDocTitle(doc.id)">
+              <div class="doc-list-divider"><Link :size="14" /> URL 文档</div>
+              <div v-for="doc in urlDocs.filter(d => userRole !== 'qa' || !d.isMainPrd)" :key="doc.id" class="doc-list-item url-doc" :class="{ active: activeRightTab === 'url' && activeUrlDocId === doc.id }" @click="doc.status === 'success' && (activeRightTab = 'url', activeUrlDocId = doc.id, switchToDocView())" @dblclick.stop="doc.status === 'success' && renameUrlDocTitle(doc.id)">
                 <span class="doc-icon">
-                  <span v-if="doc.status === 'loading'" class="loading-spinner">⏳</span>
-                  <span v-else-if="doc.status === 'error'">❌</span>
-                  <span v-else>🔗</span>
+                  <Loader2 v-if="doc.status === 'loading'" :size="16" class="spinning" />
+                  <XCircle v-else-if="doc.status === 'error'" :size="16" class="error-icon" />
+                  <Link v-else :size="16" />
                 </span>
                 <div class="doc-info">
                   <div class="doc-title">{{ doc.title || 'URL文档' }}</div>
                   <div class="doc-meta">URL · 可编辑</div>
           </div>
                 <!-- 仅 QA 角色可设为主PRD -->
-                <button v-if="userRole === 'qa' && doc.status === 'success'" class="doc-set-main" @click.stop="setAsMainPrd(doc.id)" title="设为主PRD">⭐</button>
-                <button class="doc-delete" @click.stop="removeUrlDoc(doc.id)" title="删除">×</button>
+                <button v-if="userRole === 'qa' && doc.status === 'success'" class="doc-set-main" @click.stop="setAsMainPrd(doc.id)" v-tooltip="'设为主PRD'"><Star :size="12" /></button>
+                <button class="doc-delete" @click.stop="removeUrlDoc(doc.id)" v-tooltip="'删除'"><Trash2 :size="12" /></button>
         </div>
             </template>
             
             <!-- 辅助PRD列表（通用） -->
-            <div v-for="prd in additionalPrds" :key="prd.id" class="doc-list-item" :class="{ active: activeRightTab === 'additional' && activeAdditionalPrdId === prd.id, loading: prd.status === 'loading', error: prd.status === 'error' }" @click="prd.status === 'success' && (activeRightTab = 'additional', activeAdditionalPrdId = prd.id)" @dblclick.stop="prd.status === 'success' && renameAdditionalPrdTitle(prd.id)">
+            <div v-for="prd in additionalPrds" :key="prd.id" class="doc-list-item" :class="{ active: activeRightTab === 'additional' && activeAdditionalPrdId === prd.id, loading: prd.status === 'loading', error: prd.status === 'error' }" @click="prd.status === 'success' && (activeRightTab = 'additional', activeAdditionalPrdId = prd.id, switchToDocView())" @dblclick.stop="prd.status === 'success' && renameAdditionalPrdTitle(prd.id)">
               <span class="doc-icon">
-                <span v-if="prd.status === 'loading'" class="loading-spinner">⏳</span>
-                <span v-else-if="prd.status === 'error'">❌</span>
-                <span v-else>📑</span>
+                <Loader2 v-if="prd.status === 'loading'" :size="16" class="spinning" />
+                <XCircle v-else-if="prd.status === 'error'" :size="16" class="error-icon" />
+                <File v-else :size="16" />
               </span>
               <div class="doc-info">
                 <div class="doc-title">{{ formatPrdTitle(prd, 22) }}</div>
                 <div class="doc-meta">辅助PRD · {{ prd.status === 'success' ? '只读' : prd.status === 'loading' ? '加载中' : '失败' }}</div>
               </div>
-              <button class="doc-delete" @click.stop="removeAdditionalPrd(prd.id)" title="删除">×</button>
+              <button class="doc-delete" @click.stop="removeAdditionalPrd(prd.id)" v-tooltip="'删除'"><Trash2 :size="12" /></button>
             </div>
             <!-- Figma文档列表 -->
-            <div v-for="figma in figmaDocs" :key="figma.id" class="doc-list-item figma-doc" :class="{ active: activeRightTab === 'figma' && activeFigmaDocId === figma.id, loading: figma.status === 'loading', error: figma.status === 'error' }" @click="figma.status === 'success' && (activeRightTab = 'figma', activeFigmaDocId = figma.id)" @dblclick.stop="figma.status === 'success' && renameFigmaTitle(figma.id)">
+            <div v-for="figma in figmaDocs" :key="figma.id" class="doc-list-item figma-doc" :class="{ active: activeRightTab === 'figma' && activeFigmaDocId === figma.id, loading: figma.status === 'loading', error: figma.status === 'error' }" @click="figma.status === 'success' && (activeRightTab = 'figma', activeFigmaDocId = figma.id, switchToDocView())" @dblclick.stop="figma.status === 'success' && renameFigmaTitle(figma.id)">
               <span class="doc-icon">
-                <span v-if="figma.status === 'loading'" class="loading-spinner">⏳</span>
-                <span v-else-if="figma.status === 'error'">❌</span>
-                <span v-else>🎨</span>
+                <Loader2 v-if="figma.status === 'loading'" :size="16" class="spinning" />
+                <XCircle v-else-if="figma.status === 'error'" :size="16" class="error-icon" />
+                <Palette v-else :size="16" />
               </span>
               <div class="doc-info">
                 <div class="doc-title">{{ formatPrdTitle(figma, 22) }}</div>
                 <div class="doc-meta">Figma · {{ figma.status === 'success' ? '交互文档' : figma.status === 'loading' ? '解析中' : '失败' }}</div>
               </div>
-              <button class="doc-delete" @click.stop="removeFigmaDoc(figma.id)" title="删除">×</button>
+              <button class="doc-delete" @click.stop="removeFigmaDoc(figma.id)" v-tooltip="'删除'"><Trash2 :size="12" /></button>
         </div>
 
             <!-- 自定义文档列表 -->
-            <div v-if="customDocs.length > 0" class="doc-list-divider">📝 自定义文档</div>
-            <div v-for="doc in customDocs" :key="doc.id" class="doc-list-item custom-doc" :class="{ active: activeRightTab === 'custom' && activeCustomDocId === doc.id }" @click="activeRightTab = 'custom'; activeCustomDocId = doc.id" @dblclick.stop="renameCustomDocTitle(doc.id)">
-              <span class="doc-icon">📝</span>
+            <div v-if="customDocs.length > 0" class="doc-list-divider"><FileEdit :size="14" /> 自定义文档</div>
+            <div v-for="doc in customDocs" :key="doc.id" class="doc-list-item custom-doc" :class="{ active: activeRightTab === 'custom' && activeCustomDocId === doc.id }" @click="activeRightTab = 'custom'; activeCustomDocId = doc.id; switchToDocView()" @dblclick.stop="renameCustomDocTitle(doc.id)">
+              <span class="doc-icon"><FileEdit :size="16" /></span>
               <div class="doc-info">
                 <div class="doc-title">{{ doc.title || '自定义文档' }}</div>
                 <div class="doc-meta">自定义 · 可编辑</div>
               </div>
-              <button class="doc-delete" @click.stop="removeCustomDoc(doc.id)" title="删除">×</button>
+              <button class="doc-delete" @click.stop="removeCustomDoc(doc.id)" v-tooltip="'删除'"><Trash2 :size="12" /></button>
             </div>
           </div>
         </div>
@@ -530,37 +731,63 @@
           
           <!-- 右侧控制按钮 -->
           <div class="tab-controls">
-            <button v-if="hasAnyDocument" class="tab-control-btn" @click="showDocList = !showDocList" :title="showDocList ? '隐藏列表' : '显示列表'">
-              ☰
-            </button>
-            <!-- Phase 4: 知识库入口 -->
-            <button class="tab-control-btn" :class="{ active: rightPanelTab === 'knowledge' }" @click="rightPanelTab = rightPanelTab === 'knowledge' ? 'docs' : 'knowledge'" title="知识库">
-              📚
-            </button>
-            <!-- P1: 历史记录入口 -->
-            <button class="tab-control-btn" :class="{ active: rightPanelTab === 'history' }" @click="rightPanelTab = rightPanelTab === 'history' ? 'docs' : 'history'" title="历史记录">
-              📜
-            </button>
-            <!-- Phase 4: 批量上传入口 -->
-            <button class="tab-control-btn add" @click="showBatchUploader = true" title="批量上传">
-              📤
-            </button>
-            <!-- 新建自定义文档 -->
-            <button class="tab-control-btn add" @click="createCustomDoc" title="新建自定义文档">
-              +
-            </button>
-            <button v-if="activeRightTab !== 'main' && activeRightTab !== 'chatDoc'" class="tab-control-btn close" @click="closeCurrentTab" title="关闭当前Tab">
-              ×
+            <NeoTooltip v-if="hasAnyDocument" :text="showDocList ? '隐藏列表' : '显示列表'">
+              <button class="tab-control-btn" @click="showDocList = !showDocList">
+                <Menu :size="16" />
               </button>
-            </div>
+            </NeoTooltip>
+            <!-- Phase 4: 知识库入口 -->
+            <NeoTooltip text="知识库">
+              <button class="tab-control-btn" :class="{ active: rightPanelTab === 'knowledge' }" @click="toggleRightPanel('knowledge')">
+                <Library :size="16" />
+              </button>
+            </NeoTooltip>
+            <!-- P1: 历史记录入口 -->
+            <NeoTooltip text="历史记录">
+              <button class="tab-control-btn" :class="{ active: rightPanelTab === 'history' }" @click="toggleRightPanel('history')">
+                <ScrollText :size="16" />
+              </button>
+            </NeoTooltip>
+            <!-- 质量评估入口 -->
+            <NeoTooltip text="质量评估">
+              <button class="tab-control-btn" :class="{ active: rightPanelTab === 'quality' }" @click="toggleRightPanel('quality')">
+                <ShieldCheck :size="16" />
+              </button>
+            </NeoTooltip>
+            <!-- Midscene 报告入口 -->
+            <NeoTooltip v-if="uiEngine === 'midscene'" text="Midscene 报告">
+              <button class="tab-control-btn" :class="{ active: rightPanelTab === 'midscene' }" @click="toggleRightPanel('midscene')">
+                <Zap :size="16" />
+              </button>
+            </NeoTooltip>
+            <!-- Phase 4: 批量上传入口 -->
+            <NeoTooltip text="批量上传">
+              <button class="tab-control-btn add" @click="showBatchUploader = true">
+                <Upload :size="16" />
+              </button>
+            </NeoTooltip>
+            <!-- 新建自定义文档 -->
+            <NeoTooltip text="新建自定义文档">
+              <button class="tab-control-btn add" @click="createCustomDoc">
+                <Plus :size="16" />
+              </button>
+            </NeoTooltip>
+            <NeoTooltip v-if="activeRightTab !== 'main' && activeRightTab !== 'chatDoc'" text="关闭当前Tab">
+              <button class="tab-control-btn close" @click="closeCurrentTab">
+                <X :size="16" />
+              </button>
+            </NeoTooltip>
+          </div>
         </div>
 
         <!-- Phase 4: 知识库面板（覆盖编辑器） -->
         <KnowledgeBasePanel
+          ref="knowledgePanelRef"
           v-if="rightPanelTab === 'knowledge'"
           :session-id="projectState.assets.sessionId"
           @upload="showBatchUploader = true"
           @select="handleKnowledgeSelect"
+          @add-to-chat="handleKnowledgeAddToChat"
           class="knowledge-panel-overlay"
         />
 
@@ -572,53 +799,292 @@
           class="history-panel-overlay"
         />
 
+        <!-- 质量评估面板（覆盖编辑器） -->
+        <QualityReportPanel
+          v-if="rightPanelTab === 'quality'"
+          :report="qualityReport"
+          :loading="qualityLoading"
+          :error="qualityError"
+          @retry="runQualityEvaluation"
+          @supplement="handleSupplementFromEvaluation"
+          class="quality-panel-overlay"
+        />
+
+        <!-- Midscene 面板（与知识库等面板同级，不覆盖导航栏） -->
+        <div v-if="rightPanelTab === 'midscene'" class="midscene-report-overlay">
+          <div class="midscene-report-header">
+            <div class="midscene-report-tabs">
+              <button :class="{ active: midsceneViewType === 'cases' }" @click="midsceneViewType = 'cases'">用例详情</button>
+              <button :class="{ active: midsceneViewType === 'results' }" @click="midsceneViewType = 'results'">执行结果</button>
+            </div>
+          </div>
+          <div class="midscene-report-content">
+            <!-- 用例详情 (选中的用例) -->
+            <div v-if="midsceneViewType === 'cases'" class="midscene-report-body">
+              <template v-if="selectedCaseDetail">
+                <div class="case-detail-card">
+                  <div class="case-detail-id">{{ selectedCaseDetail.id }} <span v-if="selectedCaseDetail.priority" class="midscene-case-priority" :class="selectedCaseDetail.priority?.toLowerCase()">{{ selectedCaseDetail.priority }}</span></div>
+                  <div class="case-detail-name">{{ selectedCaseDetail.name }}</div>
+                  <div v-if="selectedCaseDetail.preconditions" class="case-detail-section">
+                    <div class="case-detail-label">前置条件</div>
+                    <div class="case-detail-value">{{ selectedCaseDetail.preconditions }}</div>
+                  </div>
+                  <div class="case-detail-section">
+                    <div class="case-detail-label">操作场景</div>
+                    <div class="case-detail-value">{{ selectedCaseDetail.scenario }}</div>
+                  </div>
+
+                  <!-- ★ 操作步骤（可内联编辑） -->
+                  <div class="case-detail-section">
+                    <div class="case-detail-label" style="display:flex;align-items:center;justify-content:space-between;">
+                      <span>操作步骤</span>
+                      <button v-if="!editingCaseSteps || editingCaseId !== selectedCaseDetail.id"
+                              class="case-detail-edit-btn" @click="startEditCaseSteps" v-tooltip="'编辑步骤'">
+                        <Pencil :size="11" /> 编辑
+                      </button>
+                      <div v-else style="display:flex;gap:4px;">
+                        <button class="case-detail-edit-btn case-detail-save-btn" @click="saveCaseStepsEdit">
+                          <Save :size="11" /> 保存
+                        </button>
+                        <button class="case-detail-edit-btn" @click="cancelEditCaseSteps">取消</button>
+                      </div>
+                    </div>
+                    <!-- 编辑模式 -->
+                    <div v-if="editingCaseSteps && editingCaseId === selectedCaseDetail.id" class="case-steps-editor">
+                      <div v-for="(step, si) in editingStepsBuffer" :key="si" class="case-step-row">
+                        <span class="case-step-num">{{ si + 1 }}</span>
+                        <input class="case-step-input" v-model="editingStepsBuffer[si]"
+                               :placeholder="'步骤描述（如：点击登录按钮、在搜索框输入hello）'" />
+                        <span class="step-type-badge"
+                              :style="{ background: inferStepType(editingStepsBuffer[si]).color + '18', color: inferStepType(editingStepsBuffer[si]).color, borderColor: inferStepType(editingStepsBuffer[si]).color + '40' }"
+                              :title="inferStepType(editingStepsBuffer[si]).tip">
+                          {{ inferStepType(editingStepsBuffer[si]).label }}
+                        </span>
+                        <button class="case-step-action" @click="moveEditingStepUp(si)" :disabled="si === 0" v-tooltip="'上移'"><ArrowUp :size="10" /></button>
+                        <button class="case-step-action" @click="moveEditingStepDown(si)" :disabled="si === editingStepsBuffer.length - 1" v-tooltip="'下移'"><ArrowDown :size="10" /></button>
+                        <button class="case-step-action case-step-del" @click="removeEditingStep(si)" v-tooltip="'删除'"><X :size="10" /></button>
+                      </div>
+                      <button class="case-step-add-btn" @click="addEditingStep"><Plus :size="11" /> 添加步骤</button>
+                      <div class="case-steps-hint">
+                        <Lightbulb :size="10" /> 标记为<span style="color:#10b981;font-weight:600;">绿色/蓝色</span>的步骤会精准执行（快），
+                        <span style="color:#ef4444;font-weight:600;">红色 AI执行</span>的步骤会交给 AI 自由理解（慢）
+                      </div>
+                      <div class="case-steps-hint" style="margin-top:2px;">
+                        💡 优化提示：将 <span style="color:#ef4444;">"AI执行"</span> 改为明确操作，如
+                        <code>点击XXX</code> <code>在XXX中输入YYY</code> <code>输入YYY</code>
+                      </div>
+                    </div>
+                    <!-- 只读模式 -->
+                    <div v-else>
+                      <div v-if="selectedCaseDetail.steps?.length" class="case-steps-list">
+                        <div v-for="(s, si) in selectedCaseDetail.steps" :key="si" class="case-step-item">
+                          <span class="case-step-num">{{ si + 1 }}</span>
+                          <span>{{ s }}</span>
+                          <span class="step-type-badge step-type-badge-ro"
+                                :style="{ background: inferStepType(s).color + '18', color: inferStepType(s).color, borderColor: inferStepType(s).color + '40' }"
+                                :title="inferStepType(s).tip">
+                            {{ inferStepType(s).label }}
+                          </span>
+                        </div>
+                      </div>
+                      <div v-else class="case-steps-empty">
+                        暂无步骤 — 自由模式可直接执行场景描述，混合模式建议添加具体步骤
+                      </div>
+                    </div>
+                  </div>
+
+                  <div v-if="selectedCaseDetail.expectedResults?.length" class="case-detail-section">
+                    <div class="case-detail-label">预期结果</div>
+                    <div v-for="(er, i) in selectedCaseDetail.expectedResults" :key="i" class="case-detail-assertion">
+                      <span class="assertion-status">{{ getAssertionStatus(selectedCaseDetail.id, i) }}</span>
+                      {{ er }}
+                    </div>
+                  </div>
+                </div>
+              </template>
+              <div v-else class="midscene-empty">在左侧选中一个测试用例查看详情</div>
+            </div>
+            <!-- 执行结果 -->
+            <div v-else class="midscene-report-body">
+              <div v-if="midsceneResults.length > 0">
+                <div v-for="r in midsceneResults" :key="r.testcaseId" class="midscene-result-card" :class="r.status">
+                  <div class="midscene-result-header">
+                    <span class="midscene-result-icon">{{ r.status === 'passed' ? 'PASS' : r.status === 'failed' ? 'FAIL' : r.status === 'running' ? '...' : 'ERR' }}</span>
+                    <span class="midscene-result-name">{{ r.testcaseName }}</span>
+                    <span v-if="r.durationMs" class="midscene-result-duration">{{ (r.durationMs / 1000).toFixed(1) }}s</span>
+                    <button v-if="r.reportUrl" class="midscene-result-report-btn" @click="openReportByUrl(r.reportUrl!)" v-tooltip="'查看该用例的 HTML 报告'">
+                      <ExternalLink :size="11" /> 报告
+                    </button>
+                  </div>
+                  <div v-if="r.assertions?.length" class="midscene-assertions">
+                    <div v-for="(a, i) in r.assertions" :key="i" class="midscene-assertion" :class="{ pass: a.success, fail: !a.success }">
+                      {{ a.success ? 'PASS' : 'FAIL' }} {{ a.expected }}
+                      <span v-if="a.reason" class="midscene-assertion-reason">- {{ a.reason }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="midscene-empty">暂无执行结果</div>
+            </div>
+          </div>
+          <div v-if="midsceneReportUrls.length > 0 || midsceneReportUrl" class="midscene-report-footer">
+            <!-- 多份报告时显示列表 -->
+            <template v-if="midsceneReportUrls.length > 1">
+              <div class="midscene-report-list">
+                <span class="midscene-report-list-label">HTML 可视化报告 ({{ midsceneReportUrls.length }})：</span>
+                <div v-for="(rpt, i) in midsceneReportUrls" :key="i" class="midscene-report-list-item">
+                  <button class="midscene-btn-report-link" @click="openReportByUrl(rpt.url)" v-tooltip="rpt.testcaseName">
+                    <ExternalLink :size="11" /> {{ rpt.testcaseName }}
+                  </button>
+                </div>
+              </div>
+              <button class="midscene-btn-primary" @click="openAllReports" style="margin-top:6px">
+                <ExternalLink :size="14" /> 打开全部报告
+              </button>
+            </template>
+            <!-- 单份报告 -->
+            <template v-else>
+              <button class="midscene-btn-primary" @click="openMidsceneHtmlReport">
+                <ExternalLink :size="14" /> HTML 可视化报告
+              </button>
+            </template>
+          </div>
+        </div>
+
         <!-- 文档内容区域 -->
         <div v-show="rightPanelTab === 'docs'" class="editor-container">
           <div class="editor-header">
             <span class="editor-header-title">{{ currentEditorTitle }}</span>
             <div class="editor-header-actions">
               <!-- 保存按钮（所有可编辑文档在编辑模式且有变化时显示） -->
-              <button 
-                v-if="isCurrentDocDirty" 
-                class="btn-save" 
+              <button
+                v-if="isCurrentDocDirty"
+                class="btn-save"
                 @click="saveCurrentDocument"
                 :disabled="isSavingDoc"
-                :title="isSavingDoc ? '保存中...' : '保存文档到知识库'"
+                v-tooltip="isSavingDoc ? '保存中...' : '保存文档到知识库'"
               >
                 {{ isSavingDoc ? '💾...' : '💾 保存' }}
               </button>
-              <button class="btn-toggle" @click="viewMode = viewMode === 'edit' ? 'preview' : 'edit'" :title="viewMode === 'edit' ? '预览' : '编辑'">
+              <!-- 插入图片按钮（仅编辑模式显示） -->
+              <button
+                v-if="viewMode === 'edit'"
+                class="btn-upload-img"
+                @click="triggerEditorImageUpload"
+                :disabled="isUploadingEditorImage"
+                v-tooltip="'上传图片到文档（也可直接粘贴图片）'"
+              >
+                {{ isUploadingEditorImage ? '上传中...' : '📷 插入图片' }}
+              </button>
+              <input
+                ref="editorImageInputRef"
+                type="file"
+                accept="image/*"
+                style="display: none"
+                @change="handleEditorImageFileSelect"
+              />
+              <button class="btn-toggle" @click="viewMode = viewMode === 'edit' ? 'preview' : 'edit'" v-tooltip="viewMode === 'edit' ? '预览' : '编辑'">
                 {{ viewMode === 'edit' ? '预览' : '编辑' }}
               </button>
             </div>
           </div>
 
-          <!-- QA角色的主文档内容 -->
-          <template v-if="userRole === 'qa' && activeRightTab === 'main'">
+          <!-- QA角色的主文档内容（有内容时显示，或在测试用例步骤允许手动输入） -->
+          <template v-if="userRole === 'qa' && activeRightTab === 'main' && (hasAnyMainDoc || projectState.currentStep === 'test_case')">
+            <!-- ★ 手动编写用例引导面板 -->
+            <div v-if="manualGuideVisible && projectState.currentStep === 'test_case' && !projectState.documents.testCases" class="manual-guide-overlay">
+              <div class="manual-guide-card">
+                <div class="manual-guide-header">
+                  <BookOpen :size="16" />
+                  <span>编写测试用例</span>
+                  <button class="case-detail-edit-btn" @click="manualGuideVisible = false" style="margin-left:auto;">直接编辑</button>
+                </div>
+
+                <div class="manual-guide-section">
+                  <div class="manual-guide-label">选择格式模板</div>
+                  <div class="manual-guide-format-btns">
+                    <button class="manual-guide-format-btn" @click="insertTestCaseTemplate('yaml')">
+                      <span class="format-icon">Y</span>
+                      <span>YAML 格式</span>
+                      <span class="format-desc">推荐，结构清晰</span>
+                    </button>
+                    <button class="manual-guide-format-btn" @click="insertTestCaseTemplate('table')">
+                      <span class="format-icon">T</span>
+                      <span>表格格式</span>
+                      <span class="format-desc">Markdown 表格</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="manual-guide-section">
+                  <div class="manual-guide-label"><Lightbulb :size="12" /> 编写规范</div>
+                  <div class="manual-guide-rules">
+                    <div class="guide-rule">
+                      <div class="guide-rule-title">必填字段</div>
+                      <div class="guide-rule-desc"><code>name</code> 用例名称、<code>steps</code> 操作步骤 或 <code>scenario</code> 场景描述</div>
+                    </div>
+                    <div class="guide-rule">
+                      <div class="guide-rule-title">steps 字段（核心）</div>
+                      <div class="guide-rule-desc">每一步应包含具体的操作动词和目标元素</div>
+                      <div class="guide-examples">
+                        <div class="guide-example good">
+                          <Check :size="10" /> <code>点击登录按钮</code>、<code>在用户名输入框中输入admin</code>
+                        </div>
+                        <div class="guide-example bad">
+                          <X :size="10" /> <code>通过文本输入框提交数学问题</code>（太模糊，执行效果差）
+                        </div>
+                      </div>
+                    </div>
+                    <div class="guide-rule">
+                      <div class="guide-rule-title">执行模式与 steps 的关系</div>
+                      <div class="guide-mode-table">
+                        <div class="guide-mode-row"><span class="guide-mode-name">自由模式</span><span>只需 scenario 即可，AI 自行规划</span></div>
+                        <div class="guide-mode-row"><span class="guide-mode-name">混合模式</span><span>需要具体 steps，逐步执行更可控</span></div>
+                        <div class="guide-mode-row"><span class="guide-mode-name">回归模式</span><span>基线自动生成，无需手写</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <textarea 
               v-show="viewMode === 'edit'"
               v-model="activeMainDocContent" 
               class="markdown-editor"
               :placeholder="editorPlaceholder"
             ></textarea>
-            <!-- PRD内容使用 Markdown 预览 -->
+            <!-- UI自动化步骤（auto_test）：报告/计划始终使用 Markdown 渲染，不走思维导图 -->
             <div 
-              v-show="viewMode === 'preview' && !['testPoints', 'testCases'].includes(activeMainDocType)"
+              v-show="viewMode === 'preview' && isAutoTestStep"
               class="markdown-preview"
               v-html="renderMarkdown(activeMainDocContent)"
             ></div>
-            <!-- 测试点和测试用例使用思维导图预览 -->
+            <!-- PRD内容使用 Markdown 预览（非 auto_test 步骤，且不是测试点/测试用例） -->
+            <div 
+              v-show="viewMode === 'preview' && !isAutoTestStep && !['testPoints', 'testCases'].includes(activeMainDocType)"
+              class="markdown-preview"
+              v-html="renderMarkdown(activeMainDocContent)"
+            ></div>
+            <!-- 测试点使用思维导图预览（非 auto_test 步骤） -->
             <MindMapPreview
-              v-if="viewMode === 'preview' && activeMainDocType === 'testPoints'"
+              v-if="viewMode === 'preview' && !isAutoTestStep && activeMainDocType === 'testPoints'"
               :content="activeMainDocContent"
               type="test_point"
               class="mindmap-wrapper"
             />
+            <!-- 测试用例根据输出格式选择渲染方式（非 auto_test 步骤） -->
             <MindMapPreview
-              v-if="viewMode === 'preview' && activeMainDocType === 'testCases'"
+              v-if="viewMode === 'preview' && !isAutoTestStep && activeMainDocType === 'testCases' && testCaseOutputFormat === 'xmind'"
               :content="activeMainDocContent"
               type="test_case"
               class="mindmap-wrapper"
+            />
+            <!-- 表格或YAML格式使用Markdown渲染（非 auto_test 步骤） -->
+            <div
+              v-if="viewMode === 'preview' && !isAutoTestStep && activeMainDocType === 'testCases' && testCaseOutputFormat !== 'xmind'"
+              class="markdown-preview"
+              v-html="renderMarkdown(activeMainDocContent)"
             />
           </template>
           
@@ -700,7 +1166,7 @@
           <!-- 空状态 -->
           <template v-else>
             <div class="empty-state">
-              <div class="empty-state-icon">📄</div>
+              <div class="empty-state-icon"><FileText :size="48" /></div>
               <div class="empty-state-text">等待开始</div>
               <div class="empty-state-hint">使用左侧输入框开始分析</div>
           </div>
@@ -731,16 +1197,16 @@
     <div v-if="showReferenceConfirmModal" class="assist-modal-overlay" @click.self="showReferenceConfirmModal = false"></div>
     <div v-if="showReferenceConfirmModal" class="reference-confirm-modal">
       <div class="confirm-modal-header">
-        <span class="confirm-modal-icon">📎</span>
+        <span class="confirm-modal-icon"><Paperclip :size="20" /></span>
         <span class="confirm-modal-title">{{ referenceConfirmAction === 'optimize' ? '优化需求文档' : '生成测试用例' }}</span>
       </div>
       <div class="confirm-modal-body">
         <p>是否需要添加辅助参考资料？</p>
         <p class="confirm-hint">添加辅助PRD或Figma设计可以提高{{ referenceConfirmAction === 'optimize' ? '优化' : '生成' }}质量</p>
-        
+
         <!-- 当无任何"参考/引用"时：允许从右侧 Tab 文档中勾选引用 -->
         <div class="confirm-refpick" v-if="shouldShowRefPickInConfirm">
-          <div class="confirm-refpick-title">📋 从右侧文档列表选择引用（可多选）</div>
+          <div class="confirm-refpick-title"><ClipboardList :size="16" /> 从右侧文档列表选择引用（可多选）</div>
           <div class="confirm-refpick-list">
             <label v-for="doc in confirmPickDocs" :key="doc.id" class="confirm-refpick-item">
               <input type="checkbox" :value="doc.id" v-model="confirmPickedDocIds" />
@@ -753,13 +1219,13 @@
       </div>
       <div class="confirm-modal-actions">
         <button v-if="shouldShowRefPickInConfirm && confirmPickedDocIds.length > 0" @click="confirmUsePickedDocs" class="btn-primary confirm-btn">
-          ✅ 引用并继续
+          <CheckCircle :size="14" /> 引用并继续
         </button>
         <button @click="openReferencePanel" class="btn-primary confirm-btn">
-          📎 添加参考
+          <Paperclip :size="14" /> 添加参考
         </button>
         <button @click="skipReference" class="btn-secondary confirm-btn">
-          ⏭️ 跳过
+          <SkipForward :size="14" /> 跳过
         </button>
       </div>
     </div>
@@ -768,21 +1234,21 @@
     <div v-if="showExtractModal" class="assist-modal-overlay" @click.self="showExtractModal = false"></div>
     <div v-if="showExtractModal" class="extract-modal">
       <div class="extract-modal-header">
-        <span>📚 提取文档</span>
-        <button class="assist-panel-close" @click="showExtractModal = false">×</button>
+        <span><Library :size="16" /> 提取文档</span>
+        <button class="assist-panel-close" @click="showExtractModal = false" v-tooltip="'关闭'"><X :size="16" /></button>
       </div>
       
       <div class="extract-modal-body">
         <!-- 主PRD区域（与文档列表结构一致） -->
         <div class="extract-section main-prd-section" v-if="userRole === 'qa'">
-          <div class="section-label">⭐ 主PRD</div>
+          <div class="section-label"><Star :size="14" /> 主PRD</div>
           <div v-if="urlDocs.find(d => d.isMainPrd)" class="extract-item is-main" @dblclick="renameQaMainDocTitle('prd')">
-            <span class="extract-status success">⭐</span>
+            <span class="extract-status success"><Star :size="14" /></span>
             <span class="extract-url">{{ currentPrdTitle || '主需求文档' }}</span>
             <span class="extract-tag">URL文档</span>
           </div>
           <div v-else-if="projectState.documents.prd" class="extract-item is-main" @dblclick="renameQaMainDocTitle('prd')">
-            <span class="extract-status success">📄</span>
+            <span class="extract-status success"><FileText :size="14" /></span>
             <span class="extract-url">{{ currentPrdTitle || '主需求文档' }}</span>
             <span class="extract-tag">可编辑</span>
           </div>
@@ -793,13 +1259,15 @@
         
         <!-- 辅助PRD区域 -->
         <div class="extract-section">
-          <div class="section-label">📑 辅助PRD</div>
+          <div class="section-label"><File :size="14" /> 辅助PRD</div>
           <div v-for="prd in additionalPrds" :key="prd.id" class="extract-item" @dblclick="prd.status === 'success' && renameAdditionalPrdTitle(prd.id)">
             <span class="extract-status" :class="prd.status">
-              {{ prd.status === 'loading' ? '⏳' : prd.status === 'success' ? '✅' : '❌' }}
+              <Loader2 v-if="prd.status === 'loading'" :size="14" class="spinning" />
+              <Check v-else-if="prd.status === 'success'" :size="14" />
+              <XCircle v-else :size="14" />
             </span>
             <span class="extract-url">{{ prd.title || prd.url.slice(0, 30) }}</span>
-            <button class="extract-remove" @click="removeAdditionalPrd(prd.id)">×</button>
+            <button class="extract-remove" @click="removeAdditionalPrd(prd.id)" v-tooltip="'删除'"><Trash2 :size="12" /></button>
           </div>
           <div class="extract-input-row">
               <input 
@@ -818,13 +1286,15 @@
         
         <!-- Figma区域 -->
         <div class="extract-section">
-          <div class="section-label">🎨 Figma</div>
+          <div class="section-label"><Palette :size="14" /> Figma</div>
           <div v-for="figma in figmaDocs" :key="figma.id" class="extract-item" @dblclick="figma.status === 'success' && renameFigmaTitle(figma.id)">
             <span class="extract-status" :class="figma.status">
-              {{ figma.status === 'loading' ? '⏳' : figma.status === 'success' ? '✅' : '❌' }}
+              <Loader2 v-if="figma.status === 'loading'" :size="14" class="spinning" />
+              <Check v-else-if="figma.status === 'success'" :size="14" />
+              <XCircle v-else :size="14" />
             </span>
             <span class="extract-url">{{ figma.title || figma.url.slice(0, 30) }}</span>
-            <button class="extract-remove" @click="removeFigmaDoc(figma.id)">×</button>
+            <button class="extract-remove" @click="removeFigmaDoc(figma.id)" v-tooltip="'删除'"><Trash2 :size="12" /></button>
           </div>
           <div class="extract-input-row">
             <input 
@@ -843,15 +1313,17 @@
         
         <!-- URL区域（所有角色：QA角色排除已设为主PRD的） -->
         <div class="extract-section">
-          <div class="section-label">🔗 URL</div>
+          <div class="section-label"><Link :size="14" /> URL</div>
           <div v-for="doc in urlDocs.filter(d => userRole !== 'qa' || !d.isMainPrd)" :key="doc.id" class="extract-item" @dblclick="doc.status === 'success' && renameUrlDocTitle(doc.id)">
             <span class="extract-status" :class="doc.status">
-              {{ doc.status === 'loading' ? '⏳' : doc.status === 'success' ? '✅' : '❌' }}
+              <Loader2 v-if="doc.status === 'loading'" :size="14" class="spinning" />
+              <Check v-else-if="doc.status === 'success'" :size="14" />
+              <XCircle v-else :size="14" />
             </span>
             <span class="extract-url">{{ doc.title || doc.url.slice(0, 30) }}</span>
             <!-- 仅 QA 角色可设为主PRD -->
-            <button v-if="userRole === 'qa' && doc.status === 'success'" class="extract-set-main" @click="setAsMainPrd(doc.id)" title="设为主PRD">⭐</button>
-            <button class="extract-remove" @click="removeUrlDoc(doc.id)">×</button>
+            <button v-if="userRole === 'qa' && doc.status === 'success'" class="extract-set-main" @click="setAsMainPrd(doc.id)" v-tooltip="'设为主PRD'"><Star :size="12" /></button>
+            <button class="extract-remove" @click="removeUrlDoc(doc.id)" v-tooltip="'删除'"><Trash2 :size="12" /></button>
                 </div>
           <div class="extract-input-row">
                     <input 
@@ -888,15 +1360,17 @@
       
       <!-- 辅助PRD区域 -->
       <div v-if="showAdditionalPrdPanel" class="assist-prd-section">
-        <div class="section-label">📄 辅助PRD链接</div>
+        <div class="section-label"><FileText :size="14" /> 辅助PRD链接</div>
         <div v-for="prd in additionalPrds" :key="prd.id" class="prd-item">
           <div class="prd-item-content">
             <span class="prd-status" :class="prd.status">
-              {{ prd.status === 'loading' ? '⏳' : prd.status === 'success' ? '✅' : '❌' }}
+              <Loader2 v-if="prd.status === 'loading'" :size="14" class="spinning" />
+              <Check v-else-if="prd.status === 'success'" :size="14" />
+              <XCircle v-else :size="14" />
             </span>
             <span class="prd-url">{{ prd.url.substring(0, 40) }}{{ prd.url.length > 40 ? '...' : '' }}</span>
                 </div>
-          <button class="prd-remove" @click="removeAdditionalPrd(prd.id)">×</button>
+          <button class="prd-remove" @click="removeAdditionalPrd(prd.id)" v-tooltip="'删除'"><Trash2 :size="12" /></button>
                     </div>
         <div class="add-prd-row">
           <input 
@@ -913,15 +1387,17 @@
             
       <!-- Figma 区域 -->
       <div v-if="showFigmaPanel" class="assist-figma-section">
-        <div class="section-label">🎨 Figma 设计链接</div>
+        <div class="section-label"><Palette :size="14" /> Figma 设计链接</div>
         <div v-for="figma in figmaDocs" :key="figma.id" class="prd-item">
           <div class="prd-item-content">
             <span class="prd-status" :class="figma.status">
-              {{ figma.status === 'loading' ? '⏳' : figma.status === 'success' ? '✅' : '❌' }}
+              <Loader2 v-if="figma.status === 'loading'" :size="14" class="spinning" />
+              <Check v-else-if="figma.status === 'success'" :size="14" />
+              <XCircle v-else :size="14" />
             </span>
             <span class="prd-url">{{ figma.url.substring(0, 40) }}{{ figma.url.length > 40 ? '...' : '' }}</span>
           </div>
-          <button class="prd-remove" @click="removeFigmaDoc(figma.id)">×</button>
+          <button class="prd-remove" @click="removeFigmaDoc(figma.id)" v-tooltip="'删除'"><Trash2 :size="12" /></button>
         </div>
         <div class="add-prd-row">
           <input 
@@ -947,11 +1423,11 @@
         <div v-if="showScreenshotModal" class="screenshot-modal-overlay" @click.self="showScreenshotModal = false">
             <div class="screenshot-modal">
                 <div class="screenshot-modal-header">
-                    <h3>📸 测试截图</h3>
+                    <h3><ImageIcon :size="18" /> 测试截图</h3>
                     <div style="display:flex; gap:8px;">
-                        <button @click="refreshScreenshots" class="btn-secondary" style="font-size:12px; padding:4px 8px;">🔄 刷新</button>
-                        <button @click="clearAllScreenshots" class="btn-secondary" style="font-size:12px; padding:4px 8px;">🗑️ 清空</button>
-                        <button @click="showScreenshotModal = false" class="btn-text" style="font-size:18px;">×</button>
+                        <button @click="refreshScreenshots" class="btn-secondary" style="font-size:12px; padding:4px 8px;" v-tooltip="'刷新'"><RefreshCw :size="12" /> 刷新</button>
+                        <button @click="clearAllScreenshots" class="btn-secondary" style="font-size:12px; padding:4px 8px;" v-tooltip="'清空'"><Trash2 :size="12" /> 清空</button>
+                        <button @click="showScreenshotModal = false" class="btn-text" style="font-size:18px;" v-tooltip="'关闭'"><X :size="18" /></button>
                     </div>
                 </div>
                 <div class="screenshot-modal-body">
@@ -985,8 +1461,14 @@ marked.use({
 });
 
 import { ImageProcessor } from '@/utils/imageProcessor';
-import { postRetrieve, ask, uploadImage, prdAgent, clearPrdSession, testCaseAgent, clearTestCaseSession, uiAgent, clearUiSession, getUiScreenshots, clearUiScreenshots, chatAgent } from '@/api';
-import { uploadRawPrd, uploadAuxDoc, upsertDocs, type DocUpsertItem } from '@/utils/docStoreApi';
+import { extractAndUploadImages } from '@/utils/imageExtractor';
+import type { ExtractedImage } from '@/utils/page';
+import { postRetrieve, ask, uploadImage, prdAgent, clearPrdSession, testCaseAgent, clearTestCaseSession, uiAgent, clearUiSession, getUiScreenshots, clearUiScreenshots, chatAgent, evaluateTestCases, midsceneAgent, midsceneAgentSmart, checkMidsceneHealth, listMidsceneReports, midsceneRunTestcaseStream, getMidsceneCacheList, deleteMidsceneCache, clearAllMidsceneCache, midsceneRunInstantStream, midsceneRunYaml, listRegressionBaselines, getRegressionBaseline, saveRegressionBaseline, updateRegressionBaseline, deleteRegressionBaseline } from '@/api';
+import type { MidsceneCacheItem, InstantStep, InstantStepResult, RegressionBaseline, RunInstantOptions } from '@/api';
+import type { MidsceneTestCase, MidsceneStreamEvent } from '@/api';
+import { parseTestCases } from '@/utils/testcaseParser';
+import { uploadRawPrd, uploadAuxDoc, upsertDocs, getDocContent, type DocUpsertItem } from '@/utils/docStoreApi';
+import { askV2 } from '@/utils/askApi';
 import type { DocRef } from '@/utils/refRegistry';
 import MindMapPreview from '@/components/MindMapPreview.vue';
 // Phase 4: 新组件导入
@@ -996,15 +1478,87 @@ import ChatMessage from '@/components/ChatMessage.vue';
 import DocumentPanel from '@/components/DocumentPanel.vue';
 import KnowledgeBasePanel from '@/components/KnowledgeBasePanel.vue';
 import HistoryPanel from '@/components/HistoryPanel.vue';
+import QualityReportPanel from '@/components/QualityReportPanel.vue';
 import BatchUploader from '@/components/BatchUploader.vue';
 import TaskProgressBar from '@/components/TaskProgressBar.vue';
+import NeoTooltip from '@/components/common/NeoTooltip.vue';
+import { preferences, type TestCaseOutputFormat } from '@/utils/preferences';
+// Phase 5: 新输入组件
+import ChatInput from '@/components/ChatInput.vue';
 // Phase 4: Composables 导入
 import { useSession, useRole, useWorkflow, useTaskProgress } from '@/composables';
+// Phase 5: 文件上传 Composable
+import { useFileUpload } from '@/composables/useFileUpload';
+import type { Attachment, ChatSendPayload, EvaluationReport } from '@/types/chat';
 // Phase 4: 消息适配器
 import { adaptLegacyMessage, canUndoMessage, getOriginalIndex, getActionType, type AdaptedChatMessage } from '@/utils/messageAdapter';
 import { getLocalAgentUrl } from '@/utils/agentUrl';
 import { browser } from 'wxt/browser';
 import { ensureConnection, sendMessageToContent, getActiveTab, isInjectableTab } from '@/utils/connectionHelper';
+
+// Lucide Icons
+import {
+  Undo2,
+  Camera,
+  Sparkles,
+  ListChecks,
+  FileText,
+  BarChart3,
+  Puzzle,
+  Ghost,
+  Monitor,
+  RefreshCcw,
+  Gamepad2,
+  Database,
+  Bandage,
+  Flame,
+  Recycle,
+  Library,
+  X,
+  Star,
+  File,
+  Target,
+  ClipboardList,
+  Link,
+  Palette,
+  FileEdit,
+  Menu,
+  ScrollText,
+  Upload,
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  PanelRightClose,
+  PanelRightOpen,
+  Trash2,
+  Loader2,
+  XCircle,
+  RefreshCw,
+  Image as ImageIcon,
+  Eye,
+  Paperclip,
+  CheckCircle,
+  SkipForward,
+  Check,
+  ShieldCheck,
+  ExternalLink,
+  Zap,
+  Play,
+  Square,
+  GripVertical,
+  RotateCcw,
+  Settings,
+  ChevronDown,
+  Pencil,
+  Save,
+  ChevronUp,
+  ArrowUp,
+  ArrowDown,
+  PlusCircle,
+  Lightbulb,
+  AlertTriangle,
+  BookOpen,
+} from 'lucide-vue-next';
 
 // 角色头像（占位资源，可用你的图一/二/三替换同名文件）
 import pmAvatarUrl from '@/assets/roles/pm.svg?url';
@@ -1034,6 +1588,8 @@ interface ProjectState {
     uiPlan: string;
     uiReport: string;
     uiPlanJson: string;      // 可执行 Plan JSON（闭环模式返回，可直接回放）
+    midsceneReport: string;      // Midscene 执行结果 Markdown
+    midsceneCasesJson: string;   // Midscene 解析后的用例 JSON
   };
 }
 
@@ -1067,16 +1623,22 @@ const projectState = reactive<ProjectState>({
   currentStep: '',
   inputs: { figmaUrl: '' },
   assets: { screenshotUrl: '', domMarkdown: '', cdnUrl: '', cdnUrls: [], sessionId: '' },
-  documents: { prd: '', optimizedPrd: '', testPoints: '', testCases: '', uiPlan: '', uiReport: '', uiPlanJson: '' }
+  documents: { prd: '', optimizedPrd: '', testPoints: '', testCases: '', uiPlan: '', uiReport: '', uiPlanJson: '', midsceneReport: '', midsceneCasesJson: '' }
 });
 
-// 消息类型扩展：支持撤回操作
+// 消息类型扩展：支持撤回操作和附件
+interface MessageAttachmentInfo {
+  type: 'file' | 'image' | 'document';
+  name: string;
+}
+
 interface Message {
   role: 'user' | 'ai';
   content: string;
   actionType?: 'edit' | 'delete' | 'add' | 'query' | 'testcase_edit'; // 操作类型
   canUndo?: boolean; // 是否可撤回
   undoData?: string; // 撤回前的 PRD 内容
+  attachments?: MessageAttachmentInfo[]; // 附件信息
 }
 
 const messages = ref<Message[]>([]);
@@ -1132,10 +1694,12 @@ const generatedDocRefs = reactive<{
   optimizedPrd: DocRef | null;
   testPoints: DocRef | null;
   testCases: DocRef | null;
+  uploadedPrd: DocRef | null;  // 上传的 PDF/图片主文档（用于质量评估时回取内容）
 }>({
   optimizedPrd: null,
   testPoints: null,
   testCases: null,
+  uploadedPrd: null,
 });
 
 // 构建 docRefs（根据阶段返回正确的主文档）
@@ -1385,6 +1949,42 @@ const cachedTestPoints = ref('');
 const hasGeneratedTestCases = ref(false);
 const cachedTestCases = ref('');
 
+// 测试用例输出格式选择
+const testCaseOutputFormat = ref<TestCaseOutputFormat>(
+  preferences.get('formats').testcaseGeneration || 'xmind'
+);
+
+// 测试用例格式选项
+const testCaseFormatOptions = [
+  {
+    value: 'xmind' as const,
+    label: 'XMind',
+    icon: '🗺️',
+    description: 'H1-H6层级结构，兼容XMind导入',
+  },
+  {
+    value: 'table' as const,
+    label: '表格',
+    icon: '📊',
+    description: 'Markdown表格格式，便于复制到Excel/飞书',
+  },
+  {
+    value: 'yaml' as const,
+    label: 'YAML',
+    icon: '📄',
+    description: 'YAML结构化格式，便于程序化处理',
+  },
+];
+
+// 选择测试用例输出格式
+function selectTestCaseFormat(format: TestCaseOutputFormat) {
+  testCaseOutputFormat.value = format;
+  // 持久化偏好设置
+  const formats = preferences.get('formats');
+  formats.testcaseGeneration = format;
+  preferences.set('formats', formats);
+}
+
 // 文档保存相关
 const isSavingDoc = ref(false);
 const lastSavedContent = reactive<{
@@ -1607,16 +2207,35 @@ const saveCurrentDocument = async () => {
       } else if (activeMainDocType.value === 'testCases') {
         lastSavedContent.testCases = content;
         if (storedRef) generatedDocRefs.testCases = storedRef as DocRef;
+        // 保存后同步重新解析左侧 Midscene 用例列表
+        if (projectState.currentStep === 'auto_test' || projectState.currentStep === 'test_case') {
+          const parsed = parseTestCases(content, testCaseOutputFormat.value);
+          if (parsed.length > 0) {
+            midsceneParsedCases.value = parsed;
+            midsceneSelectedCases.value = new Set(parsed.map(c => c.id));
+            projectState.documents.midsceneCasesJson = JSON.stringify(parsed, null, 2);
+            console.log('[saveCurrentDocument] 已同步更新 Midscene 用例列表:', parsed.length, '条');
+          }
+        }
       }
     } else if (targetDoc) {
       // 更新目标文档的 lastSavedContent 和 docRef
       targetDoc.lastSavedContent = content;
       targetDoc.docRef = storedRef as DocRef;
       targetDoc.logicalId = logicalId;
+
+      // 如果是主PRD的URL文档，同步到 projectState.documents.prd
+      if (docType === 'url' && (targetDoc as UrlDoc).isMainPrd) {
+        projectState.documents.prd = content;
+        projectState.assets.domMarkdown = content;
+      }
     }
-    
+
     addMessage('ai', `✅ 「${title}」已保存`);
     console.log('[saveCurrentDocument] 保存成功:', docRefResult);
+
+    // 刷新知识库面板
+    knowledgePanelRef.value?.refresh?.();
     
   } catch (e: any) {
     console.error('[saveCurrentDocument] 保存失败:', e);
@@ -1625,6 +2244,43 @@ const saveCurrentDocument = async () => {
     isSavingDoc.value = false;
   }
 };
+
+/**
+ * 将当前测试用例自动保存到知识库（DocStore）
+ * 用于快速创建、内联编辑、模板插入等场景，无需用户手动点击保存按钮
+ */
+const autoSaveTestCasesToKnowledge = async (source: string = '测试用例') => {
+    const content = projectState.documents.testCases;
+    if (!content || !content.trim()) return;
+
+    try {
+        const sessionId = ensureSessionId();
+        const title = testCasesTitle.value || '测试用例';
+        const result = await upsertDocs({
+            sessionId,
+            docs: [{
+                logicalId: 'testcases_current',
+                kind: 'output',
+                title,
+                content,
+                contentType: 'text/markdown',
+            }]
+        });
+
+        const storedRef = result.stored[0]?.docRef;
+        if (storedRef) {
+            generatedDocRefs.testCases = storedRef as DocRef;
+        }
+        lastSavedContent.testCases = content;
+        console.log(`[autoSave] ${source} → 已自动保存到知识库`);
+
+        // 刷新知识库面板（如果已挂载）
+        knowledgePanelRef.value?.refresh?.();
+    } catch (e: any) {
+        console.warn(`[autoSave] ${source} → 自动保存失败:`, e.message || e);
+    }
+};
+
 const imageProcessor = new ImageProcessor();
 const uiAgentInput = ref('');
 const prdAgentInput = ref(''); // PRD 智能体输入
@@ -1636,6 +2292,118 @@ const isHeadlessMode = ref(false); // UI自动化测试：有头/无头模式
 const uiWorkflowMode = ref<'direct' | 'closed_loop'>('closed_loop'); // UI自动化工作流模式
 const uiAutoHeal = ref(true); // 闭环模式自愈开关
 const uiMaxHealRounds = ref(1); // 闭环模式最大自愈轮数
+
+// ================= Midscene Engine State =================
+const uiEngine = ref<'legacy' | 'midscene'>('midscene');
+const midsceneMode = ref<'cases' | 'freeform'>('cases');
+const midsceneSessionId = ref(`midscene-session-${Date.now()}`);
+const midsceneParsedCases = ref<MidsceneTestCase[]>([]);
+const midsceneSelectedCases = ref<Set<string>>(new Set());
+const midsceneResults = ref<Array<{
+    testcaseId: string;
+    testcaseName: string;
+    status: 'pending' | 'running' | 'passed' | 'failed' | 'error';
+    durationMs?: number;
+    assertions?: Array<{ expected: string; success: boolean; reason?: string }>;
+    /** 该用例对应的 HTML 报告 URL */
+    reportUrl?: string;
+}>>([]);
+const midsceneExecuting = ref(false);
+const midsceneCurrentCase = ref('');
+// 用于取消正在进行的 Midscene 请求（停止按钮触发时 abort）
+const midsceneAbortController = ref<AbortController | null>(null);
+const midsceneSidecarReady = ref(false);
+// ★ 执行模式相关状态
+const midsceneExecutionMode = ref<'free' | 'mixed' | 'regression'>('free');
+// ★ 缓存管理相关状态
+const midsceneCacheStrategy = ref<'smart' | 'read-write' | 'read-only' | 'write-only' | 'false'>('smart');
+const midsceneCacheList = ref<MidsceneCacheItem[]>([]);
+const midsceneCacheTotalSize = ref(0);
+const midsceneCachePanelVisible = ref(false);
+// ★ 设置面板状态
+const midsceneSettingsVisible = ref(false);
+// ★ 回归基线管理面板状态
+const regressionPanelVisible = ref(false);
+const regressionBaselines = ref<any[]>([]);
+const regressionLoading = ref(false);
+// ★ 基线映射：caseId → baseline（用于标记哪些用例有回归基线）
+const regressionBaselineMap = ref<Map<string, any>>(new Map());
+
+// ★ 模式智能推荐
+const modeRecommendation = computed(() => {
+    const cases = midsceneParsedCases.value;
+    if (cases.length === 0) return { mode: 'free' as const, tip: '执行模式' };
+
+    const totalCases = cases.length;
+    const withBaseline = cases.filter(c => regressionBaselineMap.value.has(c.id)).length;
+    const withSteps = cases.filter(c => c.steps && c.steps.length > 0).length;
+
+    if (withBaseline > 0 && withBaseline >= totalCases * 0.5) {
+        return {
+            mode: 'regression' as const,
+            tip: `推荐回归模式 (${withBaseline}/${totalCases} 条用例有基线)`,
+        };
+    }
+    if (withSteps > 0 && withSteps >= totalCases * 0.5) {
+        return {
+            mode: 'mixed' as const,
+            tip: `推荐混合模式 (${withSteps}/${totalCases} 条用例有步骤)`,
+        };
+    }
+    return {
+        mode: 'free' as const,
+        tip: `推荐自由模式 (大部分用例仅有场景描述)`,
+    };
+});
+const modeRecommendationTip = computed(() => modeRecommendation.value.tip);
+
+// ★ 基线覆盖率统计
+const baselineCoverage = computed(() => {
+    const total = midsceneParsedCases.value.length;
+    const covered = midsceneParsedCases.value.filter(c => regressionBaselineMap.value.has(c.id)).length;
+    return { total, covered, percentage: total > 0 ? Math.round(covered / total * 100) : 0 };
+});
+// ★ 用例详情面板 — 内联 steps 编辑状态
+const editingCaseSteps = ref(false);
+const editingStepsBuffer = ref<string[]>([]);
+const editingCaseId = ref('');
+
+// ★ Step 5 快速创建用例表单
+const quickCreateVisible = ref(false);
+const quickCreateForm = ref({ name: '', scenario: '', steps: [''], expectedResults: [''] });
+
+// ★ Step 4 手动编写引导
+const manualGuideVisible = ref(false);
+
+// ★ 步骤编辑器状态
+const stepEditorVisible = ref(false);
+const stepEditorSteps = ref<any[]>([]);
+const stepEditorCaseId = ref('');
+const stepEditorCaseName = ref('');
+const stepEditorUrl = ref('');
+const stepEditorAssertions = ref<string[]>([]);
+// ★ 逐步执行结果（混合/回归模式）
+const instantStepResults = ref<any[]>([]);
+const midsceneCacheLoading = ref(false);
+const midsceneReportUrl = ref('');
+/** 批量执行时收集每条用例的报告 URL 列表 */
+const midsceneReportUrls = ref<Array<{ testcaseId: string; testcaseName: string; url: string }>>([]);
+const midsceneViewType = ref<'cases' | 'results' | 'html_report'>('cases');
+
+// Timeline cards for real-time execution logs
+interface TimelineCard {
+    id: string;
+    type: 'aiAct' | 'aiAssert' | 'aiQuery' | 'screenshot' | 'navigate' | 'status'
+        | 'tap' | 'input' | 'assert' | 'scroll' | 'hover' | 'keypress' | 'wait'
+        | 'doubleTap' | 'rightClick';
+    description: string;
+    status: 'pending' | 'running' | 'success' | 'failed';
+    durationMs?: number;
+    screenshot?: string;
+    error?: string;
+}
+const midsceneTimeline = ref<TimelineCard[]>([]);
+const midsceneSelectedCaseId = ref(''); // Currently selected case for right panel detail
 
 // ================= 参考确认弹窗 =================
 const showReferenceConfirmModal = ref(false); // 是否显示参考确认弹窗
@@ -1745,6 +2513,28 @@ const urlDocs = computed({
 // ================= 右侧多Tab功能 =================
 type RightPanelTab = 'main' | 'url' | 'additional' | 'figma' | 'chatDoc' | 'custom';
 const activeRightTab = ref<RightPanelTab>('main');  // 当前激活的Tab
+
+// 点击文档 tab 或文档列表项时，自动切回文档视图（退出知识库/Midscene 等面板）
+// 注意：watch 只在 activeRightTab 值实际发生变化时触发，
+// 如果用户点击的是当前已激活的 tab（值不变），watch 不会触发。
+// 因此还需要在 switchToDocView() 中做兜底处理。
+watch(activeRightTab, () => {
+  if (rightPanelTab.value !== 'docs') {
+    rightPanelTab.value = 'docs';
+  }
+});
+
+/**
+ * 切换到文档视图的统一入口
+ * 无论当前在哪个面板（知识库/历史/Midscene 等），都能确保切回文档。
+ * 解决了 watch(activeRightTab) 在值不变时不触发的问题。
+ */
+const switchToDocView = () => {
+  if (rightPanelTab.value !== 'docs') {
+    rightPanelTab.value = 'docs';
+  }
+};
+
 const activeAdditionalPrdId = ref<string>('');  // 当前查看的辅助PRD ID
 const activeCustomDocId = ref<string>(''); // 当前查看的自定义文档 ID
 const activeUrlDocId = ref<string>('');
@@ -1760,6 +2550,47 @@ const activeMainDocType = ref<MainDocType>('prd');
 const optimizedPrdTitle = ref('优化后PRD');
 const testPointsTitle = ref('测试点');
 const testCasesTitle = ref('测试用例');
+
+/**
+ * 根据生成上下文智能命名测试用例文档
+ * 优先用 URL 域名 / 知识库文档标题 / 用户输入关键词
+ */
+const autoNameTestCases = (context?: { url?: string; docTitle?: string; instruction?: string }) => {
+  if (!context) return;
+  // 如果用户已手动重命名过（非默认名），则不覆盖
+  const current = testCasesTitle.value;
+  const isDefault = current === '测试用例' || current.startsWith('测试用例 ·');
+
+  if (!isDefault) return;
+
+  let name = '';
+  if (context.docTitle) {
+    // 从知识库文档标题中提取
+    name = context.docTitle.replace(/测试用例[：:：\s]*/g, '').trim();
+    if (name) {
+      testCasesTitle.value = `测试用例 · ${name.slice(0, 20)}`;
+      return;
+    }
+  }
+  if (context.url) {
+    // 从 URL 中提取域名
+    try {
+      const hostname = new URL(context.url).hostname.replace(/^www\./, '');
+      testCasesTitle.value = `测试用例 · ${hostname}`;
+      return;
+    } catch { /* ignore */ }
+  }
+  if (context.instruction) {
+    // 从用户输入指令中提取关键词（去掉"基于""生成""测试用例"等通用词）
+    const cleaned = context.instruction
+      .replace(/基于|根据|生成|测试用例|当前页面|请|帮我|分析/g, '')
+      .trim();
+    if (cleaned.length > 0 && cleaned.length <= 30) {
+      testCasesTitle.value = `测试用例 · ${cleaned.slice(0, 20)}`;
+      return;
+    }
+  }
+};
 
 // 保存当前角色的Tab状态
 const saveRoleTabState = () => {
@@ -2059,7 +2890,29 @@ const { taskState, startTracking, stopTracking, isRunning: taskIsRunning } = use
 
 // 新组件状态
 const showBatchUploader = ref(false);
-const rightPanelTab = ref<'docs' | 'history' | 'knowledge'>('docs');
+const knowledgePanelRef = ref<InstanceType<typeof KnowledgeBasePanel> | null>(null);
+// 右侧面板标签页（docs: 文档, history: 历史, knowledge: 知识库, quality: 质量评估）
+const rightPanelTab = ref<'docs' | 'history' | 'knowledge' | 'quality' | 'midscene'>('docs');
+
+// 质量评估报告状态
+const qualityReport = ref<EvaluationReport | null>(null);
+const qualityLoading = ref(false);
+const qualityError = ref('');
+
+// 切换右侧面板（智能处理：没有文档时不切换回 docs）
+const toggleRightPanel = (target: 'knowledge' | 'history' | 'quality' | 'midscene') => {
+  if (rightPanelTab.value === target) {
+    // 如果当前已经是目标面板，尝试切换回 docs
+    // 但如果 QA 角色且没有文档，则不切换
+    if (userRole.value === 'qa' && !hasAnyMainDoc.value) {
+      // 没有文档，保持当前面板（知识库或历史）
+      return;
+    }
+    rightPanelTab.value = 'docs';
+  } else {
+    rightPanelTab.value = target;
+  }
+};
 
 // 桥接函数：RoleSelector 组件事件处理
 const handleRoleSelectorChange = async (role: UserRole) => {
@@ -2084,13 +2937,68 @@ const handleWorkflowStepClick = (stepIndex: number) => {
 // 桥接函数：BatchUploader 上传完成
 const handleBatchUploaded = (docIds: string[]) => {
   showBatchUploader.value = false;
-  // 刷新文档列表（使用现有逻辑）
   console.log('[App] Batch uploaded:', docIds);
 };
 
-// 桥接函数：知识库选择
+// 桥接函数：知识库选择（批量选中，用于批量删除等）
 const handleKnowledgeSelect = (docs: any[]) => {
   console.log('[App] Knowledge docs selected:', docs);
+};
+
+// 桥接函数：知识库文档点击 -> 添加到对话引用 / 加载为测试用例
+const handleKnowledgeAddToChat = async (doc: any) => {
+  console.log('[App] Knowledge doc add to chat:', doc);
+
+  // 如果当前是 auto_test 步骤 或 test_case 步骤，加载知识库文档为测试用例（支持实时切换）
+  if (
+    (projectState.currentStep === 'auto_test' || projectState.currentStep === 'test_case') &&
+    doc.docId
+  ) {
+    try {
+      addMessage('ai', `正在加载知识库文档「${doc.title || doc.docId}」作为测试用例...`);
+      const docData = await getDocContent(doc.docId);
+      const content = docData.content || '';
+      if (content) {
+        projectState.documents.testCases = content;
+        cachedTestCases.value = content;
+        hasGeneratedTestCases.value = true;
+        midsceneParsedCases.value = parseTestCases(content, testCaseOutputFormat.value);
+        midsceneSelectedCases.value = new Set(midsceneParsedCases.value.map(c => c.id));
+        projectState.documents.midsceneCasesJson = JSON.stringify(midsceneParsedCases.value, null, 2);
+
+        // 智能命名：使用知识库文档标题
+        autoNameTestCases({ docTitle: doc.title || doc.docId });
+
+        // 切换视图到测试用例文档
+        activeRightTab.value = 'main';
+        activeMainDocType.value = 'testCases';
+        switchToDocView();
+
+        const casesCount = midsceneParsedCases.value.length;
+        if (casesCount > 0) {
+          addMessage('ai', `已从「${doc.title || doc.docId}」加载 **${casesCount}** 条测试用例，可勾选后执行。`);
+        } else {
+          addMessage('ai', `文档「${doc.title || doc.docId}」已加载为测试用例文档，但未解析出结构化用例。`);
+        }
+      }
+    } catch (e) {
+      console.error('[App] Failed to load knowledge doc as test cases:', e);
+      addMessage('ai', `加载文档失败: ${e instanceof Error ? e.message : '未知错误'}`);
+    }
+    return;
+  }
+
+  // 默认行为：添加为对话引用
+  const refDoc = {
+    id: doc.docId || `knowledge-${Date.now()}`,
+    title: doc.title || '知识库文档',
+    content: '',
+    kind: 'additional' as const,
+  };
+  // 避免重复添加
+  if (!selectedRefDocs.value.some(d => d.id === refDoc.id)) {
+    selectedRefDocs.value.push(refDoc);
+  }
 };
 
 // P1: 桥接函数：使用历史用例
@@ -2104,8 +3012,12 @@ const handleHistoryUse = (content: string) => {
     // PM/DEV 模式：直接插入到输入框
     userInput.value += content;
   }
-  // 切换回文档视图
-  rightPanelTab.value = 'docs';
+  // 切换回文档视图（QA角色没有文档时切换到知识库）
+  if (userRole.value === 'qa' && !hasAnyMainDoc.value) {
+    rightPanelTab.value = 'knowledge';
+  } else {
+    rightPanelTab.value = 'docs';
+  }
 };
 
 const isChatOnlyRole = computed(() => userRole.value === 'pm' || userRole.value === 'dev');
@@ -2153,6 +3065,15 @@ const chatOnlyUrlValue = ref('');
 const unifiedInput = ref('');
 const showHintsPopup = ref(false);
 const showStepActions = computed(() => userRole.value === 'qa');
+
+// ================= Phase 5: 文件上传管理 =================
+const fileUpload = useFileUpload();
+const { attachments, isUploading: isFileUploading, hasError: hasFileError } = fileUpload;
+
+// 待发送的附件 DocRefs（上传完成后填充）
+const pendingAttachmentDocRefs = ref<DocRef[]>([]);
+// 待显示的附件信息（用于消息UI显示）
+const pendingAttachmentDisplayInfo = ref<MessageAttachmentInfo[]>([]);
 
 // ================= 统一提取弹窗（辅助PRD / Figma / URL） =================
 const showExtractModal = ref(false);
@@ -2331,6 +3252,80 @@ const filteredRightDocsForAt = computed(() => {
   const list = allRightDocsForAt.value;
   const out = q ? list.filter(d => (d.title || '').toLowerCase().includes(q)) : list;
   return out.slice(0, 30);
+});
+
+// ================= Phase 5: ChatInput 辅助计算属性 =================
+// 提供给 ChatInput 组件的可引用文档列表
+const allRightDocsForRef = computed(() => {
+  return allRightDocsForAt.value.map(doc => ({
+    docId: doc.id,
+    title: doc.title,
+    kind: doc.kind === 'main' ? 'main' : doc.kind === 'url' ? 'aux' : 'aux',
+    logicalId: doc.id,
+  }));
+});
+
+// 当前角色的快捷提示词
+const currentRoleHints = computed(() => {
+  const role = userRole.value;
+  const step = projectState.currentStep;
+
+  if (role === 'pm') {
+    return [
+      { label: '梳理范围', text: '梳理需求范围和优先级' },
+      { label: '拆解模块', text: '拆解功能模块，列出核心功能和子功能' },
+      { label: '边界条件', text: '补充边界条件和约束' },
+      { label: '识别风险', text: '识别需求风险点和潜在问题' },
+      { label: '优化文档', text: '优化需求文档结构和表述' },
+    ];
+  } else if (role === 'dev') {
+    return [
+      { label: '技术方案', text: '分析技术方案和实现思路' },
+      { label: '技术风险', text: '识别技术风险和难点' },
+      { label: '工时评估', text: '评估开发工时和里程碑' },
+      { label: '接口设计', text: '设计接口规范和参数定义' },
+      { label: '架构设计', text: '梳理系统架构和模块划分' },
+    ];
+  } else if (role === 'qa') {
+    // 根据步骤返回不同提示词
+    if (['setup', 'analyzing', 'content_review'].includes(step) || !step) {
+      return [
+        { label: '提取功能点', text: '提取核心功能点和业务逻辑' },
+        { label: '整理结构', text: '整理文档结构，按模块分类' },
+        { label: '业务流程', text: '分析业务流程和状态流转' },
+        { label: '边界场景', text: '识别边界情况和异常场景' },
+      ];
+    } else if (['optimizing', 'prd_review'].includes(step)) {
+      return [
+        { label: '检测冲突', text: '检测当前PRD的逻辑冲突和矛盾' },
+        { label: '识别风险', text: '识别潜在风险点和遗漏' },
+        { label: '功能点清单', text: '结构化输出功能点清单' },
+        { label: '验收标准', text: '补充测试相关的验收标准' },
+      ];
+    } else if (step === 'test_point') {
+      return [
+        { label: '边界测试点', text: '补充边界值测试点' },
+        { label: '覆盖率检查', text: '检查测试点覆盖率是否完整' },
+        { label: '异常场景', text: '补充异常和错误场景测试点' },
+        { label: '性能测试点', text: '补充性能相关测试点' },
+      ];
+    } else if (step === 'test_case') {
+      return [
+        { label: '评审用例', text: '评审当前用例的覆盖率和完整性' },
+        { label: '检查步骤', text: '检查测试步骤和预期结果是否清晰' },
+        { label: '补充异常', text: '补充异常和边界测试用例' },
+        { label: '优化分类', text: '优化用例优先级和分类' },
+      ];
+    } else if (step === 'auto_test') {
+      return [
+        { label: '分析页面', text: '分析当前页面结构和元素' },
+        { label: '生成计划', text: '生成UI自动化测试计划' },
+        { label: '执行测试', text: '执行测试计划并生成报告' },
+        { label: '点击按钮', text: '点击登录按钮' },
+      ];
+    }
+  }
+  return [];
 });
 
 const clearAtPicker = () => {
@@ -2568,7 +3563,11 @@ const unifiedInputPlaceholder = computed(() => {
     if (['optimizing', 'prd_review'].includes(step)) return 'PRD智能助手：删除模块、检测冲突、识别风险...';
     if (step === 'test_point') return '测试点助手：补充边界、优化覆盖...';
     if (step === 'test_case') return 'Test Case助手：补充异常场景、评审覆盖率...';
-    if (step === 'auto_test') return '输入指令（如：点击登录按钮 / 输入admin到用户名）';
+    if (step === 'auto_test') return uiEngine.value === 'midscene'
+      ? '输入命令：生成用例 / 执行测试 / 分析页面 / 点击按钮...'
+      : '输入指令（如：点击登录按钮 / 输入admin到用户名）';
+    // Midscene 智能路由：任意 Step 都支持
+    if (uiEngine.value === 'midscene') return '输入命令：基于当前页面生成用例 / 根据URL生成用例 / 分析页面...';
   }
   return '请输入...';
 });
@@ -2580,6 +3579,20 @@ const hasAnyDocument = computed(() => {
   }
   return chatOnlyDocuments.value.length > 0 || additionalPrds.value.length > 0 || figmaDocs.value.length > 0 || customDocs.value.length > 0;
 });
+
+// 是否有任何主文档内容（QA角色）
+const hasAnyMainDoc = computed(() => {
+  const mainUrlPrd = urlDocs.value.find(d => d.isMainPrd);
+  return !!(projectState.documents.prd || mainUrlPrd || projectState.documents.optimizedPrd || projectState.documents.testPoints || projectState.documents.testCases);
+});
+
+// 监听文档状态，QA角色没有文档时自动切换到知识库
+watch([hasAnyMainDoc, userRole], ([hasDoc, role]) => {
+  if (!hasDoc && role === 'qa' && rightPanelTab.value === 'docs') {
+    rightPanelTab.value = 'knowledge';
+  }
+}, { immediate: true });
+
 
 // Tab列表（用于折叠展示）
 type TabItem = {
@@ -2607,23 +3620,25 @@ const allTabs = computed<TabItem[]>(() => {
   const mainUrlPrd = urlDocs.value.find(d => d.isMainPrd);
   
   if (userRole.value === 'qa') {
-    // QA主文档Tabs - 主PRD（如果是URL文档则显示⭐）
-    tabs.push({
-      key: 'main:prd',
-      label: `${mainUrlPrd ? '⭐' : '📄'} ${truncateTabLabel(currentPrdTitle.value || '主PRD')}`,
-      type: 'main',
-      mainDocType: 'prd',
-      onClick: () => { activeRightTab.value = 'main'; activeMainDocType.value = 'prd'; },
-      onDblClick: () => renameQaMainDocTitle('prd')
-    });
-    
+    // QA主文档Tabs - 主PRD（仅在有内容时显示）
+    if (projectState.documents.prd || mainUrlPrd) {
+      tabs.push({
+        key: 'main:prd',
+        label: `${mainUrlPrd ? '⭐' : '📄'} ${truncateTabLabel(currentPrdTitle.value || '主PRD')}`,
+        type: 'main',
+        mainDocType: 'prd',
+        onClick: () => { activeRightTab.value = 'main'; activeMainDocType.value = 'prd'; switchToDocView(); },
+        onDblClick: () => renameQaMainDocTitle('prd')
+      });
+    }
+
     if (projectState.documents.optimizedPrd) {
       tabs.push({
         key: 'main:optimizedPrd',
         label: `✨ ${truncateTabLabel(optimizedPrdTitle.value)}`,
         type: 'main',
         mainDocType: 'optimizedPrd',
-        onClick: () => { activeRightTab.value = 'main'; activeMainDocType.value = 'optimizedPrd'; },
+        onClick: () => { activeRightTab.value = 'main'; activeMainDocType.value = 'optimizedPrd'; switchToDocView(); },
         onDblClick: () => renameQaMainDocTitle('optimizedPrd')
       });
     }
@@ -2634,7 +3649,7 @@ const allTabs = computed<TabItem[]>(() => {
         label: `🎯 ${truncateTabLabel(testPointsTitle.value)}`,
         type: 'main',
         mainDocType: 'testPoints',
-        onClick: () => { activeRightTab.value = 'main'; activeMainDocType.value = 'testPoints'; },
+        onClick: () => { activeRightTab.value = 'main'; activeMainDocType.value = 'testPoints'; switchToDocView(); },
         onDblClick: () => renameQaMainDocTitle('testPoints')
       });
     }
@@ -2645,7 +3660,7 @@ const allTabs = computed<TabItem[]>(() => {
         label: `📋 ${truncateTabLabel(testCasesTitle.value)}`,
         type: 'main',
         mainDocType: 'testCases',
-        onClick: () => { activeRightTab.value = 'main'; activeMainDocType.value = 'testCases'; },
+        onClick: () => { activeRightTab.value = 'main'; activeMainDocType.value = 'testCases'; switchToDocView(); },
         onDblClick: () => renameQaMainDocTitle('testCases')
       });
     }
@@ -2657,7 +3672,7 @@ const allTabs = computed<TabItem[]>(() => {
         label: `🔗 ${truncateTabLabel(doc.title || 'URL')}`,
         type: 'url',
         id: doc.id,
-        onClick: () => { activeRightTab.value = 'url'; activeUrlDocId.value = doc.id; },
+        onClick: () => { activeRightTab.value = 'url'; activeUrlDocId.value = doc.id; switchToDocView(); },
         onDblClick: () => renameUrlDocTitle(doc.id)
       });
     }
@@ -2669,7 +3684,7 @@ const allTabs = computed<TabItem[]>(() => {
         label: `📄 ${truncateTabLabel(doc.title || '文档')}`,
         type: 'chatDoc',
         id: doc.id,
-        onClick: () => { activeRightTab.value = 'chatDoc'; activeChatDocId.value = doc.id; },
+        onClick: () => { activeRightTab.value = 'chatDoc'; activeChatDocId.value = doc.id; switchToDocView(); },
         onDblClick: () => renameChatDocTitle(doc.id)
       });
     }
@@ -2682,7 +3697,7 @@ const allTabs = computed<TabItem[]>(() => {
       label: `📑 ${truncateTabLabel(formatPrdTitle(prd, 20))}`,
       type: 'additional',
       id: prd.id,
-      onClick: () => { activeRightTab.value = 'additional'; activeAdditionalPrdId.value = prd.id; },
+      onClick: () => { activeRightTab.value = 'additional'; activeAdditionalPrdId.value = prd.id; switchToDocView(); },
       onDblClick: () => renameAdditionalPrdTitle(prd.id)
     });
   }
@@ -2694,7 +3709,7 @@ const allTabs = computed<TabItem[]>(() => {
       label: `🎨 ${truncateTabLabel(formatPrdTitle(figma, 20))}`,
       type: 'figma',
       id: figma.id,
-      onClick: () => { activeRightTab.value = 'figma'; activeFigmaDocId.value = figma.id; },
+      onClick: () => { activeRightTab.value = 'figma'; activeFigmaDocId.value = figma.id; switchToDocView(); },
       onDblClick: () => renameFigmaTitle(figma.id)
     });
   }
@@ -2706,7 +3721,7 @@ const allTabs = computed<TabItem[]>(() => {
       label: `📝 ${truncateTabLabel(doc.title || '自定义')}`,
       type: 'custom',
       id: doc.id,
-      onClick: () => { activeRightTab.value = 'custom'; activeCustomDocId.value = doc.id; },
+      onClick: () => { activeRightTab.value = 'custom'; activeCustomDocId.value = doc.id; switchToDocView(); },
       onDblClick: () => renameCustomDocTitle(doc.id)
     });
   }
@@ -2785,9 +3800,11 @@ const sendQaAskMessage = async (opts?: {
   selected?: RefDoc[];
   additionalPrds?: Array<{ title: string; content: string }>;
 }) => {
-  if (!unifiedInput.value.trim() || isProcessing.value) return;
+  const hasText = unifiedInput.value.trim().length > 0;
+  const hasAttachments = pendingAttachmentDocRefs.value.length > 0;
+  if ((!hasText && !hasAttachments) || isProcessing.value) return;
 
-  const userText = unifiedInput.value.trim();
+  const userText = unifiedInput.value.trim() || '请基于上传的文档进行分析';
   const step = projectState.currentStep || '';
   const askType = getQaAskTypeByStep(step);
   const sid = ensureSessionId();
@@ -2820,11 +3837,15 @@ const sendQaAskMessage = async (opts?: {
     });
   }
 
-  // UI 状态：先落 user 消息，再清空输入和选择
-  addMessage('user', userText);
+  // UI 状态：先落 user 消息（包含附件信息），再清空输入和选择
+  const attachmentsToShow = pendingAttachmentDisplayInfo.value.length > 0
+    ? [...pendingAttachmentDisplayInfo.value]
+    : undefined;
+  addMessage('user', userText, attachmentsToShow);
   unifiedInput.value = '';
   selectedRefDocs.value = [];
   pendingAdditionalPrds.value = [];
+  pendingAttachmentDisplayInfo.value = [];
 
   isProcessing.value = true;
   
@@ -2847,12 +3868,19 @@ const sendQaAskMessage = async (opts?: {
     // ✅ 新增：@ 多选模式 - 将 @ 选中的文档作为 main 候选
     const atSelectedDocRefs = buildDocRefsForAtSelection(frozenSelected);
     const hasAtSelection = atSelectedDocRefs.length > 0;
-    
+
     // 如果没有 @ 选择，则使用默认的 buildDocRefsForChat
-    const docRefs = hasAtSelection ? atSelectedDocRefs : buildDocRefsForChat();
+    let docRefs = hasAtSelection ? atSelectedDocRefs : buildDocRefsForChat();
+
+    // Phase 6: 添加附件的 docRef
+    if (pendingAttachmentDocRefs.value.length > 0) {
+      console.log('[sendQaAskMessage] 添加附件 docRefs:', pendingAttachmentDocRefs.value);
+      docRefs = [...docRefs, ...pendingAttachmentDocRefs.value];
+    }
+
     const useDocRefs = docRefs.length > 0;
-    
-    console.log('[sendQaAskMessage] @ 多选模式:', hasAtSelection, 'docRefs:', docRefs);
+
+    console.log('[sendQaAskMessage] @ 多选模式:', hasAtSelection, 'docRefs:', docRefs, '附件:', pendingAttachmentDocRefs.value.length);
     
     // 使用 chat 类型进行对话（区分分析类和编辑类）
     const chatType = `${askType}_chat` as 'testprd_chat' | 'testpoint_chat' | 'testcase_chat';
@@ -2982,9 +4010,11 @@ const sendQaAskMessage = async (opts?: {
 };
 
 const sendUnifiedMessage = async () => {
-  if (!unifiedInput.value.trim() || isProcessing.value) return;
+  const hasText = unifiedInput.value.trim().length > 0;
+  const hasAttachments = pendingAttachmentDocRefs.value.length > 0;
+  if ((!hasText && !hasAttachments) || isProcessing.value) return;
 
-  const msg = unifiedInput.value.trim();
+  const msg = unifiedInput.value.trim() || '请基于上传的文档进行分析';
   const currentAgent = userRole.value;
 
   // 冻结引用（防止请求过程中状态变化）
@@ -2994,12 +4024,15 @@ const sendUnifiedMessage = async () => {
     pickedOnce: pendingAdditionalPrds.value,
   });
 
-  // QA 模式：阶段5（auto_test）使用 UI Agent，其他阶段使用 ask 接口
+  // QA 模式：Midscene 引擎开启时，任意 Step 都走智能路由
   if (currentAgent === 'qa') {
-    if (projectState.currentStep === 'auto_test') {
-      // 传入 unifiedInput 的内容
+    if (uiEngine.value === 'midscene') {
+      // ★ Midscene 智能路由：任意 Step 输入 → AI 判断意图 → 自动跳转
+      await sendMidsceneSmartCommand(msg);
+      unifiedInput.value = '';
+    } else if (projectState.currentStep === 'auto_test') {
       await sendUiAgentMessage(msg, frozenSelected, frozenAdditionalPrds);
-      unifiedInput.value = ''; // 清空统一输入框
+      unifiedInput.value = '';
     } else {
       await sendQaAskMessage({ selected: frozenSelected, additionalPrds: frozenAdditionalPrds });
     }
@@ -3008,6 +4041,197 @@ const sendUnifiedMessage = async () => {
     await sendChatOnlyMessage(msg);
     unifiedInput.value = ''; // 清空统一输入框
   }
+};
+
+// ================= Phase 6: 文件选择后立即上传 =================
+const handleAddAttachment = async (files: File[]) => {
+  // 1. 添加文件到队列（显示在等候区）
+  const newAttachments = fileUpload.addFiles(files);
+  console.log('[handleAddAttachment] 添加文件到队列:', newAttachments.map(a => a.name));
+
+  // 2. 立即上传所有待上传的文件
+  if (newAttachments.length > 0) {
+    try {
+      statusText.value = '正在上传附件...';
+
+      // 上传所有待上传附件
+      const docRefs = await fileUpload.uploadAll();
+      console.log('[handleAddAttachment] 附件上传完成:', docRefs);
+
+      // 上传完成后，docRef 已经保存在 attachment 对象中
+      // 通过 useFileUpload 的 updateAttachment 方法自动更新
+
+    } catch (error: any) {
+      console.error('[handleAddAttachment] 附件上传失败:', error);
+      // 失败的附件会显示错误状态，用户可以选择移除
+    } finally {
+      statusText.value = '';
+    }
+  }
+};
+
+// ================= Phase 6: 快捷生成测试用例（基于已上传附件） =================
+const handleQuickGenerateFromAttachment = async (inputText?: string) => {
+  // 收集已完成上传的附件
+  const completedAttachments = attachments.value.filter(a => a.status === 'completed' && a.docRef);
+
+  // 无附件时：如果有 PRD 文档，走标准生成测试用例流程
+  if (completedAttachments.length === 0) {
+    if (projectState.documents.prd || projectState.documents.optimizedPrd) {
+      if (inputText?.trim()) {
+        unifiedInput.value = inputText.trim();
+      }
+      startGenerateTestCases();
+      return;
+    }
+    addMessage('ai', '⚠️ 请先上传文档或提取页面内容');
+    return;
+  }
+
+  console.log('[handleQuickGenerateFromAttachment] 已完成的附件:', completedAttachments.map(a => a.name));
+
+  // 构建 docRefs - 第一个设为 main（主文档），其余为 aux
+  const docRefs: DocRef[] = [];
+  completedAttachments.forEach((att, index) => {
+    if (att.docRef) {
+      const isMain = index === 0;  // 第一个附件作为主文档
+      const ref: DocRef = {
+        docId: att.docRef.docId || `att-${Date.now()}`,
+        title: att.docRef.title || att.name || '附件',
+        kind: isMain ? 'main' : 'aux',  // 第一个为 main，后续为 aux
+        logicalId: isMain ? 'uploaded_prd_main' : `attachment_${att.docRef.docId}`,
+      };
+      docRefs.push(ref);
+      // 保存主文档 docRef（用于后续质量评估获取 PRD 内容）
+      if (isMain) {
+        generatedDocRefs.uploadedPrd = ref;
+      }
+    }
+  });
+
+  // 构建附件信息用于消息显示
+  const messageAttachments: MessageAttachmentInfo[] = completedAttachments.map(att => ({
+    type: att.type === 'pdf' ? 'document' : att.type === 'image' ? 'image' : 'file',
+    name: att.name
+  }));
+
+  // 构建 instruction（带上用户输入文本）
+  const baseInstruction = '基于上传的文档直接生成测试用例';
+  const userText = inputText?.trim()
+    ? `${baseInstruction}\n\n用户补充说明: ${inputText.trim()}`
+    : baseInstruction;
+  addMessage('user', userText, messageAttachments);
+
+  // 清空输入框和附件（立即清空，不等待异步操作完成）
+  unifiedInput.value = '';
+  fileUpload.clearAll();
+
+  // 开始处理
+  isProcessing.value = true;
+  statusText.value = '正在生成测试用例...';
+
+  try {
+    const sid = ensureSessionId();
+
+    // 直接调用 askV2，type 固定为 'testcase'
+    const res = await askV2({
+      sessionId: sid,
+      type: 'testcase',  // 固定为测试用例类型
+      instruction: userText,
+      docRefs: docRefs,
+      outputFormat: testCaseOutputFormat.value,
+    });
+
+    console.log('[handleQuickGenerateFromAttachment] askV2 响应:', res);
+
+    if (res.status === 'success' && res.answer) {
+      // 更新右侧面板显示测试用例
+      projectState.documents.testCases = res.answer;
+      activeMainDocType.value = 'testCases';
+      projectState.currentStep = 'test_case';
+      // 智能命名：基于附件文件名或用户输入
+      const firstAttachment = completedAttachments[0];
+      autoNameTestCases({ docTitle: firstAttachment?.name, instruction: inputText });
+
+      // 保存 generatedDocRef
+      if (res.generatedDocRef) {
+        generatedDocRefs.testCases = res.generatedDocRef;
+      }
+
+      addMessage('ai', '✅ 测试用例已生成，请在右侧面板查看');
+    } else {
+      addMessage('ai', `❌ 生成失败：${res.message || res.answer || '未知错误'}`);
+    }
+  } catch (error: any) {
+    console.error('[handleQuickGenerateFromAttachment] 失败:', error);
+    addMessage('ai', `❌ 请求失败：${error?.message || error}`);
+  } finally {
+    isProcessing.value = false;
+    statusText.value = '';
+  }
+};
+
+// ================= Phase 5: ChatInput 发送处理器 =================
+const handleChatInputSend = async (payload: ChatSendPayload) => {
+  // 同步 unifiedInput 以便复用现有逻辑
+  unifiedInput.value = payload.text;
+
+  // 同步引用文档
+  if (payload.refDocs && payload.refDocs.length > 0) {
+    selectedRefDocs.value = payload.refDocs.map(doc => ({
+      id: doc.docId || doc.logicalId || `ref-${Date.now()}`,
+      title: doc.title || '引用文档',
+      content: '',  // 内容将通过 docRef 获取
+      kind: 'additional' as const
+    }));
+  }
+
+  // Phase 6: 收集已上传完成的附件 docRefs
+  pendingAttachmentDocRefs.value = [];
+  pendingAttachmentDisplayInfo.value = [];
+
+  // 只收集已完成上传的附件（因为文件选择时已经上传了）
+  const completedAttachments = payload.attachments.filter(a => a.status === 'completed' && a.docRef);
+  console.log('[handleChatInputSend] 已完成的附件:', completedAttachments.map(a => a.name));
+
+  // 第一个附件设为 main（主文档），其余为 aux
+  completedAttachments.forEach((att, index) => {
+    if (att.docRef && !pendingAttachmentDocRefs.value.some(d => d.docId === att.docRef?.docId)) {
+      const isMain = index === 0;  // 第一个附件作为主文档
+      const ref: DocRef = {
+        docId: att.docRef.docId || `att-${Date.now()}`,
+        title: att.docRef.title || att.name || '附件',
+        kind: isMain ? 'main' : 'aux',  // 第一个为 main，后续为 aux
+        logicalId: isMain ? 'uploaded_prd_main' : `attachment_${att.docRef.docId}`,
+      };
+      pendingAttachmentDocRefs.value.push(ref);
+      // 保存主文档 docRef（用于后续质量评估获取 PRD 内容）
+      if (isMain) {
+        generatedDocRefs.uploadedPrd = ref;
+      }
+      // 保存用于消息UI显示的附件信息
+      pendingAttachmentDisplayInfo.value.push({
+        type: att.type === 'pdf' ? 'document' : att.type === 'image' ? 'image' : 'file',
+        name: att.name
+      });
+    }
+  });
+
+  // 检查是否有未完成上传的附件
+  const pendingAttachments = payload.attachments.filter(a => a.status === 'pending' || a.status === 'uploading');
+  if (pendingAttachments.length > 0) {
+    addMessage('ai', '⚠️ 部分附件尚未上传完成，请稍候再发送');
+    return;
+  }
+
+  // 立即清理附件UI（不等待异步操作完成）
+  fileUpload.clearAll();
+
+  // 调用现有发送逻辑
+  await sendUnifiedMessage();
+
+  // 清理临时数据
+  pendingAttachmentDocRefs.value = [];
 };
 
 // 保存 URL 提取结果到 URL 区域（首次提取默认设为主PRD），并调用 upsert 入库
@@ -3043,15 +4267,23 @@ const saveUrlDoc = async (url: string, content: string, title: string): Promise<
       // 首次提取，作为主 PRD 入库
       const docRef = await uploadRawPrd(sessionId, content, title || '主需求文档', id);
       console.log('[saveUrlDoc] 主PRD入库成功:', docRef);
-      // 保存 docRef 到 urlDoc
       const doc = urlDocs.value.find(d => d.id === id);
-      if (doc) (doc as any).docRef = docRef;
+      if (doc) {
+        doc.docRef = docRef;
+        doc.lastSavedContent = content;
+        doc.logicalId = 'raw_prd';
+      }
     } else {
       // 非首次提取，作为辅助文档入库
+      const logicalId = `aux_url_${id}`;
       const docRef = await uploadAuxDoc(sessionId, content, title || 'URL文档', undefined, undefined, id);
       console.log('[saveUrlDoc] 辅助文档入库成功:', docRef);
       const doc = urlDocs.value.find(d => d.id === id);
-      if (doc) (doc as any).docRef = docRef;
+      if (doc) {
+        doc.docRef = docRef;
+        doc.lastSavedContent = content;
+        doc.logicalId = logicalId;
+      }
     }
   } catch (e: any) {
     console.error('[saveUrlDoc] 入库失败:', e);
@@ -3191,8 +4423,8 @@ const toggleRoleMenu = () => {
 };
 
 const handleGlobalClick = () => {
-  // 点击空白处自动收起菜单
   if (isRoleMenuOpen.value) isRoleMenuOpen.value = false;
+  if (midsceneSettingsVisible.value) midsceneSettingsVisible.value = false;
 };
 
 const openRoleMenuFromLanding = () => {
@@ -3263,11 +4495,18 @@ const sendChatOnlyMessage = async (userInput?: string) => {
     pendingAdditionalPrds.value = [];
     
     // ✅ 新增：构建 @ 选中文档的 docRefs（作为 main 候选）
-    const atDocRefs = buildDocRefsForAtSelection(frozenSelected);
+    let atDocRefs = buildDocRefsForAtSelection(frozenSelected);
+
+    // Phase 6: 添加附件的 docRef
+    if (pendingAttachmentDocRefs.value.length > 0) {
+      console.log('[sendChatOnlyMessage] 添加附件 docRefs:', pendingAttachmentDocRefs.value);
+      atDocRefs = [...atDocRefs, ...pendingAttachmentDocRefs.value];
+    }
+
     const hasDocRefs = atDocRefs.length > 0;
-    
-    console.log('[sendChatOnlyMessage] @ 引用 docRefs:', hasDocRefs, atDocRefs);
-    
+
+    console.log('[sendChatOnlyMessage] @ 引用 docRefs:', hasDocRefs, atDocRefs, '附件:', pendingAttachmentDocRefs.value.length);
+
     const result = await chatAgent({
       sessionId: chatOnlySessionId.value,
       role,
@@ -3477,9 +4716,13 @@ const startChatOnlyFullPageAnalysis = async () => {
       screenshots.push(dataUrl);
     }
     
-    // 合并DOM内容
-    const fullMarkdown = domSegments.map(s => s.markdown).join('\n\n');
-    
+    // 合并DOM内容（先下载图片上传 CDN，再用 CDN URL 替换占位符，最后合并）
+    statusText.value = "正在处理图片...";
+    const replacedSegments = await processAndReplaceImages(domSegments, (done, total) => {
+        statusText.value = `正在处理图片 ${done}/${total}...`;
+    });
+    const fullMarkdown = replacedSegments.join('\n\n');
+
     // 拼接截图（10屏一组）
     const imageProcessor = new ImageProcessor();
     const stitchedScreenshots = await imageProcessor.stitchScreenshotsInGroups(screenshots);
@@ -3569,6 +4812,9 @@ const startChatOnlyFullPageAnalysis = async () => {
 
 // ... (Computed)
 
+// 是否处于 UI 自动化测试步骤（用于区分报告渲染方式）
+const isAutoTestStep = computed(() => userRole.value === 'qa' && projectState.currentStep === 'auto_test');
+
 const currentDocTitle = computed(() => {
   switch (projectState.currentStep) {
     case 'content_review': return '📄 原始提取内容 (可编辑)';
@@ -3576,7 +4822,7 @@ const currentDocTitle = computed(() => {
     case 'prd_review': return '📄 需求文档 (PRD)';
     case 'test_point': return '🎯 测试点拆解';
     case 'test_case': return '🧪 测试用例';
-    case 'auto_test': 
+    case 'auto_test':
       if (uiViewType.value === 'report' && projectState.documents.uiReport) {
         return '📊 UI自动化测试报告';
       } else if (uiViewType.value === 'plan_json' && projectState.documents.uiPlanJson) {
@@ -3608,7 +4854,7 @@ const currentDocContent = computed({
       case 'prd_review': projectState.documents.prd = val; break;
       case 'test_point': projectState.documents.testPoints = val; break;
       case 'test_case': projectState.documents.testCases = val; break;
-      case 'auto_test': 
+      case 'auto_test':
          if (uiViewType.value === 'report') projectState.documents.uiReport = val;
          else if (uiViewType.value === 'plan_json') projectState.documents.uiPlanJson = val;
          else projectState.documents.uiPlan = val;
@@ -3619,6 +4865,26 @@ const currentDocContent = computed({
 
 const editorPlaceholder = computed(() => {
   if (!projectState.currentStep || projectState.currentStep === 'setup') return '请点击左侧开始分析...';
+  if (projectState.currentStep === 'test_case' && !projectState.documents.testCases) {
+    return `手动输入测试用例（YAML 格式），然后点击「进入自动化测试」：
+
+- id: TC-001
+  name: 登录测试
+  steps:
+    - 在用户名输入框中输入admin
+    - 在密码输入框中输入123456
+    - 点击登录按钮
+  expectedResults:
+    - 页面跳转到首页
+
+- id: TC-002
+  name: 搜索测试
+  steps:
+    - 在搜索框中输入关键词
+    - 点击搜索按钮
+  expectedResults:
+    - 页面显示搜索结果`;
+  }
   return 'AI 生成的内容将显示在这里，您可以直接编辑...';
 });
 
@@ -3641,8 +4907,21 @@ const editorHeaderTitle = computed(() => {
 // 之前只按 activeMainDocType 取 prd/testPoints... 会导致“右侧标题是报告但内容为空”。
 const activeMainDocContent = computed({
   get: () => {
-    // ✅ UI 自动化步骤：强制绑定到 uiViewType 对应的文档内容
+    // ✅ UI 自动化步骤：根据当前查看的文档类型决定返回什么
+    // 如果用户主动切到了 prd/testPoints/testCases 等文档 tab，
+    // 应该按 activeMainDocType 返回对应内容，而不是一律返回 uiPlan/uiReport。
+    // 仅当 activeMainDocType 仍在 auto_test 相关的文档类型时，才绑定 currentDocContent。
     if (userRole.value === 'qa' && projectState.currentStep === 'auto_test') {
+      // 如果用户选择了普通文档 tab（prd/optimizedPrd/testPoints/testCases），直接返回对应内容
+      if (['prd', 'optimizedPrd', 'testPoints', 'testCases'].includes(activeMainDocType.value)) {
+        switch (activeMainDocType.value) {
+          case 'prd': return projectState.documents.prd;
+          case 'optimizedPrd': return projectState.documents.optimizedPrd;
+          case 'testPoints': return projectState.documents.testPoints;
+          case 'testCases': return projectState.documents.testCases;
+        }
+      }
+      // 否则绑定到 auto_test 的 uiPlan/uiReport 等
       return currentDocContent.value;
     }
 
@@ -3661,8 +4940,19 @@ const activeMainDocContent = computed({
     }
   },
   set: (val: string) => {
-    // ✅ UI 自动化步骤：写回 uiPlan/uiPlanJson/uiReport
+    // ✅ UI 自动化步骤：根据当前查看的文档类型写回
     if (userRole.value === 'qa' && projectState.currentStep === 'auto_test') {
+      // 如果用户在编辑普通文档 tab，写回对应位置
+      if (['prd', 'optimizedPrd', 'testPoints', 'testCases'].includes(activeMainDocType.value)) {
+        switch (activeMainDocType.value) {
+          case 'prd': projectState.documents.prd = val; break;
+          case 'optimizedPrd': projectState.documents.optimizedPrd = val; break;
+          case 'testPoints': projectState.documents.testPoints = val; break;
+          case 'testCases': projectState.documents.testCases = val; break;
+        }
+        return;
+      }
+      // 否则写回 auto_test 的 uiPlan/uiReport 等
       currentDocContent.value = val;
       return;
     }
@@ -3685,8 +4975,8 @@ const activeMainDocContent = computed({
 });
 
 // --- Helpers ---
-const addMessage = (role: 'user' | 'ai', content: string) => {
-  messages.value.push({ role, content });
+const addMessage = (role: 'user' | 'ai', content: string, attachments?: MessageAttachmentInfo[]) => {
+  messages.value.push({ role, content, attachments });
   nextTick(() => {
     if (chatContainer.value) chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
   });
@@ -3715,6 +5005,211 @@ const renderMarkdown = (text: string) => {
         console.error("Markdown render error", e);
         return text;
     }
+};
+
+// --- Editor Image Upload & Paste Helpers ---
+
+const editorImageInputRef = ref<HTMLInputElement | null>(null);
+const isUploadingEditorImage = ref(false);
+
+const triggerEditorImageUpload = () => {
+  editorImageInputRef.value?.click();
+};
+
+/** 通过文件选择器选择图片后上传 */
+const handleEditorImageFileSelect = async (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  if (!input.files?.length) return;
+  const file = input.files[0];
+  input.value = '';
+  await uploadAndInsertImage(file);
+};
+
+/** 上传图片文件到 CDN 并在编辑器光标处插入 markdown */
+const uploadAndInsertImage = async (file: File) => {
+  isUploadingEditorImage.value = true;
+  statusText.value = '正在上传图片...';
+  try {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const cdnUrl = await uploadImage(dataUrl);
+    insertImageMarkdownAtCursor(cdnUrl, file.name || 'image');
+  } catch (e: any) {
+    console.error('[uploadAndInsertImage] 上传失败:', e);
+    addMessage('ai', `❌ 图片上传失败: ${e.message || e}`);
+  } finally {
+    isUploadingEditorImage.value = false;
+    statusText.value = '';
+  }
+};
+
+/** 上传 Blob (来自剪贴板粘贴) 到 CDN 并在编辑器光标处插入 */
+const uploadAndInsertImageBlob = async (blob: Blob) => {
+  isUploadingEditorImage.value = true;
+  statusText.value = '正在上传粘贴的图片...';
+  try {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    const cdnUrl = await uploadImage(dataUrl);
+    const ext = blob.type.split('/')[1] || 'png';
+    insertImageMarkdownAtCursor(cdnUrl, `pasted-image.${ext}`);
+  } catch (e: any) {
+    console.error('[uploadAndInsertImageBlob] 上传失败:', e);
+    addMessage('ai', `❌ 粘贴图片上传失败: ${e.message || e}`);
+  } finally {
+    isUploadingEditorImage.value = false;
+    statusText.value = '';
+  }
+};
+
+/** 在当前可见的 .markdown-editor textarea 光标处插入 markdown 图片语法 */
+const insertImageMarkdownAtCursor = (cdnUrl: string, altText: string) => {
+  const textarea = document.querySelector('.markdown-editor') as HTMLTextAreaElement;
+  if (!textarea) return;
+
+  const imgMarkdown = `\n![${altText}](${cdnUrl})\n`;
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const before = textarea.value.substring(0, start);
+  const after = textarea.value.substring(end);
+  const newValue = before + imgMarkdown + after;
+
+  // 根据当前活动文档类型更新对应 reactive 数据
+  if (userRole.value === 'qa' && activeRightTab.value === 'main') {
+    activeMainDocContent.value = newValue;
+  } else if (activeRightTab.value === 'url') {
+    const doc = urlDocs.value.find(d => d.id === activeUrlDocId.value);
+    if (doc) doc.content = newValue;
+  } else if (activeRightTab.value === 'custom') {
+    customActiveDocContent.value = newValue;
+  } else if (activeRightTab.value === 'chatDoc') {
+    chatOnlyActiveDocContent.value = newValue;
+  } else if (activeRightTab.value === 'additional') {
+    const prd = additionalPrds.value.find(p => p.id === activeAdditionalPrdId.value);
+    if (prd) prd.content = newValue;
+  } else if (activeRightTab.value === 'figma') {
+    const figma = figmaDocs.value.find(f => f.id === activeFigmaDocId.value);
+    if (figma) figma.content = newValue;
+  }
+
+  nextTick(() => {
+    textarea.selectionStart = textarea.selectionEnd = start + imgMarkdown.length;
+    textarea.focus();
+  });
+};
+
+// 监听编辑器 textarea 的粘贴事件（事件委托）
+onMounted(() => {
+  const handleEditorPaste = (e: ClipboardEvent) => {
+    // 仅在编辑模式下，且目标是 .markdown-editor textarea 时处理
+    const target = e.target as HTMLElement;
+    if (viewMode.value !== 'edit' || !target.classList?.contains('markdown-editor')) return;
+
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault(); // 阻止默认粘贴行为
+        const blob = item.getAsFile();
+        if (blob) {
+          uploadAndInsertImageBlob(blob);
+        }
+        return; // 处理第一个图片即可
+      }
+    }
+    // 非图片粘贴：不拦截，走默认文本粘贴
+  };
+
+  document.addEventListener('paste', handleEditorPaste);
+  onBeforeUnmount(() => {
+    document.removeEventListener('paste', handleEditorPaste);
+  });
+});
+
+// --- Image Placeholder Replacement ---
+/** 将单个段内的 [IMAGE_001] 等占位符替换为 markdown 图片链接 ![alt](src) */
+const replaceSegmentImagePlaceholders = (segment: { markdown: string, images: any[] }): string => {
+  const images = segment.images || [];
+  if (images.length === 0) return segment.markdown;
+
+  // 构建该段自己的占位符 → 图片 URL 映射
+  const imageMap = new Map<string, { src: string, alt: string }>();
+  for (const img of images) {
+    if (img.placeholder && img.src) {
+      imageMap.set(img.placeholder, { src: img.src, alt: img.alt || '' });
+    }
+  }
+
+  return segment.markdown.replace(/\[IMAGE_\d{3,}\]/g, (match) => {
+    const img = imageMap.get(match);
+    if (img) {
+      return `![${img.alt}](${img.src})`;
+    }
+    return match;
+  });
+};
+
+/**
+ * 将所有段落中的图片下载并上传 CDN，然后用 CDN URL 替换占位符
+ * 保持图片与文本位置一一对应
+ */
+const processAndReplaceImages = async (
+  domSegments: { markdown: string; images: any[] }[],
+  onProgress?: (completed: number, total: number) => void
+): Promise<string[]> => {
+  // 1. 收集所有段中的图片，按 src 去重
+  const allImages: ExtractedImage[] = [];
+  const seenSrcs = new Set<string>();
+  for (const seg of domSegments) {
+    for (const img of (seg.images || [])) {
+      if (img.src && !seenSrcs.has(img.src)) {
+        seenSrcs.add(img.src);
+        allImages.push(img);
+      }
+    }
+  }
+
+  // 2. 批量下载 + 上传 CDN
+  const srcToCdnUrl = new Map<string, string>();
+  if (allImages.length > 0) {
+    console.log(`[processAndReplaceImages] 开始处理 ${allImages.length} 张图片...`);
+    const results = await extractAndUploadImages(allImages, {
+      concurrency: 3,
+      timeout: 30000,
+      uploadToCdn: true,
+      onProgress,
+    });
+    for (const r of results) {
+      if (r.status === 'completed' && r.cdnUrl) {
+        srcToCdnUrl.set(r.src, r.cdnUrl);
+      }
+    }
+    console.log(`[processAndReplaceImages] CDN 上传完成: ${srcToCdnUrl.size}/${allImages.length} 张成功`);
+  }
+
+  // 3. 每段用 CDN URL 替换占位符（下载失败的 fallback 到原始 src）
+  return domSegments.map(seg => {
+    const imageMap = new Map<string, { src: string; alt: string }>();
+    for (const img of (seg.images || [])) {
+      if (img.placeholder && img.src) {
+        const url = srcToCdnUrl.get(img.src) || img.src;
+        imageMap.set(img.placeholder, { src: url, alt: img.alt || '' });
+      }
+    }
+    return seg.markdown.replace(/\[IMAGE_\d{3,}\]/g, (match) => {
+      const img = imageMap.get(match);
+      return img ? `![${img.alt}](${img.src})` : match;
+    });
+  });
 };
 
 // --- Image Processing Helpers (Stitching) ---
@@ -3866,9 +5361,18 @@ const goToStep = (step: Step) => {
         }
     } else if (step === 'test_case') {
         projectState.currentStep = 'test_case';
-        viewMode.value = 'preview';
         if (hasGeneratedTestCases.value) {
             projectState.documents.testCases = cachedTestCases.value;
+            viewMode.value = 'preview';
+        } else {
+            // 无已生成用例时显示引导面板，帮助用户选择格式和了解编写规范
+            manualGuideVisible.value = true;
+            viewMode.value = 'edit';
+            activeRightTab.value = 'main';
+            activeMainDocType.value = 'testCases';
+            if (!projectState.documents.testCases) {
+                projectState.documents.testCases = '';
+            }
         }
     } else if (step === 'auto_test') {
         enterAutoTest();
@@ -3880,28 +5384,22 @@ const enterWorkflow = () => {
   projectState.currentStep = 'content_review';
 };
 
-const enterAutoTest = () => {
+const enterAutoTest = async () => {
   projectState.currentStep = 'auto_test';
-  uiViewType.value = 'plan';
-  addMessage('ai', `🤖 **UI 自动化测试智能体**
 
-欢迎使用 UI 自动化测试功能！
+  if (uiEngine.value === 'midscene') {
+    await initMidsceneView();
+  } else {
+    uiViewType.value = 'plan';
+    addMessage('ai', `**UI 自动化测试智能体**
 
 **工作流程：**
-1. 📋 **生成测试计划** - 分析当前页面，生成结构化测试计划
-2. 🚀 **执行测试** - 根据计划自动执行测试并截图
-3. 📊 **生成报告** - 汇总测试结果，生成详细报告
+1. 生成测试计划 - 分析当前页面
+2. 执行测试 - 根据计划自动执行并截图
+3. 生成报告 - 汇总测试结果
 
-**快速开始：**
-- 点击下方"分析页面"了解页面结构
-- 点击"生成计划"创建测试计划
-- 有计划后，点击"执行测试"开始自动化
-
-**前置条件：**
-\`\`\`
-✅ 本地 Agent 服务 (Port 8000)
-✅ Chrome 调试模式 (Port 9222)
-\`\`\``);
+**前置条件：** Agent 服务 (Port 8000) + Chrome 调试模式 (Port 9222)`);
+  }
 };
 
 const captureFullPageAndDOM = async (tabId: number) => {
@@ -3972,12 +5470,14 @@ const captureFullPageAndDOM = async (tabId: number) => {
         await browser.tabs.sendMessage(tabId, { type: 'RESTORE_PAGE_AFTER_SCREENSHOT' });
     }
     
-    // Merge DOM Segments
-    statusText.value = "正在合并文本...";
+    // Merge DOM Segments（先下载图片上传 CDN，再用 CDN URL 替换占位符，最后合并）
+    statusText.value = "正在处理图片...";
+    const replacedSegments = await processAndReplaceImages(domSegments, (done, total) => {
+        statusText.value = `正在处理图片 ${done}/${total}...`;
+    });
     let fullDOM = '';
-
-    for (const seg of domSegments) {
-        fullDOM = mergeTextSegments(fullDOM, seg.markdown);
+    for (const replaced of replacedSegments) {
+        fullDOM = mergeTextSegments(fullDOM, replaced);
     }
 
     // Process Screenshot
@@ -4161,8 +5661,31 @@ const optimizePRD = async () => {
         
         // 统计参考信息
         const contextInfo = additionalPrdParams.length > 0 ? [`${additionalPrdParams.length}份参考/引用文档`] : [];
-        
-        addMessage('ai', `✅ PRD优化完成！${contextInfo.length > 0 ? `\n\n📚 已参考：${contextInfo.join('、')}` : ''}\n\n📝 您可以继续修改，或点击「生成测试用例」`);
+
+        addMessage('ai', `✅ PRD优化完成！${contextInfo.length > 0 ? `\n\n📚 已参考：${contextInfo.join('、')}` : ''}\n\n正在分析测试用例生成的不确定点...`);
+
+        // Follow-up: 分析 PRD 完整性，给出补充建议
+        try {
+          statusText.value = '正在分析PRD完整性...';
+          const analysisDocRefs = buildDocRefsForAsk('testprd');
+          const useAnalysisDocRefs = analysisDocRefs.length > 0 && hasStoredMainPrd();
+
+          const analysisRes = await ask({
+            code: 'plugin_test_testprd',
+            type: 'testprd_chat',
+            sessionId: ensureSessionId(),
+            params: {
+              text: useAnalysisDocRefs ? '' : projectState.documents.optimizedPrd,
+            },
+            instruction: `请分析这份优化后的PRD，从生成测试用例的角度，给出以下反馈：\n\n1. **不确定点**：PRD 中描述模糊或可能有多种理解的功能点\n2. **需要补充的信息**：对于生成完整测试用例来说，缺失的重要内容（如边界值、异常处理规则、权限控制细节等）\n3. **改进建议**：具体的补充建议，建议确认后添加到 PRD 中再生成测试用例\n\n请用简洁的列表形式输出。`,
+            docRefs: useAnalysisDocRefs ? analysisDocRefs : undefined,
+          });
+
+          addMessage('ai', `📋 **PRD 分析反馈**\n\n${analysisRes.answer}\n\n💡 建议：确认以上内容后补充到 PRD，保存后再生成测试用例。`);
+        } catch (analysisError) {
+          console.warn('[optimizePRD] 分析反馈请求失败:', analysisError);
+          // 分析失败不影响主流程
+        }
     } catch (e) {
          console.error(e);
          addMessage('ai', '❌ 优化失败，请重试。');
@@ -4619,13 +6142,16 @@ const confirmAndGenerateTestCases = async () => {
           },
           instruction: '基于优化后的PRD（可参考测试点）生成可执行测试用例，覆盖正向/边界/异常/权限/数据校验。',
           docRefs: useDocRefs ? docRefs : undefined,
-          additionalPrds: useDocRefs ? undefined : additionalPrdParams
+          additionalPrds: useDocRefs ? undefined : additionalPrdParams,
+          outputFormat: testCaseOutputFormat.value,
       });
-        
+
         projectState.documents.testCases = aiRes.answer;
         cachedTestCases.value = aiRes.answer;
         hasGeneratedTestCases.value = true;
-        
+        // 智能命名：基于 PRD 标题
+        autoNameTestCases({ docTitle: currentPrdTitle.value || optimizedPrdTitle.value });
+
         // 保存生成的 docRef（用于后续阶段）
         if ((aiRes as any).generatedDocRef) {
           generatedDocRefs.testCases = (aiRes as any).generatedDocRef;
@@ -4761,12 +6287,15 @@ const proceedToTestCasesFromPRD = async () => {
           },
           instruction: '基于优化后的PRD直接生成可执行测试用例（含前置条件/步骤/预期结果/优先级），覆盖正向/边界/异常/权限/数据校验。',
           docRefs: useDocRefs ? docRefs : undefined,
-          additionalPrds: useDocRefs ? undefined : additionalPrdParams
+          additionalPrds: useDocRefs ? undefined : additionalPrdParams,
+          outputFormat: testCaseOutputFormat.value,
       });
-      
+
       projectState.documents.testCases = aiRes.answer;
       cachedTestCases.value = aiRes.answer;
       hasGeneratedTestCases.value = true;
+      // 智能命名：基于 PRD 标题（直接生成模式）
+      autoNameTestCases({ docTitle: currentPrdTitle.value || optimizedPrdTitle.value });
 
       // Reset Test Case Agent Session
       await clearTestCaseSession(testCaseAgentSessionId.value);
@@ -4831,12 +6360,15 @@ const proceedToTestCases = async () => {
           },
           instruction: '基于测试点生成可执行测试用例（含前置条件/步骤/预期结果/优先级），覆盖正向/边界/异常/权限/数据校验。',
           docRefs: useDocRefs ? docRefs : undefined,
-          additionalPrds: useDocRefs ? undefined : additionalPrdParams
+          additionalPrds: useDocRefs ? undefined : additionalPrdParams,
+          outputFormat: testCaseOutputFormat.value,
       });
-      
+
       projectState.documents.testCases = aiRes.answer;
       cachedTestCases.value = aiRes.answer;
       hasGeneratedTestCases.value = true;
+      // 智能命名：基于 PRD 标题（从测试点生成模式）
+      autoNameTestCases({ docTitle: currentPrdTitle.value || testPointsTitle.value });
 
       // Reset Test Case Agent Session
       await clearTestCaseSession(testCaseAgentSessionId.value);
@@ -5111,14 +6643,1541 @@ const resetUiAgent = async () => {
     addMessage('ai', '🔄 UI 自动化测试已重置（计划、报告、截图已清空）');
 };
 
+// Rendered Midscene report (Markdown → HTML)
+// Selected case detail for right panel
+const selectedCaseDetail = computed(() => {
+    if (!midsceneSelectedCaseId.value) return null;
+    return midsceneParsedCases.value.find(c => c.id === midsceneSelectedCaseId.value) || null;
+});
+
+// ===================== 前端步骤类型推断预览 =====================
+
+/** 步骤类型映射表：类型 → {label, color, tip} */
+const stepTypeMap: Record<string, { label: string; color: string; tip: string }> = {
+    tap:        { label: '点击',   color: '#10b981', tip: '精准执行 aiTap，速度最快' },
+    input:      { label: '输入',   color: '#3b82f6', tip: '精准执行 aiInput，速度快' },
+    assert:     { label: '断言',   color: '#8b5cf6', tip: '执行 aiAssert 验证' },
+    scroll:     { label: '滚动',   color: '#f59e0b', tip: '精准执行 aiScroll' },
+    hover:      { label: '悬停',   color: '#06b6d4', tip: '精准执行 aiHover' },
+    keypress:   { label: '按键',   color: '#64748b', tip: '精准执行 aiKeyboardPress' },
+    wait:       { label: '等待',   color: '#94a3b8', tip: '等待指定时间' },
+    navigate:   { label: '导航',   color: '#0ea5e9', tip: '页面跳转' },
+    doubleTap:  { label: '双击',   color: '#10b981', tip: '精准执行双击' },
+    rightClick: { label: '右键',   color: '#10b981', tip: '精准执行右键点击' },
+    aiAct:      { label: 'AI执行', color: '#ef4444', tip: '⚠️ 无法精确识别，将交给 AI 自由执行（较慢）' },
+};
+
+/**
+ * 前端轻量级步骤类型推断（与后端 step-inference.ts 对齐）
+ * 用于编辑器实时预览，不调用后端接口
+ */
+const inferStepType = (stepText: string): { type: string; label: string; color: string; tip: string } => {
+    const text = stepText.trim();
+    if (!text) return { type: 'aiAct', ...stepTypeMap['aiAct'] };
+
+    // 断言
+    if (/^(?:断言|验证|确认|检查|确保|assert|verify|check)\s*[:：]?\s*.+/i.test(text)) {
+        return { type: 'assert', ...stepTypeMap['assert'] };
+    }
+    // 等待
+    if (/^(?:等待|延时|延迟|wait|sleep|pause)\s*(\d+)?\s*(?:秒|s|ms|毫秒)?\s*$/i.test(text)) {
+        return { type: 'wait', ...stepTypeMap['wait'] };
+    }
+    // 导航
+    if (/^(?:跳转到|访问|打开(?:URL|页面|网址)?|导航到|navigate\s+to|go\s+to|open)\s+(https?:\/\/\S+)/i.test(text)) {
+        return { type: 'navigate', ...stepTypeMap['navigate'] };
+    }
+    // 输入类（带目标）
+    if (/(?:在|到).+(?:中|里|内)?(?:输入|填写|填入|键入|录入|写入)\s*.+$/i.test(text)) {
+        return { type: 'input', ...stepTypeMap['input'] };
+    }
+    if (/(?:输入|填写|填入|键入)\s*.+?\s*(?:到|在|至)\s*.+/i.test(text)) {
+        return { type: 'input', ...stepTypeMap['input'] };
+    }
+    if (/(?:type|enter|input|fill)\s+.+?\s+(?:in|into|to)\s+.+/i.test(text)) {
+        return { type: 'input', ...stepTypeMap['input'] };
+    }
+    if (/.+?(?:输入框|文本框|搜索框|编辑框|字段)(?:中|里|内)?(?:输入|填写|填入|键入)\s*.+$/i.test(text)) {
+        return { type: 'input', ...stepTypeMap['input'] };
+    }
+    // 输入类（无目标，如 "输入1+1=?"）
+    if (/^(?:输入|填写|填入|键入|录入|写入)\s*.+$/i.test(text) && !/^(?:输入|填写|填入|键入|录入|写入)\s*(?:框|栏|区|字段|区域)$/i.test(text)) {
+        return { type: 'input', ...stepTypeMap['input'] };
+    }
+    if (/^(?:type|enter|input)\s+.+$/i.test(text) && !/\b(?:in|into|to)\b/i.test(text)) {
+        return { type: 'input', ...stepTypeMap['input'] };
+    }
+    // 双击
+    if (/双击|double[\s-]?click/i.test(text)) return { type: 'doubleTap', ...stepTypeMap['doubleTap'] };
+    // 右键
+    if (/右键点击|右键单击|右键|右击|right[\s-]?click/i.test(text)) return { type: 'rightClick', ...stepTypeMap['rightClick'] };
+    // 悬停
+    if (/悬停在?|hover\s*(on|over)?|鼠标移到|鼠标移动到/i.test(text)) return { type: 'hover', ...stepTypeMap['hover'] };
+    // 滚动
+    if (/滚动|scroll|向[上下左右]|翻页|下拉|上拉|滑动/i.test(text)) return { type: 'scroll', ...stepTypeMap['scroll'] };
+    // 按键
+    if (/按下|按键|press|回车|enter|tab|escape|esc|delete|backspace|空格/i.test(text)) return { type: 'keypress', ...stepTypeMap['keypress'] };
+    // 点击
+    if (/点击|单击|选择|勾选|打开|关闭|切换|选中|取消选中|展开|收起|click|tap|select|check|uncheck|toggle|open|close/i.test(text)) {
+        return { type: 'tap', ...stepTypeMap['tap'] };
+    }
+    // 兜底
+    return { type: 'aiAct', ...stepTypeMap['aiAct'] };
+};
+
+// ===================== 用例 steps 内联编辑 =====================
+
+/** 开始编辑选中用例的 steps */
+const startEditCaseSteps = () => {
+    const tc = selectedCaseDetail.value;
+    if (!tc) return;
+    editingCaseId.value = tc.id;
+    editingStepsBuffer.value = [...(tc.steps || [])];
+    if (editingStepsBuffer.value.length === 0) editingStepsBuffer.value.push('');
+    editingCaseSteps.value = true;
+};
+
+/** 取消编辑 */
+const cancelEditCaseSteps = () => {
+    editingCaseSteps.value = false;
+    editingStepsBuffer.value = [];
+    editingCaseId.value = '';
+};
+
+/** 添加一个空步骤 */
+const addEditingStep = () => {
+    editingStepsBuffer.value.push('');
+};
+
+/** 删除指定步骤 */
+const removeEditingStep = (index: number) => {
+    editingStepsBuffer.value.splice(index, 1);
+    if (editingStepsBuffer.value.length === 0) editingStepsBuffer.value.push('');
+};
+
+/** 上移步骤 */
+const moveEditingStepUp = (index: number) => {
+    if (index <= 0) return;
+    const arr = editingStepsBuffer.value;
+    [arr[index - 1], arr[index]] = [arr[index], arr[index - 1]];
+};
+
+/** 下移步骤 */
+const moveEditingStepDown = (index: number) => {
+    const arr = editingStepsBuffer.value;
+    if (index >= arr.length - 1) return;
+    [arr[index], arr[index + 1]] = [arr[index + 1], arr[index]];
+};
+
+/** 将 MidsceneTestCase[] 序列化回简单 YAML 格式 */
+const serializeCasesToYaml = (cases: MidsceneTestCase[]): string => {
+    return cases.map(tc => {
+        let yaml = `- id: ${tc.id}\n  name: ${tc.name}`;
+        if (tc.scenario) yaml += `\n  scenario: ${tc.scenario}`;
+        if (tc.preconditions) yaml += `\n  preconditions: ${tc.preconditions}`;
+        if (tc.priority) yaml += `\n  priority: ${tc.priority}`;
+        if (tc.steps && tc.steps.length > 0) {
+            yaml += `\n  steps:`;
+            for (const s of tc.steps) yaml += `\n    - ${s}`;
+        }
+        if (tc.expectedResults && tc.expectedResults.length > 0) {
+            yaml += `\n  expectedResults:`;
+            for (const er of tc.expectedResults) yaml += `\n    - ${er}`;
+        }
+        return yaml;
+    }).join('\n\n');
+};
+
+/** 保存 steps 编辑（同步到内存 + 原始文档） */
+const saveCaseStepsEdit = () => {
+    const caseId = editingCaseId.value;
+    const tc = midsceneParsedCases.value.find(c => c.id === caseId);
+    if (!tc) return;
+
+    // 过滤空步骤
+    const newSteps = editingStepsBuffer.value.filter(s => s.trim());
+    tc.steps = newSteps.length > 0 ? newSteps : undefined;
+
+    // 同步回原始文档（重新序列化）
+    projectState.documents.testCases = serializeCasesToYaml(midsceneParsedCases.value);
+    projectState.documents.midsceneCasesJson = JSON.stringify(midsceneParsedCases.value, null, 2);
+
+    editingCaseSteps.value = false;
+    editingStepsBuffer.value = [];
+    editingCaseId.value = '';
+    addMessage('ai', `已保存用例 ${caseId} 的步骤修改（${newSteps.length} 步），正在同步到知识库...`);
+
+    // 自动保存到知识库
+    autoSaveTestCasesToKnowledge('步骤编辑').then(() => {
+        addMessage('ai', `✅ 步骤修改已同步到知识库`);
+    });
+};
+
+// ===================== 快速创建用例 =====================
+
+const resetQuickCreateForm = () => {
+    const nextId = `TC-${String(midsceneParsedCases.value.length + 1).padStart(3, '0')}`;
+    quickCreateForm.value = { name: '', scenario: '', steps: [''], expectedResults: [''] };
+    quickCreateForm.value.name = '';
+};
+
+const addQuickCreateStep = () => { quickCreateForm.value.steps.push(''); };
+const removeQuickCreateStep = (i: number) => {
+    quickCreateForm.value.steps.splice(i, 1);
+    if (quickCreateForm.value.steps.length === 0) quickCreateForm.value.steps.push('');
+};
+const addQuickCreateExpected = () => { quickCreateForm.value.expectedResults.push(''); };
+const removeQuickCreateExpected = (i: number) => {
+    quickCreateForm.value.expectedResults.splice(i, 1);
+    if (quickCreateForm.value.expectedResults.length === 0) quickCreateForm.value.expectedResults.push('');
+};
+
+/** 提交快速创建表单 */
+const submitQuickCreate = () => {
+    const f = quickCreateForm.value;
+    if (!f.name.trim()) { addMessage('ai', '请填写用例名称'); return; }
+
+    const nextId = `TC-${String(midsceneParsedCases.value.length + 1).padStart(3, '0')}`;
+    const steps = f.steps.filter(s => s.trim());
+    const expectedResults = f.expectedResults.filter(e => e.trim());
+    const scenario = f.scenario.trim() || (steps.length > 0 ? steps.join('，然后') : f.name);
+
+    const newCase: MidsceneTestCase = {
+        id: nextId,
+        name: f.name.trim(),
+        scenario,
+        expectedResults,
+        steps: steps.length > 0 ? steps : undefined,
+    };
+
+    midsceneParsedCases.value.push(newCase);
+    midsceneSelectedCases.value.add(nextId);
+
+    // 同步回原始文档
+    projectState.documents.testCases = serializeCasesToYaml(midsceneParsedCases.value);
+    projectState.documents.midsceneCasesJson = JSON.stringify(midsceneParsedCases.value, null, 2);
+
+    quickCreateVisible.value = false;
+    resetQuickCreateForm();
+    addMessage('ai', `已创建用例 ${nextId}: ${newCase.name}，正在同步到知识库...`);
+
+    // 自动保存到知识库
+    autoSaveTestCasesToKnowledge('快速创建用例').then(() => {
+        addMessage('ai', `✅ 用例 ${nextId} 已同步到知识库`);
+    });
+};
+
+// ===================== Step 4 模板插入 =====================
+
+const testCaseTemplates: Record<string, { label: string; content: string }> = {
+    yaml: {
+        label: 'YAML 格式',
+        content: `- id: TC-001
+  name: 登录功能测试
+  scenario: 验证用户可以正常登录系统
+  preconditions: 已有注册账号
+  priority: P0
+  steps:
+    - 点击登录按钮
+    - 在用户名输入框中输入 admin
+    - 在密码输入框中输入 123456
+    - 点击提交按钮
+  expectedResults:
+    - 页面跳转到首页
+    - 页面显示欢迎信息
+
+- id: TC-002
+  name: 搜索功能测试
+  scenario: 验证搜索功能返回正确结果
+  priority: P1
+  steps:
+    - 点击搜索框
+    - 在搜索框中输入 测试关键词
+    - 点击搜索按钮
+  expectedResults:
+    - 页面显示搜索结果列表`,
+    },
+    table: {
+        label: '表格格式',
+        content: `| ID | Module | Test Point | Scenario | Preconditions | Steps | Expected Results | Priority |
+|---|---|---|---|---|---|---|---|
+| TC-001 | 登录模块 | 用户登录 | 验证正常登录流程 | 已注册账号 | 1.点击登录按钮 2.输入用户名admin 3.输入密码123456 4.点击提交 | 跳转到首页 | P0 |
+| TC-002 | 搜索模块 | 关键词搜索 | 验证搜索功能 | - | 1.点击搜索框 2.输入关键词 3.点击搜索按钮 | 显示搜索结果列表 | P1 |`,
+    },
+};
+
+/** 将模板插入编辑器 */
+const insertTestCaseTemplate = (format: string) => {
+    const tpl = testCaseTemplates[format];
+    if (!tpl) return;
+    projectState.documents.testCases = tpl.content;
+    manualGuideVisible.value = false;
+    viewMode.value = 'edit';
+    activeRightTab.value = 'main';
+    activeMainDocType.value = 'testCases';
+
+    // 同步解析用例列表（用户编辑模板后可直接在 Step 5 看到）
+    const parsed = parseTestCases(tpl.content, testCaseOutputFormat.value);
+    if (parsed.length > 0) {
+        midsceneParsedCases.value = parsed;
+        midsceneSelectedCases.value = new Set(parsed.map(c => c.id));
+        projectState.documents.midsceneCasesJson = JSON.stringify(parsed, null, 2);
+    }
+
+    addMessage('ai', `已插入 ${tpl.label} 模板，请在右侧编辑器中修改内容后点击「💾 保存」同步到知识库`);
+};
+
+// Get assertion status for a specific case's expected result
+const getAssertionStatus = (caseId: string, assertIdx: number): string => {
+    const result = getCaseResult(caseId);
+    if (!result?.assertions) return '';
+    const a = result.assertions[assertIdx];
+    if (!a) return '';
+    return a.success ? 'PASS' : 'FAIL';
+};
+
+const renderedMidsceneReport = computed(() => {
+    const md = projectState.documents.midsceneReport;
+    if (!md) return '<div class="midscene-empty">暂无执行结果。请先执行测试用例。</div>';
+    return renderMarkdown(md);
+});
+
+// ================= Midscene Engine Functions =================
+
+const switchUiEngine = async () => {
+    uiEngine.value = uiEngine.value === 'legacy' ? 'midscene' : 'legacy';
+    if (uiEngine.value === 'midscene') {
+        await initMidsceneView();
+    }
+};
+
+const initMidsceneView = async () => {
+    // 1. Check Sidecar health
+    midsceneSidecarReady.value = await checkMidsceneHealth();
+
+    // 2. 解析测试用例（每次进入时重新解析，确保手动编辑的内容生效）
+    const rawCases = projectState.documents.testCases;
+    if (rawCases) {
+        const parsed = parseTestCases(rawCases, testCaseOutputFormat.value);
+        if (parsed.length > 0) {
+            midsceneParsedCases.value = parsed;
+            midsceneSelectedCases.value = new Set(parsed.map(c => c.id));
+            projectState.documents.midsceneCasesJson = JSON.stringify(parsed, null, 2);
+        }
+    }
+
+    const casesCount = midsceneParsedCases.value.length;
+    const sidecarStatus = midsceneSidecarReady.value ? 'Sidecar OK (Port 3100)' : 'Sidecar 未启动 - 请运行: cd agent-server/midscene-sidecar && npm start';
+
+    const casesGuide = casesCount > 0
+      ? `已解析 **${casesCount}** 条测试用例，勾选后点击 ▶️ 执行`
+      : `暂无测试用例，可通过以下方式添加：
+  1. 点击左侧 **「手动编写用例」** 返回 Step 4 编辑
+  2. 点击右侧 **「知识库」** 选择已保存的测试用例文档`;
+
+    addMessage('ai', `**Midscene VLM UI 自动化引擎**
+
+${casesGuide}
+
+**服务状态:** ${sidecarStatus}`);
+
+    midsceneViewType.value = 'cases';
+    viewMode.value = 'preview';
+    rightPanelTab.value = 'midscene';
+};
+
+// Helper: get current tab URL
+const getCurrentTabUrl = async (): Promise<string> => {
+    try {
+        const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+        return tab?.url || '';
+    } catch {
+        return '';
+    }
+};
+
+// Toggle case selection
+const toggleCaseSelection = (id: string) => {
+    const s = new Set(midsceneSelectedCases.value);
+    if (s.has(id)) s.delete(id); else s.add(id);
+    midsceneSelectedCases.value = s;
+};
+const selectAllCases = () => {
+    midsceneSelectedCases.value = new Set(midsceneParsedCases.value.map(c => c.id));
+};
+const deselectAllCases = () => {
+    midsceneSelectedCases.value = new Set();
+};
+
+// 停止 Midscene 批量执行：取消当前请求 + 阻止后续用例
+const stopMidsceneExecution = () => {
+    midsceneExecuting.value = false;
+    // 中止当前正在进行的 HTTP 请求
+    if (midsceneAbortController.value) {
+        midsceneAbortController.value.abort();
+        midsceneAbortController.value = null;
+    }
+};
+
+// ★ 缓存管理方法
+/** 加载缓存列表 */
+const loadMidsceneCacheList = async () => {
+    midsceneCacheLoading.value = true;
+    try {
+        const data = await getMidsceneCacheList();
+        midsceneCacheList.value = data.caches;
+        midsceneCacheTotalSize.value = data.totalSize;
+    } catch (e: any) {
+        console.error('[cache] 加载缓存列表失败:', e);
+    } finally {
+        midsceneCacheLoading.value = false;
+    }
+};
+
+/** 删除单个缓存 */
+const handleDeleteCache = async (cacheId: string) => {
+    const result = await deleteMidsceneCache(cacheId);
+    if (result.success) {
+        addMessage('ai', `已删除缓存: ${cacheId}`);
+        await loadMidsceneCacheList();
+    }
+};
+
+/** 清空全部缓存 */
+const handleClearAllCache = async () => {
+    const result = await clearAllMidsceneCache();
+    if (result.success) {
+        addMessage('ai', `已清空全部缓存 (${result.deleted} 个文件)`);
+        midsceneCacheList.value = [];
+        midsceneCacheTotalSize.value = 0;
+    }
+};
+
+/** 切换设置面板 */
+const toggleSettingsPanel = () => {
+    midsceneSettingsVisible.value = !midsceneSettingsVisible.value;
+};
+/** 切换缓存管理面板可见性 */
+const toggleCachePanel = async () => {
+    midsceneCachePanelVisible.value = !midsceneCachePanelVisible.value;
+    if (midsceneCachePanelVisible.value) {
+        await loadMidsceneCacheList();
+    }
+};
+
+/** 格式化文件大小 */
+const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+};
+
+// ===================== 回归基线管理 =====================
+
+// 切换到回归模式时自动加载基线映射
+watch(midsceneExecutionMode, (newMode) => {
+    if (newMode === 'regression') {
+        loadRegressionBaselines();
+    }
+});
+
+/** 切换回归基线管理面板 */
+const toggleRegressionPanel = async () => {
+    regressionPanelVisible.value = !regressionPanelVisible.value;
+    if (regressionPanelVisible.value) {
+        await loadRegressionBaselines();
+    }
+};
+
+/** 加载回归基线列表（同时更新 caseId → baseline 映射） */
+const loadRegressionBaselines = async () => {
+    regressionLoading.value = true;
+    try {
+        const data = await listRegressionBaselines();
+        regressionBaselines.value = data.baselines;
+        // 更新映射
+        const map = new Map<string, any>();
+        for (const bl of data.baselines) {
+            map.set(bl.caseId, bl);
+        }
+        regressionBaselineMap.value = map;
+    } catch (e: any) {
+        console.error('[regression] 加载基线列表失败:', e);
+    } finally {
+        regressionLoading.value = false;
+    }
+};
+
+/** 删除回归基线 */
+const handleDeleteBaseline = async (id: string) => {
+    await deleteRegressionBaseline(id);
+    await loadRegressionBaselines();
+    addMessage('ai', '回归基线已删除');
+};
+
+/** 加载回归基线到步骤编辑器 */
+const handleEditBaseline = async (id: string) => {
+    const detail = await getRegressionBaseline(id);
+    if (detail) {
+        stepEditorSteps.value = detail.parsed.steps.map((s: any) => ({ ...s }));
+        stepEditorAssertions.value = detail.parsed.assertions;
+        stepEditorUrl.value = detail.parsed.url;
+        stepEditorCaseId.value = detail.baseline.caseId;
+        stepEditorCaseName.value = detail.baseline.caseName;
+        stepEditorVisible.value = true;
+        regressionPanelVisible.value = false;
+    }
+};
+
+/** 执行回归基线 */
+const handleRunBaseline = async (baseline: RegressionBaseline) => {
+    addMessage('ai', `开始回归执行: ${baseline.caseName}...`);
+    try {
+        const result = await midsceneRunYaml({
+            regressionId: baseline.id,
+            options: {
+                useCDP: !isHeadlessMode.value,
+                headless: isHeadlessMode.value,
+                cacheStrategy: 'read-only',
+            },
+        });
+        addMessage('ai', `回归执行${result.status === 'passed' ? '通过 ✓' : '失败 ✗'} (${result.durationMs}ms)`);
+        await loadRegressionBaselines();
+    } catch (e: any) {
+        addMessage('ai', `回归执行失败: ${e.message}`);
+    }
+};
+
+// ===================== 步骤编辑器函数 =====================
+
+/** 修改步骤操作类型 */
+const changeStepType = (index: number, newType: string) => {
+    if (stepEditorSteps.value[index]) {
+        stepEditorSteps.value[index].type = newType;
+    }
+};
+
+/** 删除步骤 */
+const removeStep = (index: number) => {
+    stepEditorSteps.value.splice(index, 1);
+};
+
+/** 上移步骤 */
+const moveStepUp = (index: number) => {
+    if (index > 0) {
+        const temp = stepEditorSteps.value[index];
+        stepEditorSteps.value[index] = stepEditorSteps.value[index - 1];
+        stepEditorSteps.value[index - 1] = temp;
+    }
+};
+
+/** 下移步骤 */
+const moveStepDown = (index: number) => {
+    if (index < stepEditorSteps.value.length - 1) {
+        const temp = stepEditorSteps.value[index];
+        stepEditorSteps.value[index] = stepEditorSteps.value[index + 1];
+        stepEditorSteps.value[index + 1] = temp;
+    }
+};
+
+/** 添加新步骤 */
+const addNewStep = () => {
+    stepEditorSteps.value.push({
+        type: 'tap',
+        target: '',
+        value: '',
+        original: '',
+        confidence: 1,
+    });
+};
+
+/** 保存步骤编辑器中的步骤为回归基线 */
+const saveStepsAsBaseline = async () => {
+    if (!stepEditorCaseId.value || !stepEditorCaseName.value) {
+        addMessage('ai', '请先填写用例 ID 和名称');
+        return;
+    }
+    try {
+        await saveRegressionBaseline({
+            steps: stepEditorSteps.value,
+            assertions: stepEditorAssertions.value,
+            caseId: stepEditorCaseId.value,
+            caseName: stepEditorCaseName.value,
+            url: stepEditorUrl.value,
+        });
+        addMessage('ai', `回归基线已保存: ${stepEditorCaseName.value}`);
+        stepEditorVisible.value = false;
+    } catch (e: any) {
+        addMessage('ai', `保存基线失败: ${e.message}`);
+    }
+};
+
+/** 从步骤编辑器中的某一步开始执行 */
+const runFromStep = async (startIndex: number) => {
+    const currentUrl = stepEditorUrl.value;
+    if (!currentUrl) {
+        addMessage('ai', '缺少执行 URL');
+        return;
+    }
+    addMessage('ai', `从步骤 ${startIndex + 1} 开始执行...`);
+    instantStepResults.value = [];
+
+    try {
+        await midsceneRunInstantStream(
+            {
+                url: currentUrl,
+                steps: stepEditorSteps.value,
+                assertions: stepEditorAssertions.value,
+                caseId: stepEditorCaseId.value,
+                caseName: stepEditorCaseName.value,
+                options: {
+                    useCDP: !isHeadlessMode.value,
+                    headless: isHeadlessMode.value,
+                    cache: midsceneCacheStrategy.value !== 'false'
+                        ? { strategy: midsceneCacheStrategy.value, id: stepEditorCaseId.value }
+                        : undefined,
+                    startFromStep: startIndex,
+                },
+            },
+            (event, data) => {
+                if (event === 'step_done') {
+                    instantStepResults.value.push(data);
+                } else if (event === 'done') {
+                    addMessage('ai', `执行完成: ${data.status} (${data.passedSteps}/${data.totalSteps} 步通过, ${data.durationMs}ms)`);
+                    // 如果成功且有 regressionYaml，自动更新基线
+                    if (data.status === 'passed' && data.regressionYaml) {
+                        addMessage('ai', '执行成功，可保存为回归基线');
+                    }
+                } else if (event === 'error') {
+                    addMessage('ai', `执行出错: ${data.message}`);
+                }
+            },
+        );
+    } catch (e: any) {
+        addMessage('ai', `执行失败: ${e.message}`);
+    }
+};
+
+// Get result for a specific case
+const getCaseResult = (id: string) => midsceneResults.value.find(r => r.testcaseId === id);
+const getCaseResultClass = (id: string) => {
+    const r = getCaseResult(id);
+    if (!r) return '';
+    return r.status;
+};
+
+// Update a case result
+const updateCaseResult = (id: string, data: Partial<typeof midsceneResults.value[0]>) => {
+    const idx = midsceneResults.value.findIndex(r => r.testcaseId === id);
+    if (idx >= 0) {
+        midsceneResults.value[idx] = { ...midsceneResults.value[idx], ...data };
+    } else {
+        const tc = midsceneParsedCases.value.find(c => c.id === id);
+        midsceneResults.value.push({
+            testcaseId: id,
+            testcaseName: tc?.name || id,
+            status: 'pending',
+            ...data,
+        } as any);
+    }
+};
+
+// Computed: results summary
+const midscenePassedCount = computed(() => midsceneResults.value.filter(r => r.status === 'passed').length);
+const midsceneFailedCount = computed(() => midsceneResults.value.filter(r => r.status === 'failed').length);
+const midsceneTotalDuration = computed(() => {
+    const total = midsceneResults.value.reduce((sum, r) => sum + (r.durationMs || 0), 0);
+    return total > 0 ? (total / 1000).toFixed(1) : '';
+});
+
+/**
+ * 创建统一的混合模式 SSE 事件处理函数
+ * 消除混合模式执行、回归降级执行之间的事件处理代码重复
+ */
+const createMixedModeEventHandler = (
+    tc: MidsceneTestCase,
+    opts: {
+        timelinePrefix?: string;
+        parentCardId?: string;
+        autoSaveBaseline?: boolean;
+    } = {},
+) => {
+    const prefix = opts.timelinePrefix || 'mixed';
+    const parentId = opts.parentCardId || `${tc.id}-${prefix}`;
+    const autoSave = opts.autoSaveBaseline !== false;
+
+    return (event: string, data: any) => {
+        if (event === 'step_start') {
+            // 使用后端推断的真实类型，并映射友好标签
+            const realType = data.type || 'aiAct';
+            const typeInfo = stepTypeMap[realType] || stepTypeMap['aiAct'];
+            midsceneTimeline.value.push({
+                id: `${tc.id}-step-${data.stepIndex}`,
+                type: realType as TimelineCard['type'],
+                description: `[${typeInfo.label}] ${data.original || data.description}`,
+                status: 'running',
+            });
+        } else if (event === 'step_progress') {
+            // 长时间 aiAct 操作的中间进度更新
+            const card = midsceneTimeline.value.find(t => t.id === `${tc.id}-step-${data.stepIndex}`);
+            if (card) {
+                card.description = `[AI执行中] ${data.message || card.description}`;
+            }
+        } else if (event === 'step_done') {
+            instantStepResults.value.push(data);
+            const card = midsceneTimeline.value.find(t => t.id === `${tc.id}-step-${data.stepIndex}`);
+            if (card) {
+                card.status = data.success ? 'success' : 'failed';
+                card.durationMs = data.durationMs;
+                if (data.error) card.error = data.error;
+            }
+        } else if (event === 'step_fallback') {
+            addMessage('ai', `步骤 ${data.stepIndex + 1}: ${data.message}`);
+        } else if (event === 'assert_done') {
+            midsceneTimeline.value.push({
+                id: `${tc.id}-assert-${data.assertIndex}`,
+                type: 'aiAssert',
+                description: data.expected,
+                status: data.success ? 'success' : 'failed',
+                error: data.reason,
+            });
+        } else if (event === 'done') {
+            const parentCard = midsceneTimeline.value.find(t => t.id === parentId);
+            if (parentCard) {
+                parentCard.status = data.status === 'passed' ? 'success' : 'failed';
+                parentCard.durationMs = data.durationMs;
+            }
+            updateCaseResult(tc.id, {
+                status: data.status === 'passed' ? 'passed' : 'failed',
+                durationMs: data.durationMs,
+            });
+            if (data.status === 'passed') {
+                const stepInfo = `${data.passedSteps || '?'}/${data.totalSteps || '?'} 步`;
+                if (autoSave && data.regressionYaml) {
+                    getCurrentTabUrl().then(url => {
+                        saveRegressionBaseline({
+                            caseId: tc.id,
+                            caseName: tc.name,
+                            url: url || '',
+                            yamlContent: data.regressionYaml,
+                        }).then(() => {
+                            addMessage('ai', `✓ 执行通过 (${stepInfo})，已自动保存回归基线`);
+                            loadRegressionBaselines();
+                        }).catch((saveErr: any) => {
+                            addMessage('ai', `✓ 执行通过 (${stepInfo})，保存基线失败: ${saveErr.message}`);
+                        });
+                    });
+                } else if (!autoSave) {
+                    addMessage('ai', `✓ 回归执行通过 (${stepInfo})`);
+                } else {
+                    addMessage('ai', `✓ 执行通过 (${stepInfo})，未生成回归基线`);
+                }
+            }
+        } else if (event === 'error') {
+            updateCaseResult(tc.id, { status: 'error' });
+            addMessage('ai', `执行出错: ${data.message}`);
+        }
+    };
+};
+
+// Execute single case（signal 参数用于外部取消请求）
+const runSingleCase = async (tc: MidsceneTestCase, signal?: AbortSignal) => {
+    const currentUrl = await getCurrentTabUrl();
+    if (!currentUrl) {
+        addMessage('ai', '请先打开一个页面');
+        return;
+    }
+
+    midsceneCurrentCase.value = tc.name;
+    midsceneSelectedCaseId.value = tc.id;
+    updateCaseResult(tc.id, { status: 'running' });
+
+    // Clear timeline for this case
+    midsceneTimeline.value = [];
+    instantStepResults.value = [];
+
+    const mode = midsceneExecutionMode.value;
+
+    // ★ 混合模式：逐步即时操作执行
+    if (mode === 'mixed' && tc.steps && tc.steps.length > 0) {
+        // 智能路由：检查步骤是否包含具体操作动词
+        // 如果全是场景描述（如"通过文本输入框提交数学问题"），自动路由到自由模式引擎（更快）
+        const actionPattern = /点击|click|tap|输入|input|type|fill|选择|select|滚动|scroll|悬停|hover|双击|右键|按键|press|拖拽|drag|上传|upload|等待|wait|切换|switch|打开|open|关闭|close|勾选|check|取消勾选|uncheck/i;
+        const hasActionableSteps = tc.steps.some((s: string) => actionPattern.test(s));
+
+        if (!hasActionableSteps) {
+            // 步骤全是场景描述，跳过混合模式，落入下方自由模式执行路径
+            console.log(`[smart-route] 步骤无具体操作动词，智能路由到自由模式引擎: ${tc.name}`);
+            addMessage('ai', `⚡ 智能路由: 步骤为场景描述，自动使用自由模式引擎执行（更快）`);
+        } else {
+            // 有具体操作步骤 → 正常走混合模式
+            midsceneTimeline.value.push({
+                id: `${tc.id}-mixed`,
+                type: 'aiAct',
+                description: `[混合模式] ${tc.scenario}`,
+                status: 'running',
+            });
+            try {
+                await midsceneRunInstantStream(
+                    {
+                        url: currentUrl,
+                        rawSteps: tc.steps,
+                        assertions: tc.expectedResults,
+                        caseId: tc.id,
+                        caseName: tc.name,
+                        options: {
+                            useCDP: !isHeadlessMode.value,
+                            headless: isHeadlessMode.value,
+                            cache: midsceneCacheStrategy.value !== 'false'
+                                ? { strategy: midsceneCacheStrategy.value, id: tc.id }
+                                : undefined,
+                        },
+                    },
+                    createMixedModeEventHandler(tc, {
+                        timelinePrefix: 'mixed',
+                        parentCardId: `${tc.id}-mixed`,
+                        autoSaveBaseline: true,
+                    }),
+                    signal,
+                );
+            } catch (e: any) {
+                if (e.name !== 'AbortError') {
+                    updateCaseResult(tc.id, { status: 'error' });
+                }
+            }
+            refreshMidsceneReport();
+            return;
+        }
+    }
+
+    // ★ 回归模式：从基线执行，无基线时自动降级为混合模式
+    if (mode === 'regression') {
+        // 先查找是否有匹配的回归基线
+        let baseline: any = null;
+        try {
+            const baselines = await listRegressionBaselines();
+            baseline = baselines.baselines.find(b => b.caseId === tc.id);
+        } catch (e: any) {
+            console.warn(`[regression] 查询基线失败: ${e.message}`);
+        }
+
+        if (baseline) {
+            // 有基线 → 解析 YAML 步骤后用 run-instant/stream 执行（步骤级进度）
+            let baselineDetail: any = null;
+            try {
+                baselineDetail = await getRegressionBaseline(baseline.id);
+            } catch (e: any) {
+                console.warn(`[regression] 获取基线详情失败: ${e?.message}`);
+            }
+
+            // 判断基线步骤质量：全是 aiAct+confidence=0 说明是粗粒度场景描述，不适合走 run-instant
+            const parsedSteps = baselineDetail?.parsed?.steps || [];
+            const hasQualitySteps = parsedSteps.length > 0 &&
+                !parsedSteps.every((s: any) => s.type === 'aiAct' && (s.confidence === 0 || s.confidence === undefined));
+
+            if (hasQualitySteps) {
+                // 有高质量步骤 → 使用混合模式 SSE 执行
+                midsceneTimeline.value.push({
+                    id: `${tc.id}-reg`,
+                    type: 'aiAct',
+                    description: `[回归模式] ${tc.name}`,
+                    status: 'running',
+                });
+                try {
+                    await midsceneRunInstantStream(
+                        {
+                            url: baselineDetail.parsed.url || currentUrl,
+                            steps: baselineDetail.parsed.steps,
+                            assertions: baselineDetail.parsed.assertions,
+                            caseId: tc.id,
+                            caseName: tc.name,
+                            options: {
+                                useCDP: !isHeadlessMode.value,
+                                headless: isHeadlessMode.value,
+                                cache: { strategy: 'read-only', id: tc.id },
+                            },
+                        },
+                        createMixedModeEventHandler(tc, {
+                            timelinePrefix: 'reg',
+                            parentCardId: `${tc.id}-reg`,
+                            autoSaveBaseline: false,
+                        }),
+                        signal,
+                    );
+                    // 更新基线执行状态
+                    try {
+                        await fetch(`${(window as any).__MIDSCENE_SIDECAR_URL || 'http://localhost:3100'}/regression/${baseline.id}/update-run-status`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ status: caseResults.value[tc.id]?.status === 'passed' ? 'passed' : 'failed' }),
+                        });
+                    } catch {}
+                } catch (e: any) {
+                    if (e.name !== 'AbortError') {
+                        updateCaseResult(tc.id, { status: 'error' });
+                        addMessage('ai', `回归执行失败: ${e.message}`);
+                    }
+                }
+                refreshMidsceneReport();
+                return;
+            }
+
+            // 基线无法解析步骤时，降级为 runYaml
+            midsceneTimeline.value.push({
+                id: `${tc.id}-reg`,
+                type: 'aiAct',
+                description: `[回归模式] ${tc.name}`,
+                status: 'running',
+            });
+            try {
+                const result = await midsceneRunYaml({
+                    regressionId: baseline.id,
+                    options: {
+                        useCDP: !isHeadlessMode.value,
+                        headless: isHeadlessMode.value,
+                        cacheStrategy: 'read-only',
+                    },
+                });
+                const regCard = midsceneTimeline.value.find(t => t.id === `${tc.id}-reg`);
+                if (regCard) {
+                    regCard.status = result.status === 'passed' ? 'success' : 'failed';
+                    regCard.durationMs = result.durationMs;
+                }
+                updateCaseResult(tc.id, {
+                    status: result.status === 'passed' ? 'passed' : 'failed',
+                    durationMs: result.durationMs,
+                });
+            } catch (e: any) {
+                if (e.name !== 'AbortError') {
+                    updateCaseResult(tc.id, { status: 'error' });
+                    addMessage('ai', `回归执行失败: ${e.message}`);
+                }
+            }
+            refreshMidsceneReport();
+            return;
+        }
+
+        // 无基线 → 自动降级为混合模式执行，成功后自动保存基线
+        addMessage('ai', `用例 ${tc.id} 暂无回归基线，自动降级为混合模式执行。成功后将自动保存为基线。`);
+        if (tc.steps && tc.steps.length > 0) {
+            midsceneTimeline.value.push({
+                id: `${tc.id}-mixed-fallback`,
+                type: 'aiAct',
+                description: `[回归降级→混合模式] ${tc.scenario}`,
+                status: 'running',
+            });
+            try {
+                await midsceneRunInstantStream(
+                    {
+                        url: currentUrl,
+                        rawSteps: tc.steps,
+                        assertions: tc.expectedResults,
+                        caseId: tc.id,
+                        caseName: tc.name,
+                        options: {
+                            useCDP: !isHeadlessMode.value,
+                            headless: isHeadlessMode.value,
+                            cache: midsceneCacheStrategy.value !== 'false'
+                                ? { strategy: midsceneCacheStrategy.value, id: tc.id }
+                                : undefined,
+                        },
+                    },
+                    createMixedModeEventHandler(tc, {
+                        timelinePrefix: 'mixed-fallback',
+                        parentCardId: `${tc.id}-mixed-fallback`,
+                        autoSaveBaseline: true,
+                    }),
+                    signal,
+                );
+            } catch (e: any) {
+                if (e.name !== 'AbortError') {
+                    updateCaseResult(tc.id, { status: 'error' });
+                }
+            }
+            refreshMidsceneReport();
+            return;
+        }
+
+        // 无基线且无步骤 → 降级为自由模式
+        addMessage('ai', `用例 ${tc.id} 无回归基线且无步骤定义，降级为自由模式执行`);
+        // 不 return，继续向下走自由模式逻辑
+    }
+
+    // ★ 自由模式（默认）：整段 scenario 丢给 aiAct，传 steps 供自动降级
+
+    // Add timeline card for this case
+    midsceneTimeline.value.push({
+        id: `${tc.id}-act`,
+        type: 'aiAct',
+        description: tc.scenario,
+        status: 'running',
+    });
+
+    try {
+        const result = await midsceneAgent({
+            sessionId: midsceneSessionId.value,
+            url: currentUrl,
+            testCases: [{
+                ...tc,
+                // ★ 传入独立步骤列表，供自由模式失败后自动降级
+                steps: tc.steps,
+            }],
+            headless: isHeadlessMode.value,
+            useCDP: !isHeadlessMode.value,
+            cacheStrategy: midsceneCacheStrategy.value,
+            signal,
+        });
+
+        // Update timeline card
+        const actCard = midsceneTimeline.value.find(t => t.id === `${tc.id}-act`);
+
+        if (result.status === 'success' && result.midsceneResult) {
+            const mr = result.midsceneResult;
+
+            // Update act card
+            if (actCard) {
+                actCard.status = mr.results?.steps?.[0]?.success !== false ? 'success' : 'failed';
+                actCard.durationMs = mr.durationMs;
+            }
+
+            // Add assertion cards
+            if (mr.results?.assertions) {
+                for (const a of mr.results.assertions) {
+                    midsceneTimeline.value.push({
+                        id: `${tc.id}-assert-${midsceneTimeline.value.length}`,
+                        type: 'aiAssert',
+                        description: a.expected,
+                        status: a.success ? 'success' : 'failed',
+                        error: a.reason,
+                    });
+                }
+            }
+
+            // 从报告路径提取文件名，构建报告 URL
+            let caseReportUrl: string | undefined;
+            const reportFilePath = mr.report?.filePath || result.report?.filePath;
+            if (reportFilePath) {
+                const fileName = reportFilePath.split('/').pop() || reportFilePath.split('\\').pop();
+                if (fileName) {
+                    caseReportUrl = `http://localhost:3100/report/${fileName}`;
+                }
+            }
+
+            updateCaseResult(tc.id, {
+                status: mr.status === 'passed' ? 'passed' : 'failed',
+                durationMs: mr.durationMs,
+                assertions: mr.results?.assertions,
+                reportUrl: caseReportUrl,
+            });
+
+            // 自由模式成功后，尝试保存回归基线
+            if (mr.status === 'passed') {
+                if (mr.regressionYaml) {
+                    try {
+                        await saveRegressionBaseline({
+                            yamlContent: mr.regressionYaml,
+                            caseId: tc.id,
+                            caseName: tc.name,
+                            url: currentUrl,
+                        } as any);
+                        addMessage('ai', `✓ 执行通过，已自动保存回归基线 (可在设置→基线管理中查看)`);
+                        loadRegressionBaselines();
+                    } catch (saveErr: any) {
+                        console.warn('[free-mode] 保存基线失败:', saveErr.message);
+                        addMessage('ai', `✓ 执行通过。保存基线失败: ${saveErr.message}`);
+                    }
+                } else if (!tc.steps || tc.steps.length === 0) {
+                    addMessage('ai', `✓ 执行通过。该用例无细化步骤，未生成回归基线。如需回归能力，请在用例中添加具体步骤。`);
+                } else {
+                    addMessage('ai', `✓ 执行通过。步骤粒度不足，未生成回归基线。请提供更详细的步骤（如"点击X"、"输入Y"）。`);
+                }
+            }
+        } else {
+            if (actCard) actCard.status = 'failed';
+            updateCaseResult(tc.id, { status: 'error' });
+        }
+    } catch (e: any) {
+        // 用户主动停止时 fetch 会抛出 AbortError，标记为已停止而非错误
+        const isAborted = e.name === 'AbortError';
+        console.error('runSingleCase error:', isAborted ? '(用户停止)' : e);
+        updateCaseResult(tc.id, { status: isAborted ? 'pending' : 'error' });
+        const actCard = midsceneTimeline.value.find(t => t.id === `${tc.id}-act`);
+        if (actCard) {
+            actCard.status = 'failed';
+            actCard.error = isAborted ? '已停止' : e.message;
+        }
+    }
+
+    refreshMidsceneReport();
+};
+
+// Single case execution (from play button)
+const runOneCaseOnly = async (tc: MidsceneTestCase) => {
+    midsceneTimeline.value = [];
+    midsceneResults.value = [];
+    midsceneReportUrl.value = '';
+    midsceneReportUrls.value = [];
+    midsceneExecuting.value = true;
+
+    // 创建 AbortController，支持单条执行也能被停止
+    const controller = new AbortController();
+    midsceneAbortController.value = controller;
+
+    await runSingleCase(tc, controller.signal);
+
+    midsceneAbortController.value = null;
+    midsceneExecuting.value = false;
+
+    // 获取 HTML 报告链接
+    try {
+        const reports = await listMidsceneReports();
+        if (reports.length > 0) {
+            midsceneReportUrl.value = `http://localhost:3100/report/${reports[0].name}`;
+        }
+    } catch {
+        console.warn('[runOneCaseOnly] 获取报告列表失败');
+    }
+
+    // 添加完成消息
+    const result = midsceneResults.value.find(r => r.testcaseId === tc.id);
+    const statusText = result?.status === 'passed' ? '通过' : result?.status === 'failed' ? '失败' : '出错';
+    const durationInfo = result?.durationMs ? ` | 耗时 ${(result.durationMs / 1000).toFixed(1)}s` : '';
+    addMessage('ai', `**执行完成** | ${tc.name}: ${statusText}${durationInfo}${midsceneReportUrl.value ? ' | 可查看 HTML 可视化报告' : ''}`);
+
+    // 切换到结果视图
+    midsceneViewType.value = 'results';
+    rightPanelTab.value = 'midscene';
+};
+
+// Batch execute selected cases
+const runSelectedCases = async () => {
+    const selectedCases = midsceneParsedCases.value
+        .filter(tc => midsceneSelectedCases.value.has(tc.id));
+
+    if (selectedCases.length === 0) return;
+
+    // Reset results and session for new batch run
+    midsceneResults.value = [];
+    midsceneTimeline.value = [];
+    midsceneReportUrl.value = '';
+    midsceneReportUrls.value = [];
+    midsceneSessionId.value = `midscene-session-${Date.now()}`;
+    midsceneExecuting.value = true;  // ★ Must set BEFORE loop
+
+    addMessage('ai', `**开始执行 ${selectedCases.length} 条测试用例...**`);
+
+    for (const tc of selectedCases) {
+        if (!midsceneExecuting.value) break;  // 停止按钮已按下，不再执行后续用例
+
+        // 每个用例创建独立的 AbortController，停止时可立即取消当前请求
+        const controller = new AbortController();
+        midsceneAbortController.value = controller;
+
+        await runSingleCase(tc, controller.signal);
+
+        midsceneAbortController.value = null;
+
+        // runSingleCase 完成后再次检查，处理在执行期间按下停止的情况
+        if (!midsceneExecuting.value) break;
+    }
+
+    midsceneExecuting.value = false;
+    midsceneAbortController.value = null;
+
+    // 收集本次批量执行中每条用例的报告 URL
+    midsceneReportUrls.value = midsceneResults.value
+        .filter(r => r.reportUrl)
+        .map(r => ({ testcaseId: r.testcaseId, testcaseName: r.testcaseName, url: r.reportUrl! }));
+
+    // 取最新一条作为默认报告 URL（兼容旧逻辑）
+    if (midsceneReportUrls.value.length > 0) {
+        midsceneReportUrl.value = midsceneReportUrls.value[midsceneReportUrls.value.length - 1].url;
+    } else {
+        // 降级：从 sidecar 报告列表中获取
+        try {
+            const reports = await listMidsceneReports();
+            if (reports.length > 0) {
+                midsceneReportUrl.value = `http://localhost:3100/report/${reports[0].name}`;
+            }
+        } catch {}
+    }
+
+    const passed = midscenePassedCount.value;
+    const total = midsceneResults.value.length;
+    const reportCount = midsceneReportUrls.value.length;
+    const stopped = !midsceneResults.value.every(r => r.status !== 'pending');
+    addMessage('ai', `**执行${stopped ? '已停止' : '完成'}** | ${passed}/${total} 通过${reportCount > 0 ? ` | ${reportCount} 份 HTML 可视化报告` : ''}`);
+    midsceneViewType.value = 'results';
+    rightPanelTab.value = 'midscene';
+};
+
+// Build Markdown report from results
+const refreshMidsceneReport = () => {
+    if (midsceneResults.value.length === 0) return;
+
+    let md = `## Midscene 测试报告\n\n`;
+    md += `**通过:** ${midscenePassedCount.value} | **失败:** ${midsceneFailedCount.value} | **总计:** ${midsceneResults.value.length}`;
+    if (midsceneTotalDuration.value) md += ` | **耗时:** ${midsceneTotalDuration.value}s`;
+    md += `\n\n`;
+
+    md += `| # | 用例 | 状态 | 耗时 | 断言 |\n`;
+    md += `|---|------|------|------|------|\n`;
+    for (const r of midsceneResults.value) {
+        const statusIcon = r.status === 'passed' ? 'PASS' : r.status === 'failed' ? 'FAIL' : r.status === 'running' ? '...' : r.status;
+        const dur = r.durationMs ? `${(r.durationMs / 1000).toFixed(1)}s` : '-';
+        const assertInfo = r.assertions ? `${r.assertions.filter(a => a.success).length}/${r.assertions.length}` : '-';
+        md += `| ${r.testcaseId} | ${r.testcaseName} | ${statusIcon} | ${dur} | ${assertInfo} |\n`;
+    }
+
+    // Detailed assertion results for failed cases
+    const failedResults = midsceneResults.value.filter(r => r.status === 'failed' && r.assertions?.length);
+    if (failedResults.length > 0) {
+        md += `\n### 失败详情\n\n`;
+        for (const r of failedResults) {
+            md += `**${r.testcaseName}:**\n`;
+            for (const a of (r.assertions || [])) {
+                md += `- ${a.success ? 'PASS' : 'FAIL'} ${a.expected}${a.reason ? ` (${a.reason})` : ''}\n`;
+            }
+            md += '\n';
+        }
+    }
+
+    projectState.documents.midsceneReport = md;
+};
+
+// ★ Smart Command — 智能路由，任意 Step 可用
+const sendMidsceneSmartCommand = async (userInput: string) => {
+    if (!userInput || isProcessing.value) return;
+
+    addMessage('user', userInput);
+    isProcessing.value = true;
+    statusText.value = 'AI 分析意图中...';
+
+    // 1. Get current tab info + screenshot
+    const currentUrl = await getCurrentTabUrl();
+    let screenshot: string | undefined;
+    try {
+        screenshot = await browser.tabs.captureVisibleTab(undefined, { format: 'png' });
+    } catch {}
+
+    try {
+        // 2. Call smart router
+        const result = await midsceneAgentSmart({
+            sessionId: midsceneSessionId.value,
+            instruction: userInput,
+            url: currentUrl,
+            screenshot,
+            outputFormat: testCaseOutputFormat.value,
+        });
+
+        // 3. Route based on intent
+        if (result.type === 'cases_generated' && result.cases) {
+            // Store formatted text for Step 4 display
+            projectState.documents.testCases = result.formattedCases || JSON.stringify(result.cases, null, 2);
+            // ★ Also directly store parsed cases for Midscene Step 5 (bypass parser)
+            midsceneParsedCases.value = result.cases.map((c: any, i: number) => ({
+                id: c.id || `TC-${String(i + 1).padStart(3, '0')}`,
+                name: c.name || '',
+                scenario: c.scenario || '',
+                expectedResults: c.expectedResults || [],
+                preconditions: c.preconditions || '',
+                priority: c.priority || '',
+            }));
+            midsceneSelectedCases.value = new Set(midsceneParsedCases.value.map(c => c.id));
+            projectState.documents.midsceneCasesJson = JSON.stringify(midsceneParsedCases.value, null, 2);
+
+            projectState.currentStep = 'test_case';
+            viewMode.value = 'preview';
+            // 智能命名：基于 URL 或用户输入
+            autoNameTestCases({ url: currentUrl, instruction: userInput });
+            addMessage('ai', `已生成 ${result.cases.length} 条测试用例，已跳转到「用例」步骤`);
+        } else if (result.type === 'execute') {
+            // Jump to Step 5
+            projectState.currentStep = 'auto_test';
+            await initMidsceneView();
+            addMessage('ai', result.response || '已切换到自动化测试步骤');
+        } else if (result.type === 'analysis') {
+            addMessage('ai', result.response);
+        } else if (result.type === 'free_action') {
+            // Execute via aiAct (CDP)
+            projectState.currentStep = 'auto_test';
+            statusText.value = 'Midscene 执行操作中...';
+            const execResult = await midsceneAgent({
+                sessionId: midsceneSessionId.value,
+                instruction: result.response || userInput,
+                url: currentUrl,
+                headless: false,
+                useCDP: true,
+            });
+            if (execResult.status === 'success') {
+                addMessage('ai', `**操作完成**: ${execResult.response}`);
+            } else {
+                addMessage('ai', `**操作失败**: ${execResult.response}`);
+            }
+        } else if (result.type === 'passthrough') {
+            // Fall through to original agent
+            const frozenSelected = [...selectedRefDocs.value];
+            const frozenAdditionalPrds = buildAdditionalPrdsForRequest({
+                selected: frozenSelected,
+                pickedOnce: pendingAdditionalPrds.value,
+            });
+            await sendQaAskMessage({ selected: frozenSelected, additionalPrds: frozenAdditionalPrds });
+        } else {
+            addMessage('ai', result.response || 'Unknown response');
+        }
+    } catch (e: any) {
+        addMessage('ai', `**Smart router 连接失败:** ${e.message}`);
+    } finally {
+        isProcessing.value = false;
+        statusText.value = '';
+    }
+};
+
+// Freeform mode handler (legacy, kept for direct Midscene execution)
+const sendMidsceneFreeform = async (userInput: string) => {
+    if (!userInput || isProcessing.value) return;
+    const currentUrl = await getCurrentTabUrl();
+
+    addMessage('user', userInput);
+    isProcessing.value = true;
+    statusText.value = 'Midscene VLM 执行中...';
+
+    try {
+        const result = await midsceneAgent({
+            sessionId: midsceneSessionId.value,
+            instruction: userInput,
+            url: currentUrl,
+            headless: isHeadlessMode.value,
+        });
+
+        if (result.status === 'success') {
+            if (result.type === 'report_generated') {
+                const mr = result.midsceneResult;
+                const assertions = mr?.results?.assertions || [];
+                const passed = assertions.filter((a: any) => a.success).length;
+                const total = assertions.length;
+                addMessage('ai', `**Midscene 执行完成** | ${mr?.status} | ${passed}/${total} 断言通过\n\n${result.response}`);
+            } else {
+                addMessage('ai', result.response);
+            }
+        } else {
+            addMessage('ai', `**Midscene 执行失败**\n\n${result.response}`);
+        }
+    } catch (e: any) {
+        addMessage('ai', `**Midscene 连接失败:** ${e.message}`);
+    } finally {
+        isProcessing.value = false;
+        statusText.value = '';
+    }
+};
+
+// Open HTML report in new tab
+const openMidsceneHtmlReport = async () => {
+    if (midsceneReportUrl.value) {
+        await browser.tabs.create({ url: midsceneReportUrl.value });
+    } else {
+        try {
+            const reports = await listMidsceneReports();
+            if (reports.length > 0) {
+                const url = `http://localhost:3100/report/${reports[0].name}`;
+                midsceneReportUrl.value = url;
+                await browser.tabs.create({ url });
+            } else {
+                addMessage('ai', '暂无 Midscene HTML 报告。请先执行测试用例。');
+            }
+        } catch {
+            addMessage('ai', 'Midscene Sidecar 未运行，无法获取报告。');
+        }
+    }
+};
+
+// 打开指定 URL 的报告
+const openReportByUrl = async (url: string) => {
+    try {
+        await browser.tabs.create({ url });
+    } catch (e: any) {
+        console.error('打开报告失败:', e);
+    }
+};
+
+// 打开所有报告（批量执行时用）
+const openAllReports = async () => {
+    for (const rpt of midsceneReportUrls.value) {
+        try {
+            await browser.tabs.create({ url: rpt.url });
+        } catch {}
+    }
+};
+
+// Export Midscene results
+const exportMidsceneResults = () => {
+    if (!projectState.documents.midsceneReport) return;
+    const blob = new Blob([projectState.documents.midsceneReport], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Midscene测试报告_${new Date().toISOString().slice(0,10)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+};
+
+// 将 Markdown 表格转换为 CSV
+const markdownTableToCsv = (markdown: string): string => {
+  const lines = markdown.split('\n');
+  const csvRows: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // 跳过空行和分隔行（如 |---|---|）
+    if (!trimmed || /^\|[-:\s|]+\|$/.test(trimmed)) continue;
+    // 检测是否是表格行
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      // 解析表格单元格
+      const cells = trimmed
+        .slice(1, -1) // 去掉首尾的 |
+        .split('|')
+        .map(cell => {
+          // 处理 CSV 特殊字符：包含逗号、引号、换行的需要用引号包裹
+          const cleaned = cell.trim().replace(/"/g, '""');
+          return cleaned.includes(',') || cleaned.includes('"') || cleaned.includes('\n')
+            ? `"${cleaned}"`
+            : cleaned;
+        });
+      csvRows.push(cells.join(','));
+    }
+  }
+
+  // 添加 BOM 以支持 Excel 中文显示
+  return '\uFEFF' + csvRows.join('\n');
+};
+
+// ================= 质量评估 =================
+const runQualityEvaluation = async () => {
+  const testcasesText = projectState.documents.testCases;
+  if (!testcasesText) {
+    addMessage('ai', '⚠️ 暂无测试用例，请先生成测试用例后再进行质量评估');
+    return;
+  }
+
+  qualityLoading.value = true;
+  qualityError.value = '';
+  qualityReport.value = null;
+  rightPanelTab.value = 'quality';
+
+  try {
+    // 收集 PRD 文本：优先内存 → 再尝试从 DocStore 获取
+    let prdText = projectState.documents.optimizedPrd || projectState.documents.prd || '';
+
+    if (!prdText) {
+      // 内存中没有 PRD，尝试从 DocStore 获取上传的主文档内容
+      // 查找顺序：优化PRD → 上传的PDF/图片 → URL提取的主文档
+      const prdDocRef = generatedDocRefs.optimizedPrd
+        || generatedDocRefs.uploadedPrd
+        || urlDocs.value.find(d => d.isMainPrd && (d as any).docRef)
+        || null;
+
+      const docId = prdDocRef
+        ? ((prdDocRef as any).docId || (prdDocRef as any).docRef?.docId)
+        : null;
+
+      if (docId) {
+        try {
+          const docRes = await getDocContent(docId);
+          if (docRes.status === 'success' && docRes.content) {
+            prdText = docRes.content;
+          }
+        } catch (e) {
+          console.warn('[runQualityEvaluation] 从 DocStore 获取 PRD 失败:', e);
+        }
+      }
+    }
+
+    if (!prdText) {
+      prdText = '（无 PRD 文档，仅评估用例自身质量）';
+    }
+
+    const report = await evaluateTestCases(prdText, testcasesText);
+    qualityReport.value = report;
+    addMessage('ai', `✅ 质量评估完成，综合评分：${report.score} 分。请在右侧「质量评估」面板查看详细报告。`);
+  } catch (e: any) {
+    qualityError.value = e?.message || '评估失败';
+    addMessage('ai', `❌ 质量评估失败：${e?.message || '未知错误'}`);
+  } finally {
+    qualityLoading.value = false;
+  }
+};
+
+// 根据评估反馈补充用例
+const handleSupplementFromEvaluation = async (report: EvaluationReport) => {
+  const parts: string[] = [];
+  parts.push('请根据以下质量评估反馈，在现有测试用例基础上补充完善（保留全部原有用例，仅在末尾新增缺失的测试用例）：\n');
+
+  if (report.coverage_gap.length > 0) {
+    parts.push(`【漏测点】（共 ${report.coverage_gap.length} 项）`);
+    report.coverage_gap.forEach(g => parts.push(`- ${g}`));
+    parts.push('');
+  }
+  if (report.logic_issues.length > 0) {
+    parts.push(`【逻辑问题】（共 ${report.logic_issues.length} 项）`);
+    report.logic_issues.forEach(i => {
+      const sev: Record<string, string> = { high: '高', medium: '中', low: '低' };
+      parts.push(`- [${sev[i.severity] || i.severity}] ${i.issue}`);
+    });
+    parts.push('');
+  }
+  if (report.suggestions.length > 0) {
+    parts.push(`【改进建议】（共 ${report.suggestions.length} 项）`);
+    report.suggestions.forEach(s => parts.push(`- ${s}`));
+    parts.push('');
+  }
+
+  unifiedInput.value = parts.join('\n');
+  projectState.currentStep = 'test_case';
+  rightPanelTab.value = 'docs';
+
+  await sendUnifiedMessage();
+};
+
 const exportResults = () => {
-  const blob = new Blob([projectState.documents.testCases], { type: 'text/markdown' });
+  const content = projectState.documents.testCases;
+  const timestamp = new Date().toISOString().slice(0, 10);
+  let blob: Blob;
+  let filename: string;
+  let message: string;
+
+  switch (testCaseOutputFormat.value) {
+    case 'table':
+      // 表格格式导出为 CSV
+      const csvContent = markdownTableToCsv(content);
+      blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+      filename = `测试用例_${timestamp}.csv`;
+      message = '📥 CSV 文件已下载，可直接导入 Excel/飞书表格。';
+      break;
+    case 'yaml':
+      // YAML 格式导出为 .yaml 文件
+      // 提取 yaml 代码块内容（如果有的话）
+      const yamlMatch = content.match(/```ya?ml\n([\s\S]*?)```/);
+      const yamlContent = yamlMatch ? yamlMatch[1] : content;
+      blob = new Blob([yamlContent], { type: 'text/yaml;charset=utf-8' });
+      filename = `测试用例_${timestamp}.yaml`;
+      message = '📥 YAML 文件已下载。';
+      break;
+    default:
+      // XMind 格式导出为 Markdown
+      blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+      filename = `测试用例_${timestamp}.md`;
+      message = '📥 Markdown 文件已下载，可导入 XMind。';
+  }
+
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `solvely-test-cases-${Date.now()}.md`;
+  a.download = filename;
   a.click();
-  addMessage('ai', '文件已下载。');
+  URL.revokeObjectURL(url);
+  addMessage('ai', message);
 };
 
 const openFeishu = () => {
@@ -5264,14 +8323,16 @@ const extractContentFromUrlWithFullAnalysis = async (url: string): Promise<Extra
             await browser.tabs.sendMessage(tabId, { type: 'RESTORE_PAGE_AFTER_SCREENSHOT' });
         }
         
-        // 5. 合并 DOM 片段
-        statusText.value = "正在合并文本...";
+        // 5. 合并 DOM 片段（先下载图片上传 CDN，再用 CDN URL 替换占位符，最后合并）
+        statusText.value = "正在处理图片...";
+        const replacedSegments = await processAndReplaceImages(domSegments, (done, total) => {
+            statusText.value = `正在处理图片 ${done}/${total}...`;
+        });
         let fullDOM = '';
-
-        for (const seg of domSegments) {
-            fullDOM = mergeTextSegments(fullDOM, seg.markdown);
+        for (const replaced of replacedSegments) {
+            fullDOM = mergeTextSegments(fullDOM, replaced);
         }
-        
+
         // 7. 处理截图拼接（分组拼接，每10张一组）
         statusText.value = "正在处理截图...";
         let stitchedScreenshots: string[] = [];
@@ -5669,6 +8730,7 @@ const sendTestCaseAgentMessage = async (frozenSelected?: RefDoc[], frozenAdditio
                 sessionId: `url-testcase-${Date.now()}`,
                 instruction: userInput, // 输入框文字作为 instruction（后端会放进 [补充说明]）
                 additionalPrds: additionalPrdParams,
+                outputFormat: testCaseOutputFormat.value,
                 params: {
                     text: askText,
                     pictureKeyList: extractResult.cdnUrls || (extractResult.cdnUrl ? [extractResult.cdnUrl] : []),  // 携带截图 CDN URL 列表
@@ -5686,6 +8748,8 @@ const sendTestCaseAgentMessage = async (frozenSelected?: RefDoc[], frozenAdditio
                 viewMode.value = 'preview';
                 activeRightTab.value = 'main';
                 activeMainDocType.value = 'testCases';  // 切换到测试用例Tab
+                // 智能命名：基于目标 URL
+                autoNameTestCases({ url: targetUrl, instruction: userInput });
                 
                 addMessage('ai', `🎉 **测试用例已生成！**\n\n已完成全页分析（截图+图片入库），右侧已渲染思维导图，共 ${aiRes.answer.length} 字符。`);
             } else {
@@ -5802,7 +8866,7 @@ const reset = async () => {
       
       // 重置状态
       projectState.currentStep = '';
-      projectState.documents = { prd: '', optimizedPrd: '', testPoints: '', testCases: '', uiPlan: '', uiReport: '', uiPlanJson: '' };
+      projectState.documents = { prd: '', optimizedPrd: '', testPoints: '', testCases: '', uiPlan: '', uiReport: '', uiPlanJson: '', midsceneReport: '', midsceneCasesJson: '' };
       projectState.assets = { screenshotUrl: '', domMarkdown: '', cdnUrl: '', cdnUrls: [], sessionId: '' };
       messages.value = [];
       projectState.inputs.figmaUrl = '';
@@ -5815,6 +8879,22 @@ const reset = async () => {
       cachedTestPoints.value = '';
       cachedTestCases.value = '';
       uiViewType.value = 'plan';
+
+      // Reset Midscene state（如果正在执行，先停止）
+      if (midsceneAbortController.value) {
+          midsceneAbortController.value.abort();
+          midsceneAbortController.value = null;
+      }
+      midsceneSessionId.value = `midscene-session-${Date.now()}`;
+      midsceneParsedCases.value = [];
+      midsceneSelectedCases.value = new Set();
+      midsceneResults.value = [];
+      midsceneTimeline.value = [];
+      midsceneReportUrl.value = '';
+      midsceneReportUrls.value = [];
+      midsceneExecuting.value = false;
+      midsceneSelectedCaseId.value = '';
+      rightPanelTab.value = 'docs';
   }
 };
 </script>
@@ -6181,6 +9261,27 @@ body {
   background: var(--neo-primary);
   border-bottom: 3px solid var(--neo-black);
   box-shadow: 0 2px 0 var(--neo-black);
+}
+
+.new-chat-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-radius: var(--neo-radius);
+  background: rgba(255,255,255,0.12);
+  color: var(--neo-white);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-left: auto;
+  margin-right: 8px;
+}
+.new-chat-btn:hover {
+  background: rgba(255,255,255,0.25);
+  border-color: rgba(255,255,255,0.6);
 }
 
 .unified-header .header-title {
@@ -6567,6 +9668,26 @@ body {
   box-shadow: 3px 3px 0 var(--neo-black);
 }
 
+.btn-upload-img {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 2px solid var(--neo-black);
+  border-radius: 6px;
+  background: var(--neo-green, #90EE90);
+  cursor: pointer;
+  box-shadow: 2px 2px 0 var(--neo-black);
+  transition: all 0.15s;
+}
+.btn-upload-img:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--neo-black);
+}
+.btn-upload-img:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .landing-container {
   display: flex;
   justify-content: center;
@@ -6787,6 +9908,50 @@ body {
   border: 2px solid var(--neo-black);
 }
 
+/* 格式选择器（内联在角色菜单中） */
+.format-selector-inline {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+}
+
+.format-option-btn {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  border: 2px solid var(--neo-black);
+  border-radius: var(--neo-radius);
+  background: var(--neo-white);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--neo-black);
+  transition: all 0.15s ease;
+  box-shadow: 1px 1px 0 var(--neo-black);
+}
+
+.format-option-btn:hover {
+  background: var(--neo-pink-light);
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 var(--neo-black);
+}
+
+.format-option-btn.active {
+  background: var(--neo-primary);
+  color: var(--neo-white);
+  box-shadow: 0 0 0 var(--neo-black);
+  transform: translate(1px, 1px);
+}
+
+.format-option-btn .format-icon {
+  font-size: 12px;
+}
+
+.format-option-btn .format-label {
+  font-size: 10px;
+}
+
 /* Glassmorphism Step Indicator */
 /* 步骤指示器 - 新粗野主义风格（紧凑版） */
 .step-indicator.glass-container {
@@ -7004,6 +10169,27 @@ button {
   transform: translate(-2px, -2px);
   box-shadow: 4px 4px 0 var(--neo-black);
 }
+.btn-evaluate {
+  background: var(--neo-primary, #5D6AB4) !important;
+  color: var(--neo-white) !important;
+  border: var(--neo-border) !important;
+  padding: 10px 16px;
+  border-radius: var(--neo-radius);
+  cursor: pointer;
+  font-weight: 700;
+  box-shadow: var(--neo-shadow-sm);
+}
+.btn-evaluate:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 var(--neo-black);
+  filter: brightness(1.1);
+}
+.btn-evaluate:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: var(--neo-shadow-sm);
+}
 .btn-text {
   background: none;
   border: none;
@@ -7112,6 +10298,8 @@ button {
   flex-direction: column;
   background: var(--neo-white);
   min-width: 0; /* Allows flex child to shrink below content size, enabling scroll */
+  min-height: 0;
+  overflow: hidden;
   position: relative; /* 用于文档列表侧边栏定位 */
 }
 
@@ -7138,6 +10326,16 @@ button {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--neo-white);
+}
+
+/* 质量评估面板覆盖样式 */
+.quality-panel-overlay {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
   background: var(--neo-white);
 }
 
@@ -7548,6 +10746,10 @@ button {
 .loading-spinner {
   animation: spin 1s linear infinite;
   display: inline-block;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
@@ -8167,6 +11369,12 @@ button {
 .tab-control-btn.add:hover {
   background: var(--neo-primary);
   color: var(--neo-white);
+}
+
+.tab-control-btn.active {
+  background: var(--neo-purple);
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--neo-black);
 }
 
 /* 文档列表分隔标题（自定义文档） */
@@ -8862,5 +12070,1058 @@ button {
 .btn-icon-danger:hover:not(:disabled) {
   background: #ff5252;
   border-color: #ff5252;
+}
+
+/* ================= Midscene Full Panel (Step 5) ================= */
+
+.midscene-full-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--neo-white);
+  overflow: hidden;
+}
+
+.midscene-topbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  background: var(--neo-primary);
+  color: white;
+  font-size: 12px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.midscene-topbar-title { font-weight: 700; font-size: 13px; letter-spacing: 0.3px; }
+.midscene-topbar-status {
+  font-size: 9px; padding: 1px 6px; border-radius: 8px;
+  background: rgba(255,255,255,0.18); font-weight: 500; letter-spacing: 0.5px;
+}
+.midscene-topbar-status.ok { background: #43a047; }
+.midscene-topbar-spacer { flex: 1; }
+.midscene-topbar-btn {
+  background: rgba(255,255,255,0.12); border: none; border-radius: 4px; color: white;
+  width: 26px; height: 26px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s;
+}
+.midscene-topbar-btn:hover { background: rgba(255,255,255,0.25); }
+.midscene-topbar-btn.active { background: rgba(255,255,255,0.3); }
+
+/* 模式标签 */
+.midscene-mode-tag {
+  font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600;
+  line-height: 16px; letter-spacing: 0.3px; white-space: nowrap;
+}
+.midscene-mode-tag.free { background: rgba(76,175,80,0.25); color: #c8e6c9; }
+.midscene-mode-tag.mixed { background: rgba(255,193,7,0.25); color: #fff8e1; }
+.midscene-mode-tag.regression { background: rgba(33,150,243,0.25); color: #bbdefb; }
+
+/* 基线标签 */
+.midscene-baseline-tag {
+  font-size: 9px; color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.1);
+  border-radius: 8px; padding: 1px 6px; white-space: nowrap; line-height: 16px; font-weight: 500;
+}
+
+.midscene-baseline-badge {
+  font-size: 10px; color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.12);
+  border-radius: 8px; padding: 1px 6px; white-space: nowrap; line-height: 18px;
+}
+
+.midscene-stop-btn { background: #ef5350 !important; }
+.midscene-stop-btn:hover { background: #d32f2f !important; }
+
+/* ★ 设置按钮容器 */
+.midscene-settings-wrap { position: relative; }
+
+/* ★ 设置下拉面板 */
+.midscene-settings-dropdown {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 1000;
+  width: 260px; background: #fff; border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15), 0 2px 6px rgba(0,0,0,0.08);
+  border: 1px solid #e8e8e8; overflow: hidden;
+}
+
+.settings-section { padding: 10px 12px; }
+.settings-label {
+  font-size: 10px; font-weight: 600; color: #888; text-transform: uppercase;
+  letter-spacing: 0.5px; margin-bottom: 6px;
+}
+.settings-desc {
+  font-size: 10px; color: var(--neo-primary); margin-bottom: 6px;
+  background: rgba(100, 108, 255, 0.06); padding: 3px 6px; border-radius: 4px;
+}
+.settings-divider { height: 1px; background: #f0f0f0; margin: 0; }
+
+/* 模式按钮组 */
+.settings-mode-group {
+  display: flex; gap: 4px;
+}
+.settings-mode-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px;
+  padding: 6px 0; border: 1.5px solid #e0e0e0; border-radius: 6px;
+  background: #fafafa; color: #555; font-size: 11px; font-weight: 500;
+  cursor: pointer; transition: all 0.15s;
+}
+.settings-mode-btn:hover:not(:disabled) { border-color: var(--neo-primary); color: var(--neo-primary); background: #f5f5ff; }
+.settings-mode-btn.active {
+  border-color: var(--neo-primary); background: var(--neo-primary); color: #fff;
+}
+.settings-mode-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* 缓存按钮组 */
+.settings-cache-group {
+  display: flex; gap: 3px; flex-wrap: wrap;
+}
+.settings-cache-btn {
+  padding: 4px 8px; border: 1px solid #e0e0e0; border-radius: 4px;
+  background: #fafafa; color: #666; font-size: 10px; cursor: pointer; transition: all 0.15s;
+}
+.settings-cache-btn:hover:not(:disabled) { border-color: var(--neo-primary); color: var(--neo-primary); }
+.settings-cache-btn.active {
+  border-color: var(--neo-primary); background: var(--neo-primary); color: #fff;
+}
+.settings-cache-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* 浏览器行 */
+.settings-row {
+  display: flex; gap: 4px; align-items: center;
+}
+.settings-row-spacer { flex: 1; }
+.settings-toggle-btn {
+  display: flex; align-items: center; gap: 3px;
+  padding: 4px 8px; border: 1px solid #e0e0e0; border-radius: 4px;
+  background: #fafafa; color: #666; font-size: 10px; cursor: pointer; transition: all 0.15s;
+}
+.settings-toggle-btn:hover { border-color: var(--neo-primary); color: var(--neo-primary); }
+.settings-toggle-btn.active { border-color: var(--neo-primary); background: var(--neo-primary); color: #fff; }
+
+/* 数据管理按钮 */
+.settings-action-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px;
+  padding: 6px 0; border: 1px solid #e8e8e8; border-radius: 6px;
+  background: #fafafa; color: #555; font-size: 11px; cursor: pointer; transition: all 0.15s;
+}
+.settings-action-btn:hover { background: #f0f0ff; border-color: var(--neo-primary); color: var(--neo-primary); }
+
+/* 覆盖率条 */
+.settings-coverage {
+  padding: 8px 12px; background: #fafafa;
+}
+.settings-coverage-bar {
+  height: 3px; background: #e8e8e8; border-radius: 2px; overflow: hidden; margin-bottom: 4px;
+}
+.settings-coverage-fill {
+  height: 100%; background: var(--neo-primary); border-radius: 2px; transition: width 0.3s;
+}
+.settings-coverage-text { font-size: 10px; color: #888; }
+
+/* 设置面板进入/退出动画 */
+.settings-fade-enter-active { transition: opacity 0.15s, transform 0.15s; }
+.settings-fade-leave-active { transition: opacity 0.1s, transform 0.1s; }
+.settings-fade-enter-from { opacity: 0; transform: translateY(-4px); }
+.settings-fade-leave-to { opacity: 0; transform: translateY(-4px); }
+
+/* ★ 缓存策略选择器样式（保留兼容） */
+.midscene-cache-select {
+  background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 3px;
+  color: white; font-size: 10px; padding: 2px 4px; cursor: pointer; height: 24px; outline: none;
+}
+.midscene-cache-select option { background: #333; color: white; }
+
+/* ★ 缓存管理面板样式 */
+.midscene-cache-panel {
+  background: #f8f9fa; border-bottom: 1px solid #e0e0e0; padding: 8px; max-height: 200px; overflow-y: auto;
+}
+.midscene-cache-header {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+}
+.midscene-cache-title { font-size: 12px; font-weight: 600; color: #333; }
+.midscene-cache-size { font-size: 10px; color: #888; flex: 1; }
+.midscene-cache-clear-btn {
+  font-size: 10px; padding: 2px 8px; background: #f44336; color: white;
+  border: none; border-radius: 3px; cursor: pointer;
+}
+.midscene-cache-clear-btn:hover { background: #d32f2f; }
+.midscene-cache-clear-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.midscene-cache-loading, .midscene-cache-empty {
+  font-size: 11px; color: #888; text-align: center; padding: 8px;
+}
+.midscene-cache-list { display: flex; flex-direction: column; gap: 3px; }
+.midscene-cache-item {
+  display: flex; align-items: center; justify-content: space-between;
+  background: white; border: 1px solid #e8e8e8; border-radius: 4px; padding: 4px 8px;
+}
+.midscene-cache-item-info { display: flex; flex-direction: column; overflow: hidden; flex: 1; }
+.midscene-cache-item-id {
+  font-size: 11px; font-weight: 500; color: #333; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.midscene-cache-item-meta { font-size: 10px; color: #999; }
+.midscene-cache-item-del {
+  background: none; border: none; color: #999; cursor: pointer; font-size: 14px; padding: 0 4px;
+  line-height: 1;
+}
+.midscene-cache-item-del:hover { color: #f44336; }
+
+/* ★ 步骤编辑器样式 */
+.midscene-step-editor {
+  background: #f8f9fa; border-bottom: 1px solid #e0e0e0; padding: 8px;
+}
+.midscene-step-editor-meta {
+  display: flex; gap: 4px; margin-bottom: 6px;
+}
+.midscene-step-input {
+  font-size: 11px; padding: 3px 6px; border: 1px solid #ddd; border-radius: 3px;
+  background: white; color: #333; outline: none;
+}
+.midscene-step-input:focus { border-color: #1976d2; }
+.midscene-step-list {
+  display: flex; flex-direction: column; gap: 3px; max-height: 250px; overflow-y: auto;
+}
+.midscene-step-item {
+  display: flex; align-items: center; gap: 3px; padding: 3px 4px;
+  background: white; border: 1px solid #e8e8e8; border-radius: 4px; font-size: 11px;
+}
+.midscene-step-item.step-passed { border-left: 3px solid #4caf50; }
+.midscene-step-item.step-failed { border-left: 3px solid #f44336; }
+.midscene-step-index {
+  width: 18px; text-align: center; font-size: 10px; color: #888; font-weight: 600; flex-shrink: 0;
+}
+.midscene-step-type-select {
+  font-size: 10px; padding: 2px 3px; border: 1px solid #ddd; border-radius: 3px;
+  background: white; color: #333; outline: none; width: 50px; flex-shrink: 0;
+}
+.midscene-step-method {
+  font-size: 9px; color: #888; padding: 1px 4px; background: #f0f0f0; border-radius: 2px;
+  white-space: nowrap; flex-shrink: 0;
+}
+.midscene-step-editor-actions {
+  display: flex; gap: 4px; margin-top: 6px;
+}
+.midscene-step-btn {
+  font-size: 10px; padding: 3px 8px; background: #f5f5f5; color: #333;
+  border: 1px solid #ddd; border-radius: 3px; cursor: pointer;
+}
+.midscene-step-btn:hover { background: #eee; }
+.midscene-step-btn-primary {
+  background: #1976d2; color: white; border-color: #1976d2;
+}
+.midscene-step-btn-primary:hover { background: #1565c0; }
+
+/* ★ 逐步执行结果样式 */
+.midscene-instant-results {
+  background: #f8f9fa; border-bottom: 1px solid #e0e0e0; padding: 8px;
+  max-height: 200px; overflow-y: auto;
+}
+.midscene-instant-step {
+  display: flex; align-items: center; gap: 4px; padding: 3px 4px; font-size: 11px;
+  background: white; border: 1px solid #e8e8e8; border-radius: 4px; margin-bottom: 2px;
+  flex-wrap: wrap;
+}
+.midscene-instant-step.step-passed { border-left: 3px solid #4caf50; }
+.midscene-instant-step.step-failed { border-left: 3px solid #f44336; }
+.midscene-step-status {
+  font-size: 12px; flex-shrink: 0;
+}
+.midscene-step-desc {
+  flex: 1; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.midscene-step-time {
+  font-size: 10px; color: #888; flex-shrink: 0;
+}
+.midscene-step-error {
+  width: 100%; font-size: 10px; color: #f44336; padding: 2px 0 0 22px;
+}
+.midscene-step-suggestion {
+  width: 100%; font-size: 10px; color: #ff9800; padding: 2px 0 0 22px;
+}
+
+.midscene-case-section {
+  padding: 8px 10px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.midscene-timeline-section {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+  border-top: 2px solid var(--neo-black);
+}
+
+.midscene-timeline-header {
+  font-size: 11px; font-weight: 600; color: #888;
+  padding: 8px 0 4px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+.midscene-timeline-list { display: flex; flex-direction: column; gap: 4px; }
+
+.timeline-card {
+  border: 2px solid #e0e0e0; border-radius: var(--neo-radius);
+  overflow: hidden; font-size: 12px; transition: border-color 0.2s;
+}
+.timeline-card.running { border-color: #ff9800; background: #fff8e1; }
+.timeline-card.success { border-color: #4caf50; }
+.timeline-card.failed { border-color: #f44336; }
+
+.timeline-card-header {
+  display: flex; align-items: center; gap: 6px; padding: 5px 8px;
+}
+.timeline-card-type {
+  font-family: monospace; font-size: 10px; font-weight: 700;
+  color: var(--neo-primary); flex-shrink: 0;
+}
+.timeline-card-desc { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timeline-card-duration { color: #888; font-size: 10px; flex-shrink: 0; }
+.timeline-card-icon { font-weight: 700; font-size: 10px; flex-shrink: 0; }
+.timeline-card.success .timeline-card-icon { color: #4caf50; }
+.timeline-card.failed .timeline-card-icon { color: #f44336; }
+.timeline-card.running .timeline-card-icon { color: #ff9800; }
+
+.timeline-card-screenshot {
+  width: 100%; max-height: 120px; object-fit: cover; border-top: 1px solid #eee;
+}
+.timeline-card-error {
+  font-size: 11px; color: #f44336; padding: 4px 8px; background: #fff5f5; border-top: 1px solid #fdd;
+}
+
+.midscene-summary-bar {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  background: var(--neo-cream); border-top: 2px solid var(--neo-black);
+  font-size: 12px; font-weight: 600; flex-shrink: 0;
+}
+
+/* Case detail card (right panel) */
+.case-detail-card { padding: 4px 0; }
+.case-detail-id { font-family: monospace; font-size: 11px; color: var(--neo-primary); margin-bottom: 2px; display: flex; align-items: center; gap: 6px; }
+.case-detail-name { font-size: 14px; font-weight: 700; margin-bottom: 12px; }
+.case-detail-section { margin-bottom: 10px; }
+.case-detail-label { font-size: 11px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
+.case-detail-value { font-size: 13px; line-height: 1.5; }
+.case-detail-assertion { font-size: 12px; padding: 3px 0; display: flex; gap: 6px; align-items: flex-start; }
+.assertion-status { font-weight: 700; font-size: 10px; flex-shrink: 0; padding: 1px 4px; border-radius: 2px; }
+
+/* ★ 用例 steps 内联编辑 */
+.case-detail-edit-btn {
+  font-size: 10px; padding: 2px 8px; border-radius: 3px;
+  border: 1px solid #ddd; background: #fff; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 3px; color: #555;
+}
+.case-detail-edit-btn:hover { background: #f0f0f0; border-color: #bbb; }
+.case-detail-save-btn { background: #e8f5e9; border-color: #4caf50; color: #2e7d32; }
+.case-detail-save-btn:hover { background: #c8e6c9; }
+
+.case-steps-editor { margin-top: 4px; }
+.case-step-row {
+  display: flex; align-items: center; gap: 4px; margin-bottom: 3px;
+}
+.case-step-num {
+  font-size: 10px; color: #999; width: 16px; text-align: center; flex-shrink: 0;
+  font-weight: 600;
+}
+.case-step-input {
+  flex: 1; padding: 4px 6px; border: 1px solid #ddd; border-radius: 3px;
+  font-size: 12px; outline: none;
+}
+.case-step-input:focus { border-color: var(--neo-primary); box-shadow: 0 0 0 1px var(--neo-primary, #6366f1) inset; }
+.case-step-action {
+  width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+  border: 1px solid #e0e0e0; border-radius: 3px; background: #fff; cursor: pointer;
+  padding: 0; flex-shrink: 0;
+}
+.case-step-action:hover { background: #f0f0f0; }
+.case-step-action:disabled { opacity: 0.3; cursor: default; }
+.case-step-del:hover { background: #ffebee; border-color: #ef5350; color: #e53935; }
+.case-step-add-btn {
+  font-size: 11px; padding: 3px 8px; border: 1px dashed #ccc; border-radius: 3px;
+  background: transparent; cursor: pointer; color: #666; margin-top: 3px;
+  display: inline-flex; align-items: center; gap: 3px;
+}
+.case-step-add-btn:hover { border-color: var(--neo-primary); color: var(--neo-primary); background: #f5f3ff; }
+.case-steps-hint {
+  font-size: 10px; color: #999; margin-top: 6px; display: flex; align-items: flex-start; gap: 4px;
+  padding: 4px 6px; background: #fffde7; border-radius: 3px; border: 1px solid #fff9c4;
+}
+.step-type-badge {
+  font-size: 9px; padding: 1px 5px; border-radius: 3px; flex-shrink: 0;
+  border: 1px solid; font-weight: 600; white-space: nowrap; letter-spacing: 0.3px;
+  cursor: help; line-height: 1.4;
+}
+.step-type-badge-ro { margin-left: auto; }
+.case-steps-list { margin-top: 2px; }
+.case-step-item {
+  font-size: 12px; padding: 3px 0; display: flex; gap: 6px; align-items: center;
+  line-height: 1.4;
+}
+.case-steps-empty {
+  font-size: 11px; color: #aaa; font-style: italic; padding: 6px 0;
+}
+
+/* ★ 快速创建用例 */
+.quick-create-panel {
+  padding: 10px; background: #fafafa; border: 1px solid #e0e0e0; border-radius: 6px;
+  margin: 4px 0;
+}
+.quick-create-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+}
+.quick-create-title {
+  font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 4px;
+}
+.quick-create-field { margin-bottom: 8px; }
+.quick-create-field label {
+  font-size: 11px; font-weight: 600; color: #555; display: flex; align-items: center; gap: 4px; margin-bottom: 3px;
+}
+.quick-create-field .required { color: #e53935; }
+.quick-create-tip { font-size: 9px; color: #999; font-weight: 400; }
+.quick-create-input {
+  width: 100%; padding: 5px 8px; border: 1px solid #ddd; border-radius: 4px;
+  font-size: 12px; outline: none; box-sizing: border-box;
+}
+.quick-create-input:focus { border-color: var(--neo-primary); }
+.quick-create-list-row {
+  display: flex; align-items: center; gap: 4px; margin-bottom: 3px;
+}
+.quick-create-list-row .quick-create-input { flex: 1; }
+.quick-create-actions { margin-top: 10px; text-align: right; }
+.quick-create-submit {
+  background: var(--neo-primary, #6366f1) !important; color: #fff !important; border-color: var(--neo-primary, #6366f1) !important;
+  font-weight: 600;
+}
+.quick-create-submit:hover { opacity: 0.9; }
+.quick-create-mode-info {
+  margin-top: 10px; padding: 6px 8px; background: #fffde7; border: 1px solid #fff9c4;
+  border-radius: 4px; font-size: 10px; color: #666; display: flex; gap: 6px; align-items: flex-start;
+  line-height: 1.5;
+}
+
+/* ★ 手动编写引导面板 */
+.manual-guide-overlay {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 10;
+  background: #fff; overflow-y: auto; padding: 12px;
+}
+.manual-guide-card { max-width: 500px; margin: 0 auto; }
+.manual-guide-header {
+  display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 700;
+  margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid var(--neo-black, #1a1a2e);
+}
+.manual-guide-section { margin-bottom: 16px; }
+.manual-guide-label {
+  font-size: 12px; font-weight: 600; color: #555; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 4px;
+}
+.manual-guide-format-btns { display: flex; gap: 8px; }
+.manual-guide-format-btn {
+  flex: 1; padding: 12px 10px; border: 2px solid #e0e0e0; border-radius: 8px;
+  background: #fff; cursor: pointer; text-align: center;
+  display: flex; flex-direction: column; gap: 4px; align-items: center;
+  transition: all 0.15s;
+}
+.manual-guide-format-btn:hover {
+  border-color: var(--neo-primary, #6366f1); background: #f5f3ff;
+  transform: translateY(-1px); box-shadow: 0 2px 8px rgba(99,102,241,0.15);
+}
+.format-icon {
+  width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 14px; color: #fff;
+  background: var(--neo-primary, #6366f1);
+}
+.format-desc { font-size: 10px; color: #999; }
+.manual-guide-rules { font-size: 12px; }
+.guide-rule {
+  padding: 8px; margin-bottom: 6px; background: #f8f9fa; border-radius: 6px;
+  border: 1px solid #eee;
+}
+.guide-rule-title { font-weight: 700; font-size: 12px; margin-bottom: 3px; }
+.guide-rule-desc { color: #666; line-height: 1.5; }
+.guide-rule-desc code { background: #e8eaf6; padding: 1px 4px; border-radius: 2px; font-size: 11px; }
+.guide-examples { margin-top: 5px; }
+.guide-example {
+  font-size: 11px; padding: 3px 6px; margin-bottom: 2px; border-radius: 3px;
+  display: flex; align-items: center; gap: 4px;
+}
+.guide-example.good { background: #e8f5e9; color: #2e7d32; }
+.guide-example.bad { background: #ffebee; color: #c62828; }
+.guide-example code { background: rgba(0,0,0,0.06); padding: 1px 3px; border-radius: 2px; }
+.guide-mode-table { margin-top: 4px; }
+.guide-mode-row {
+  display: flex; gap: 8px; padding: 4px 0; font-size: 11px; border-bottom: 1px solid #eee;
+  align-items: center;
+}
+.guide-mode-row:last-child { border-bottom: none; }
+.guide-mode-name {
+  font-weight: 700; min-width: 60px; font-size: 11px;
+  padding: 1px 6px; background: #e8eaf6; border-radius: 3px; text-align: center;
+}
+
+/* ================= Midscene Panel Styles (legacy) ================= */
+
+.midscene-panel {
+  border-top: 2px solid var(--neo-black);
+  background: var(--neo-white);
+  max-height: 45vh;
+  overflow-y: auto;
+  padding: 8px;
+  flex-shrink: 0;
+}
+
+.midscene-cases-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.midscene-empty {
+  padding: 16px;
+  text-align: center;
+  color: #888;
+  font-size: 12px;
+}
+
+.midscene-empty-guide {
+  padding: 20px 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.midscene-empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+}
+.midscene-empty-desc {
+  font-size: 11px;
+  color: #999;
+  margin-bottom: 4px;
+}
+.midscene-guide-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+  color: #333;
+  cursor: pointer;
+  transition: all 0.15s;
+  width: 160px;
+  justify-content: center;
+}
+.midscene-guide-btn:hover {
+  background: #f0f4ff;
+  border-color: #5b7cfa;
+  color: #5b7cfa;
+}
+.midscene-empty-hint {
+  font-size: 10px;
+  color: #aaa;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.midscene-case-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  background: var(--neo-white);
+  font-size: 12px;
+  transition: all 0.15s;
+  cursor: pointer;
+}
+.midscene-case-item:hover { background: #f8f9ff; border-color: #d0d0e0; }
+
+.midscene-case-item.passed {
+  background: #f1f8f1;
+  border-color: #a5d6a7;
+  border-left: 3px solid #4caf50;
+}
+
+.midscene-case-item.failed {
+  background: #fef5f5;
+  border-color: #ef9a9a;
+  border-left: 3px solid #f44336;
+}
+
+.midscene-case-item.running {
+  background: #fff8f0;
+  border-color: #ffcc80;
+  border-left: 3px solid #ff9800;
+}
+
+.midscene-case-item.selected {
+  outline: 2px solid var(--neo-primary);
+  outline-offset: -1px;
+  background: #f5f5ff;
+}
+
+.midscene-case-item input[type="checkbox"] {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--neo-primary);
+}
+
+.midscene-case-info {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* 回归基线徽章 */
+.midscene-baseline-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  background: #7c3aed;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+/* 无基线提示 */
+.status-no-baseline {
+  font-size: 10px;
+  color: #9e9e9e;
+  white-space: nowrap;
+}
+
+/* 回归模式覆盖率摘要 */
+.midscene-regression-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #f5f0ff;
+  border: 1px solid #d4bfff;
+  border-radius: 6px;
+  font-size: 11px;
+  margin: 0 0 4px 0;
+}
+.midscene-regression-summary-text {
+  font-weight: 700;
+  color: #7c3aed;
+}
+.midscene-regression-summary-hint {
+  color: #9e9e9e;
+  font-size: 10px;
+}
+.midscene-regression-summary-ok {
+  color: #4caf50;
+  font-weight: 700;
+}
+
+.midscene-case-id {
+  font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+  font-size: 10px;
+  color: var(--neo-primary);
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.midscene-case-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #333;
+}
+
+.midscene-case-priority {
+  flex-shrink: 0;
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.midscene-case-priority.p0 { background: #ffebee; color: #d32f2f; }
+.midscene-case-priority.p1 { background: #fff3e0; color: #e65100; }
+.midscene-case-priority.p2 { background: #e3f2fd; color: #1565c0; }
+.midscene-case-priority.p3 { background: #f5f5f5; color: #757575; }
+
+.midscene-case-status {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.status-pass { color: #4caf50; font-weight: 600; font-size: 10px; }
+.status-fail { color: #f44336; font-weight: 600; font-size: 10px; }
+.status-running { color: #ff9800; font-weight: 600; font-size: 10px; }
+
+.midscene-btn-run {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #fafafa;
+  color: #666;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.midscene-btn-run:hover:not(:disabled) {
+  background: var(--neo-primary);
+  color: white;
+  border-color: var(--neo-primary);
+}
+
+.midscene-btn-run:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.midscene-batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  border-top: 1px solid #f0f0f0;
+  margin-top: 4px;
+}
+
+.midscene-batch-btn {
+  padding: 5px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #fafafa;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s;
+  color: #555;
+}
+
+.midscene-batch-btn:hover:not(:disabled) {
+  border-color: var(--neo-primary);
+  color: var(--neo-primary);
+  background: #f5f5ff;
+}
+
+.midscene-batch-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.midscene-btn-primary {
+  background: var(--neo-primary) !important;
+  color: white !important;
+  border-color: var(--neo-primary) !important;
+  font-weight: 600;
+}
+
+.midscene-btn-primary:hover:not(:disabled) {
+  background: #4a55a0 !important;
+  border-color: #4a55a0 !important;
+}
+
+.midscene-btn-secondary {
+  background: var(--neo-bg-secondary, #f0f0f3);
+  color: var(--neo-text, #333);
+  font-weight: 500;
+  border: 1px solid var(--neo-border, #ddd);
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+}
+.midscene-btn-secondary:hover {
+  background: var(--neo-bg-hover, #e4e4e8);
+}
+
+.midscene-executing-label {
+  font-size: 10px;
+  color: #ff9800;
+  font-weight: 500;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.midscene-executing-label::before {
+  content: '';
+  width: 6px; height: 6px; border-radius: 50%; background: #ff9800;
+  animation: pulse-dot 1.2s infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Results Dashboard */
+.midscene-results {
+  margin-top: 8px;
+  border-top: 2px solid var(--neo-black);
+  padding-top: 8px;
+}
+
+.midscene-results-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--neo-cream);
+  border: 2px solid var(--neo-black);
+  border-radius: var(--neo-radius);
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.summary-passed { color: #4caf50; }
+.summary-failed { color: #f44336; }
+.summary-total { color: #666; }
+.summary-duration { color: #888; }
+
+.midscene-result-card {
+  border: 2px solid var(--neo-black);
+  border-radius: var(--neo-radius);
+  margin-bottom: 4px;
+  overflow: hidden;
+}
+
+.midscene-result-card.passed { border-color: #4caf50; }
+.midscene-result-card.failed { border-color: #f44336; }
+
+.midscene-result-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  background: var(--neo-white);
+}
+
+.midscene-result-icon {
+  font-weight: 700;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.midscene-result-card.passed .midscene-result-icon { background: #e8f5e9; color: #4caf50; }
+.midscene-result-card.failed .midscene-result-icon { background: #ffebee; color: #f44336; }
+
+.midscene-result-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.midscene-result-duration {
+  color: #888;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.midscene-assertions {
+  padding: 4px 8px 6px;
+  background: #fafafa;
+  border-top: 1px solid #eee;
+}
+
+.midscene-assertion {
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+.midscene-assertion.pass { color: #4caf50; }
+.midscene-assertion.fail { color: #f44336; }
+
+.midscene-assertion-reason {
+  color: #999;
+  font-style: italic;
+}
+
+.midscene-result-actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px 0;
+}
+
+/* Midscene 面板（与知识库等面板同级，不覆盖导航栏） */
+.midscene-report-overlay {
+  flex: 1;
+  background: var(--neo-white);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.midscene-report-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--neo-border, #e0e0e0);
+  background: var(--neo-cream);
+  flex-shrink: 0;
+}
+
+.midscene-report-tabs {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.midscene-panel-close {
+  margin-left: 4px;
+  padding: 3px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  color: #888;
+}
+.midscene-panel-close:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.midscene-report-tabs button {
+  padding: 4px 10px;
+  border: 2px solid var(--neo-black);
+  border-radius: var(--neo-radius);
+  background: var(--neo-white);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.midscene-report-tabs button.active {
+  background: var(--neo-primary);
+  color: white;
+}
+
+.midscene-report-close {
+  background: var(--neo-white) !important;
+  color: var(--neo-black) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px !important;
+  margin-left: 4px;
+}
+
+.midscene-report-close:hover {
+  background: var(--neo-red, #E86F68) !important;
+  color: white !important;
+}
+
+.midscene-report-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.midscene-report-body {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.midscene-json-view {
+  font-family: monospace;
+  font-size: 11px;
+  background: #f5f5f5;
+  padding: 12px;
+  border-radius: var(--neo-radius);
+  border: 2px solid var(--neo-black);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+.midscene-report-footer {
+  padding: 8px 12px;
+  border-top: 2px solid var(--neo-black);
+  background: var(--neo-cream);
+  flex-shrink: 0;
+}
+
+/* 报告列表样式 */
+.midscene-report-list {
+  margin-bottom: 4px;
+}
+.midscene-report-list-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--neo-text, #333);
+  margin-bottom: 4px;
+  display: block;
+}
+.midscene-report-list-item {
+  margin: 2px 0;
+}
+.midscene-btn-report-link {
+  background: none;
+  border: none;
+  color: var(--neo-primary, #5b63d3);
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  text-decoration: underline;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.midscene-btn-report-link:hover {
+  background: rgba(91, 99, 211, 0.08);
+}
+
+/* 每条执行结果中的报告按钮 */
+.midscene-result-report-btn {
+  background: none;
+  border: 1px solid var(--neo-primary, #5b63d3);
+  color: var(--neo-primary, #5b63d3);
+  font-size: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.midscene-result-report-btn:hover {
+  background: var(--neo-primary, #5b63d3);
+  color: white;
 }
 </style>
