@@ -4,200 +4,39 @@
 
 一款智能化 Chrome 插件，帮助测试工程师从需求文档快速生成 PRD 分析、测试点提取、测试用例，并支持 UI 自动化测试和 AI 质检评估。
 
+<p align="center">
+  <img src="docs/images/unified-layout.png" alt="插件主界面" width="800">
+</p>
+
 ---
 
 ## 📁 项目结构
 
 ```
 AITestCase/
-├── agent-server/              # 🐍 Python 后端服务 (FastAPI)
+├── agent-server/              # 🐍 Python 后端服务 (FastAPI + LangGraph)
 │   ├── agent_server.py         # 服务启动入口
-│   ├── requirements.txt        # Python 依赖
-│   ├── .env.example            # 环境变量模板
-│   ├── run_agent.sh            # Agent 服务启动脚本
-│   ├── run_chrome.sh           # 有头 Chrome 启动脚本
-│   ├── run_chrome_headless.sh  # 无头 Chrome 启动脚本
-│   │
 │   ├── agent_app/              # 📦 核心业务模块
-│   │   ├── app_factory.py      # FastAPI 路由与依赖装配
-│   │   ├── schemas.py          # 请求/响应 Schema
-│   │   ├── config.py           # SDK 客户端初始化 (OpenAI/Anthropic)
-│   │   ├── config_manager.py   # 统一配置管理
-│   │   ├── ask_config.py       # Ask 接口配置中心
-│   │   ├── prompt_manager.py   # 统一 Prompt 管理器
-│   │   ├── session_store.py    # 会话存储 (含 ChromaDB 向量检索)
-│   │   ├── chroma_config.py    # ChromaDB 向量数据库配置
-│   │   ├── cache_manager.py    # 三层缓存管理 (LLM/Embedding/PDF)
-│   │   ├── evaluator.py        # AI 测试用例质检评估
-│   │   ├── file_processor.py   # 多模态文件处理 (PDF/图片/OCR)
-│   │   ├── multimodal_builder.py # 多模态消息构建器
-│   │   ├── output_formatter.py # 输出格式转换 (MD/Table/YAML/JSON)
-│   │   ├── pdf_composer.py     # PDF 合成器
-│   │   ├── batch_upload.py     # 批量文件上传处理
-│   │   ├── task_queue.py       # 异步任务队列 (SSE 流式输出)
-│   │   ├── telemetry.py        # 可观测性数据收集
-│   │   ├── tooling.py          # 工具 Schema 定义
-│   │   │
-│   │   ├── graphs/             # 🔗 LangGraph 智能体图
-│   │   │   ├── ask_graph.py    # Ask 接口图
-│   │   │   ├── prd_graph.py    # PRD 智能体图
-│   │   │   ├── testcase_graph.py # 测试用例智能体图
-│   │   │   ├── chat_graph.py   # 聊天智能体图
-│   │   │   ├── ui_graph.py     # UI 自动化执行图
-│   │   │   └── critic_graph.py # Critic 评估智能体图
-│   │   │
-│   │   ├── ui/                 # 🖥️ UI 自动化模块
-│   │   │   ├── browser_helpers.py # 元素定位/无障碍快照
-│   │   │   ├── runner.py       # Plan DSL 执行器 (自愈/证据采集)
-│   │   │   └── screenshots.py  # 截图管理
-│   │   │
-│   │   └── assets/             # 📂 资产存储
-│   │       └── storage.py      # 本地落盘 + URL 生成
-│   │
-│   ├── prompts/                # 📝 Prompt 模板文件
-│   │   ├── system/             # 角色系统 Prompt
-│   │   │   ├── testcase.md     # 测试用例助手
-│   │   │   ├── testpoint.md    # 测试点生成
-│   │   │   ├── prd_analysis.md # PRD 分析
-│   │   │   ├── ui_agent.md     # UI 自动化 Agent
-│   │   │   ├── critic.md       # Critic 评估专家
-│   │   │   ├── pm_chat.md      # PM 聊天
-│   │   │   └── dev_chat.md     # DEV 聊天
-│   │   ├── templates/          # 任务模板 Prompt
-│   │   │   ├── ask_testcase.md # 测试用例生成模板
-│   │   │   ├── ask_testcase_table.md # 表格格式模板
-│   │   │   ├── ask_testcase_yaml.md  # YAML 格式模板
-│   │   │   ├── ask_testpoint.md # 测试点生成模板
-│   │   │   ├── ask_testprd.md  # 测试 PRD 模板
-│   │   │   ├── ask_figma.md    # Figma 解析模板
-│   │   │   └── rag_filter.md   # RAG 过滤模板
-│   │   └── skills/             # 技能增强 Prompt
-│   │       ├── qa_engineer.md  # QA 工程师最佳实践
-│   │       ├── evaluator.md    # 评估器技能
-│   │       ├── playwright.md   # Playwright 自动化
-│   │       └── webapp_testing.md # Web 应用测试
-│   │
+│   │   ├── graphs/             #   🔗 LangGraph 智能体图 (ask/prd/testcase/chat/ui/critic)
+│   │   ├── ui/                 #   🖥️ UI 自动化 (元素定位/执行器/截图)
+│   │   └── assets/             #   📂 资产存储
+│   ├── prompts/                # 📝 Prompt 模板 (system/templates/skills)
+│   ├── midscene-sidecar/       # 🎯 UI 自动化引擎 (Node.js + Midscene SDK)
+│   │   └── src/
+│   │       ├── routes/         #   API 路由 (自由/混合/回归模式)
+│   │       └── utils/          #   步骤推断 / 三层降级引擎 / 用例校验
 │   ├── scripts/                # 🧪 测试与迁移脚本
-│   │   ├── migrate_to_chromadb.py    # 数据迁移 → ChromaDB
-│   │   ├── test_chroma_setup.py      # ChromaDB 配置测试
-│   │   ├── test_evaluator.py         # 评估器测试
-│   │   ├── test_file_processor.py    # 文件处理器测试
-│   │   ├── test_e2e_integration.py   # 端到端集成测试
-│   │   └── verify_knowledge_base.py  # 知识库验证
-│   │
-│   ├── midscene-sidecar/       # 🎯 UI 自动化执行引擎 (Node.js + Midscene)
-│   │   ├── src/
-│   │   │   ├── server.ts       # Express 服务入口
-│   │   │   ├── browser/        # Puppeteer 浏览器管理
-│   │   │   ├── routes/         # API 路由
-│   │   │   │   ├── run-testcase.ts        # 自由模式执行
-│   │   │   │   ├── run-testcase-stream.ts # 自由模式 SSE 流
-│   │   │   │   ├── run-instant.ts         # 混合模式执行 + SSE 流
-│   │   │   │   ├── run-yaml.ts            # YAML 基线回放
-│   │   │   │   ├── regression.ts          # 回归基线管理
-│   │   │   │   └── run-steps.ts           # 直接步骤执行
-│   │   │   ├── utils/          # 核心工具
-│   │   │   │   ├── step-inference.ts      # 步骤意图推断 (正则, 零 AI)
-│   │   │   │   ├── execution-engine.ts    # 三层降级执行引擎
-│   │   │   │   ├── testcase-validator.ts  # 用例校验 + 格式规范
-│   │   │   │   └── yaml-generator.ts      # 回归基线 YAML 生成
-│   │   │   └── actions/        # 自定义动作 (文件上传等)
-│   │   └── package.json
-│   │
-│   └── data/                   # 💾 运行时数据
-│       ├── chroma_db/          # ChromaDB 持久化存储
-│       └── cache/              # 缓存文件
+│   └── data/                   # 💾 运行时数据 (ChromaDB / 缓存)
 │
 ├── solvely-mvp/               # 🖥️ Chrome 扩展前端 (Vue 3 + WXT)
-│   ├── package.json            # Node 依赖
-│   ├── wxt.config.ts           # WXT 构建配置
-│   ├── tsconfig.json           # TypeScript 配置
-│   ├── .env.example            # 环境变量模板
-│   │
 │   └── src/
-│       ├── api.ts              # API 调用封装
-│       ├── env.d.ts            # 环境变量类型声明
-│       │
-│       ├── entrypoints/        # 🚪 入口点
-│       │   ├── sidepanel/      # 侧边栏 UI（主界面）
-│       │   │   ├── App.vue     # 主组件
-│       │   │   ├── index.html  # HTML 入口
-│       │   │   └── main.ts     # 应用入口
-│       │   ├── content.ts      # 内容脚本（页面注入）
-│       │   └── background.ts   # 后台脚本
-│       │
-│       ├── components/         # 🧩 Vue 组件
-│       │   ├── ChatInput.vue         # 聊天输入框
-│       │   ├── ChatMessage.vue       # 消息渲染（流式/Markdown）
-│       │   ├── InputToolbar.vue      # 输入工具栏
-│       │   ├── RoleSelector.vue      # 角色选择器 (PM/DEV/QA)
-│       │   ├── WorkflowProgress.vue  # QA 工作流进度
-│       │   ├── MindMapPreview.vue    # 思维导图预览
-│       │   ├── FormatPreview.vue     # 多格式预览/导出
-│       │   ├── DocumentPanel.vue     # 文档管理面板
-│       │   ├── DocumentCard.vue      # 文档卡片
-│       │   ├── DocVersionList.vue    # 版本历史列表
-│       │   ├── DocDiffViewer.vue     # 文档版本对比
-│       │   ├── FilePreview.vue       # 文件预览
-│       │   ├── BatchUploader.vue     # 批量文件上传
-│       │   ├── KnowledgeBasePanel.vue # 知识库管理
-│       │   ├── HistoryPanel.vue      # 历史记录面板
-│       │   ├── QualityReportPanel.vue # 质量评估报告
-│       │   ├── TaskProgressBar.vue   # 任务进度条
-│       │   ├── TestCaseFormatSelector.vue # 格式选择器
-│       │   ├── DebugDrawer.vue       # 调试面板
-│       │   ├── common/               # 通用组件
-│       │   │   └── NeoTooltip.vue    # Tooltip 组件
-│       │   └── icons/                # 图标组件
-│       │       ├── IconButton.vue
-│       │       └── index.ts
-│       │
+│       ├── entrypoints/        # 🚪 入口点 (sidepanel/content/background)
+│       ├── components/         # 🧩 Vue 组件 (20+)
 │       ├── composables/        # 🔄 组合式函数 (状态管理)
-│       │   ├── index.ts        # 统一导出
-│       │   ├── useChat.ts      # 聊天消息管理
-│       │   ├── useDocuments.ts # 文档 CRUD/版本管理
-│       │   ├── useFileUpload.ts # 文件上传/进度追踪
-│       │   ├── useRole.ts      # 角色切换管理
-│       │   ├── useSession.ts   # 会话管理
-│       │   ├── useTask.ts      # 异步任务管理
-│       │   ├── useTaskProgress.ts # 任务进度 (SSE/轮询)
-│       │   └── useWorkflow.ts  # 工作流步骤管理
-│       │
-│       ├── utils/              # 🛠️ 工具函数
-│       │   ├── agentUrl.ts     # Agent 服务地址管理
-│       │   ├── askApi.ts       # Ask API 封装
-│       │   ├── connectionHelper.ts # Content Script 连接辅助
-│       │   ├── docStoreApi.ts  # 文档存储 API
-│       │   ├── formatConverter.ts # 格式转换 (MD→Table/YAML)
-│       │   ├── imageExtractor.ts # 图片提取/上传
-│       │   ├── imageProcessor.ts # 图片处理
-│       │   ├── md5.ts          # 文件 MD5 计算
-│       │   ├── messageAdapter.ts # 消息类型适配
-│       │   ├── page.ts         # 页面内容提取
-│       │   ├── preferences.ts  # 用户偏好管理
-│       │   ├── refRegistry.ts  # 文档版本指针
-│       │   ├── retry.ts        # 自动重试（指数退避）
-│       │   └── textUtils.ts    # 文本处理工具
-│       │
-│       ├── types/              # 📋 TypeScript 类型定义
-│       │   └── chat.ts         # 聊天相关类型
-│       │
-│       └── directives/         # 📌 自定义指令
-│           └── tooltip.ts      # Tooltip 指令
+│       └── utils/              # 🛠️ 工具函数
 │
-├── deploy/                    # 🚀 部署配置 (Google Cloud Run)
-│   ├── README.md              # 部署说明
-│   ├── Makefile               # 部署主入口
-│   ├── service.yaml           # Cloud Run 服务定义
-│   ├── agent-server/          # Agent Server Docker 配置
-│   │   ├── Dockerfile
-│   │   └── Makefile
-│   └── nginx/                 # Nginx 反向代理配置
-│       ├── Dockerfile
-│       ├── Makefile
-│       └── nginx.conf
-│
-└── README.md                 # 本文件
+├── deploy/                    # 🚀 部署配置 (Google Cloud Run + Nginx)
+└── README.md
 ```
 
 ---
@@ -345,6 +184,11 @@ cp .env.example .env
 3. 点击「加载已解压的扩展程序」
 4. 选择目录：`solvely-mvp/.output/chrome-mv3`
 
+<p align="center">
+  <img src="docs/images/chrome-extension-install.png" alt="安装 Chrome 扩展" width="600">
+  <br><em>Chrome 扩展安装步骤</em>
+</p>
+
 ---
 
 ## ✨ 功能特性
@@ -357,6 +201,11 @@ cp .env.example .env
   - PM/DEV：链接/页面提取内容进入文档列表，可编辑/预览
   - QA：PRD/优化 PRD/测试点/测试用例/UI 计划与报告统一管理
 - **文档版本管理**：支持版本历史、版本对比、回滚
+
+<p align="center">
+  <img src="docs/images/role-selector.png" alt="角色选择器" width="400">
+  <br><em>角色选择器：PM / DEV / QA 一键切换</em>
+</p>
 
 ### 🔄 QA 工作流
 
@@ -372,6 +221,16 @@ cp .env.example .env
 | **用例** | 生成测试用例        | 思维导图/表格/YAML    |
 | **测试** | UI 自动化测试       | 测试报告              |
 
+<p align="center">
+  <img src="docs/images/workflow-progress.png" alt="QA 工作流进度" width="400">
+  <br><em>QA 工作流进度条</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/prd-analysis.png" alt="PRD 分析结果" width="800">
+  <br><em>AI 分析 PRD 需求文档</em>
+</p>
+
 ### 📦 文档管理系统
 
 - **多文档支持**：主文档、辅助文档、生成结果分类管理
@@ -379,11 +238,31 @@ cp .env.example .env
 - **版本管理**：文档版本历史、版本对比（Diff 高亮）、回滚
 - **知识库**：文档归档到知识库，支持分类管理和搜索
 
+<p align="center">
+  <img src="docs/images/batch-upload.png" alt="批量文件上传" width="600">
+  <br><em>批量文件上传</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/knowledge-base.png" alt="知识库管理" width="600">
+  <br><em>知识库管理面板</em>
+</p>
+
 ### 🧠 思维导图（MindMap / Markmap）
 
 - **测试点**与**测试用例**默认使用思维导图预览
 - 支持节点选中高亮、`Cmd/Ctrl + C` 复制节点
 - 支持"复制全部"一键复制整棵树
+
+<p align="center">
+  <img src="docs/images/testpoint-mindmap.png" alt="测试点思维导图" width="600">
+  <br><em>测试点思维导图预览</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/testcase-mindmap.png" alt="测试用例思维导图" width="600">
+  <br><em>测试用例思维导图预览</em>
+</p>
 
 ### 📊 多格式输出
 
@@ -393,12 +272,32 @@ cp .env.example .env
 - **JSON**：机器可读格式
 - **思维导图**：可视化展示
 
+<p align="center">
+  <img src="docs/images/format-markdown.png" alt="Markdown 格式" width="600">
+  <br><em>Markdown 格式输出</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/format-table.png" alt="表格格式" width="600">
+  <br><em>表格格式输出</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/format-yaml.png" alt="YAML 格式" width="600">
+  <br><em>YAML 格式输出</em>
+</p>
+
 ### 🔍 AI 质检评估
 
 - **自动评估**：AI 自动发现漏测点、逻辑缺陷
 - **覆盖度检测**：检查测试用例对需求的覆盖率
 - **Critic 评估**：独立的 Critic Agent 进行验收评估
 - **质量报告**：可视化质量评估报告面板
+
+<p align="center">
+  <img src="docs/images/quality-report.png" alt="质量评估报告" width="400">
+  <br><em>AI 质检评估报告面板</em>
+</p>
 
 ### 💡 智能提示词
 
@@ -426,6 +325,21 @@ cp .env.example .env
 - **Smart 缓存策略**：有缓存 read-only，无缓存 read-write，动态内容自动禁用
 - **SSE 实时进度**：步骤级进度推送（step_start/step_done/assert_done）
 - **有头/无头双模式**：CDP 连接已有浏览器或独立启动 Puppeteer
+
+<p align="center">
+  <img src="docs/images/ui-mode-switch.png" alt="UI 自动化模式切换" width="400">
+  <br><em>三种执行模式切换（自由 / 混合 / 回归）</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/ui-execution-timeline.png" alt="执行 Timeline" width="800">
+  <br><em>实时执行 Timeline 面板</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/ui-test-report.png" alt="UI 测试报告" width="800">
+  <br><em>UI 自动化测试报告</em>
+</p>
 
 ---
 
@@ -550,191 +464,44 @@ AI 生成的步骤须遵循以下格式，确保 step-inference 正确推断：
 
 ## 📡 API 接口
 
-### 核心接口
+### Agent Server (port 8000)
 
-| 端点                                  | 方法     | 说明                        |
-|---------------------------------------|----------|-----------------------------|
-| `/api/ask`                            | POST     | 统一 Ask 接口（PRD/测试点/用例） |
-| `/api/ask/config`                     | GET      | Ask 接口配置概览             |
-| `/api/chat`                           | POST     | PM/DEV 聊天接口              |
-| `/api/v2/chat`                        | POST     | 统一聊天接口 (v2)           |
-| `/api/ui_agent`                       | POST     | UI 自动化智能体              |
-| `/health`                             | GET      | 健康检查                     |
-
-### 文档管理
-
-| 端点                                  | 方法     | 说明                        |
-|---------------------------------------|----------|-----------------------------|
-| `/api/docs/upsert`                    | POST     | 上传/更新文档 (JSON)        |
-| `/api/docs/upload`                    | POST     | 上传文件 (PDF/图片/文本)    |
-| `/api/docs/batch-upload`              | POST     | 批量上传文件                 |
-| `/api/docs/batch-delete`              | POST     | 批量删除文档                 |
-| `/api/docs/{docId}`                   | GET      | 获取文档内容                 |
-| `/api/docs/{docId}`                   | DELETE   | 删除文档                     |
-
-### 会话管理
-
-| 端点                                  | 方法     | 说明                        |
-|---------------------------------------|----------|-----------------------------|
-| `/api/sessions/{sessionId}/docs`      | GET      | 列出会话文档                 |
-| `/api/sessions/{sessionId}/doc_pointers` | GET/PATCH | 获取/更新文档指针         |
-| `/api/session/{sessionId}`            | DELETE   | 清除会话                     |
-
-### AI 质检评估
-
-| 端点                                  | 方法     | 说明                        |
-|---------------------------------------|----------|-----------------------------|
-| `/api/evaluate`                       | POST     | AI 质检评估                  |
-| `/api/evaluate/simple`                | POST     | 简化评估（无需 PRD）        |
-| `/api/evaluate/async`                 | POST     | 异步 AI 质检                 |
-| `/api/evaluate/full`                  | POST     | 完整 Critic Agent 评估      |
-
-### 知识库与历史
-
-| 端点                                  | 方法     | 说明                        |
-|---------------------------------------|----------|-----------------------------|
-| `/api/docs/{docId}/archive`           | POST     | 归档文档到历史库             |
-| `/api/history/search`                 | GET      | 搜索历史用例                 |
-| `/api/history/stats`                  | GET      | 历史库统计                   |
-| `/api/knowledge/list`                 | GET      | 列出知识库文档               |
-| `/api/knowledge/upload`              | POST     | 知识库文件上传               |
-
-### 异步任务
-
-| 端点                                  | 方法     | 说明                        |
-|---------------------------------------|----------|-----------------------------|
-| `/api/tasks/{taskId}`                 | GET      | 查询任务状态                 |
-| `/api/tasks/{taskId}/stream`          | GET      | SSE 任务进度推送             |
-| `/api/tasks/{taskId}`                 | DELETE   | 取消任务                     |
-| `/api/tasks`                          | GET      | 列出所有任务                 |
-| `/api/jobs`                           | POST     | 创建异步任务                 |
-| `/api/jobs/{task_id}`                 | GET      | 获取任务状态                 |
-| `/api/jobs/{task_id}/stream`          | GET      | 流式获取任务输出             |
-
-### 其他
-
-| 端点                                  | 方法     | 说明                        |
-|---------------------------------------|----------|-----------------------------|
-| `/api/ui_agent/screenshots`           | GET/DELETE | UI 截图列表/清空            |
-| `/api/cache/stats`                    | GET      | 缓存统计                    |
-| `/api/cache`                          | DELETE   | 清除缓存                    |
-| `/api/telemetry/stats`                | GET      | 遥测统计                    |
-| `/api/categories`                     | GET/POST | 分类管理                    |
-| `/api/assets/{filename}`              | GET      | 获取资源文件                 |
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/ask` | POST | 统一 Ask 接口（PRD/测试点/用例） |
+| `/api/chat` · `/api/v2/chat` | POST | PM/DEV 聊天 |
+| `/api/evaluate` · `/evaluate/full` | POST | AI 质检 / Critic 评估 |
+| `/api/ui_agent` | POST | UI 自动化智能体 |
+| `/api/docs/upload` · `/batch-upload` | POST | 单/批量文件上传 |
+| `/api/docs/{docId}` | GET/DELETE | 文档 CRUD |
+| `/api/knowledge/list` · `/upload` | GET/POST | 知识库管理 |
+| `/api/tasks/{taskId}/stream` | GET | SSE 任务进度 |
+| `/health` | GET | 健康检查 |
 
 ### Midscene Sidecar (port 3000)
 
-| 端点                                  | 方法     | 说明                        |
-|---------------------------------------|----------|-----------------------------|
-| `/run-testcase`                       | POST     | 自由模式执行                 |
-| `/run-testcase/stream`                | POST     | 自由模式 SSE 流式执行        |
-| `/run-instant`                        | POST     | 混合模式执行                 |
-| `/run-instant/stream`                 | POST     | 混合模式 SSE 流式执行        |
-| `/run-yaml`                           | POST     | YAML 基线回放                |
-| `/run-steps`                          | POST     | 直接步骤执行                 |
-| `/validate-testcase`                  | POST     | 用例校验 + 推荐执行模式      |
-| `/regression/baselines`               | GET      | 列出回归基线                 |
-| `/regression/baselines`               | POST     | 保存回归基线                 |
-| `/regression/baselines/{id}`          | GET      | 获取基线详情                 |
-| `/regression/baselines/{id}`          | DELETE   | 删除基线                     |
-| `/health`                             | GET      | 健康检查                     |
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/run-testcase/stream` | POST | 自由模式 SSE 执行 |
+| `/run-instant/stream` | POST | 混合模式 SSE 执行 |
+| `/run-yaml` | POST | YAML 基线回放 |
+| `/validate-testcase` | POST | 用例校验 + 推荐执行模式 |
+| `/regression/baselines` | GET/POST/DELETE | 回归基线管理 |
+
+> 完整接口文档：启动服务后访问 http://localhost:8000/docs
 
 ### 请求示例
 
-#### Ask 接口（生成测试用例）
 ```bash
+# 生成测试用例
 curl -X POST http://localhost:8000/api/ask \
   -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "test-123",
-    "type": "testcase",
-    "params": {
-      "text": "用户登录功能需求：\n1. 邮箱密码登录\n2. 密码 8-16 位\n3. 失败 3 次锁定"
-    },
-    "instruction": "请生成测试用例"
-  }'
-```
+  -d '{"sessionId":"test-123","type":"testcase","params":{"text":"用户登录：邮箱密码登录，密码8-16位，失败3次锁定"},"instruction":"请生成测试用例"}'
 
-#### AI 质检评估
-```bash
-curl -X POST http://localhost:8000/api/evaluate \
+# 混合模式 UI 自动化
+curl -X POST http://localhost:3000/run-instant/stream \
   -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "eval-123",
-    "testcases": "测试用例 Markdown 内容...",
-    "prd": "PRD 文档内容..."
-  }'
-```
-
-#### UI 自动化（旧版 Playwright Agent）
-```bash
-curl -X POST http://localhost:8000/api/ui_agent \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "ui-123",
-    "instruction": "点击登录按钮",
-    "params": {
-      "url": "https://example.com",
-      "plan": "",
-      "report": "",
-      "headless": false
-    }
-  }'
-```
-
-#### UI 自动化 — 混合模式（Midscene Sidecar）
-```bash
-curl -X POST http://localhost:3000/run-instant \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://example.com/login",
-    "rawSteps": [
-      "在邮箱输入框中输入\"user@example.com\"",
-      "在密码输入框中输入\"Password123!\"",
-      "点击登录按钮"
-    ],
-    "assertions": ["页面跳转到首页"],
-    "caseId": "TC-001",
-    "caseName": "登录测试",
-    "options": {
-      "headless": true,
-      "cache": { "strategy": "smart", "id": "TC-001" }
-    }
-  }'
-```
-
-#### UI 自动化 — 自由模式（Midscene Sidecar）
-```bash
-curl -X POST http://localhost:3000/run-testcase \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://example.com/login",
-    "testcase": {
-      "name": "登录测试",
-      "scenario": "输入邮箱 user@example.com 和密码 Password123!，点击登录按钮",
-      "expectedResults": ["页面跳转到首页"],
-      "steps": [
-        "在邮箱输入框中输入\"user@example.com\"",
-        "在密码输入框中输入\"Password123!\"",
-        "点击登录按钮"
-      ]
-    },
-    "options": { "headless": true }
-  }'
-```
-
-#### 用例校验（推荐执行模式）
-```bash
-curl -X POST http://localhost:3000/validate-testcase \
-  -H "Content-Type: application/json" \
-  -d '{
-    "testcase": {
-      "scenario": "测试登录",
-      "steps": ["在邮箱输入框中输入\"admin\"", "点击登录按钮"],
-      "expectedResults": ["登录成功"]
-    },
-    "mode": "mixed"
-  }'
+  -d '{"url":"https://example.com/login","rawSteps":["在邮箱输入框中输入\"user@example.com\"","点击登录按钮"],"assertions":["页面跳转到首页"],"caseId":"TC-001"}'
 ```
 
 ---
@@ -785,75 +552,23 @@ lsof -t -i:9222 | xargs kill -9   # 确保端口释放
 
 ## ⚙️ 环境变量配置
 
-### 后端 (agent-server/.env)
+各服务的 `.env.example` 已包含完整配置模板，复制后填入你的密钥即可：
 
-```env
-# ═══ API 配置（必需）═══
-OPENAI_API_KEY=your_api_key_here
-OPENAI_BASE_URL=https://zenmux.ai/api/v1
-ANTHROPIC_BASE_URL=https://zenmux.ai/api/anthropic
-
-# ═══ 模型配置 ═══
-DEFAULT_MODEL=anthropic/claude-sonnet-4
-MODEL_PRD=anthropic/claude-sonnet-4
-MODEL_TESTCASE=anthropic/claude-sonnet-4
-MODEL_UI=anthropic/claude-sonnet-4
-MODEL_CHAT=anthropic/claude-sonnet-4
-MODEL_ASK=anthropic/claude-sonnet-4
-
-# ═══ 功能开关 ═══
-USE_CHROMADB=true              # 启用 ChromaDB 向量检索
-USE_QA_SKILL=true              # 启用 QA 技能增强
-USE_HISTORY_REFERENCE=true     # 启用历史用例参考
-
-# ═══ Ask 接口优化 ═══
-ASK_DEBUG=0                    # 1=详细日志
-ASK_USE_LLM_SUMMARY=0         # 1=长对话 LLM 摘要
-ASK_ENABLE_REPAIR=1            # 1=testprd 修复
-ASK_TESTCASE_MAX_TOKENS=20000  # 最大输出长度
-ASK_TESTCASE_THINKING_BUDGET=2000 # 思考预算
-
-# ═══ 缓存配置 ═══
-CACHE_DIR=data/cache
-LLM_CACHE_TTL=86400            # LLM 缓存 TTL (秒)
-EMBEDDING_CACHE_TTL=604800     # Embedding 缓存 TTL
-
-# ═══ 服务配置 ═══
-PORT=8000
-HOST=0.0.0.0
-LOG_LEVEL=INFO
+```bash
+cp agent-server/.env.example agent-server/.env
+cp agent-server/midscene-sidecar/.env.example agent-server/midscene-sidecar/.env
+cp solvely-mvp/.env.example solvely-mvp/.env
 ```
 
-### Midscene Sidecar (agent-server/midscene-sidecar/.env)
-
-```env
-# ═══ Midscene SDK 模型配置（必需）═══
-OPENAI_API_KEY=your_api_key_here
-OPENAI_BASE_URL=https://zenmux.ai/api/v1
-
-# ═══ 多模型策略（可选）═══
-# 为规划/定位分别使用不同模型
-MIDSCENE_PLANNING_MODEL_NAME=gpt-4o
-MIDSCENE_PLANNING_MODEL_BASE_URL=https://api.openai.com/v1
-MIDSCENE_INSIGHT_MODEL_NAME=gpt-4o-mini
-
-# ═══ 报告和缓存目录 ═══
-MIDSCENE_REPORT_DIR=./midscene_run/report
-MIDSCENE_CACHE_DIR=./midscene_run/cache
-```
-
-### 前端 (solvely-mvp/.env)
-
-```env
-# ═══ 开发模式 ═══
-VITE_USE_REMOTE=false
-VITE_LOCAL_AGENT_URL=http://localhost:8000
-
-# ═══ 生产模式 (.env.production) ═══
-# VITE_USE_REMOTE=true
-# VITE_REMOTE_AGENT_URL=https://your-remote-api.com
-# VITE_REMOTE_API_KEY=your_api_key_here
-```
+| 服务 | 关键变量 | 说明 |
+|------|---------|------|
+| **agent-server** | `OPENAI_API_KEY` | LLM API 密钥（必需） |
+| | `DEFAULT_MODEL` | 默认模型 `anthropic/claude-sonnet-4` |
+| | `USE_CHROMADB` | 启用向量检索 |
+| **midscene-sidecar** | `OPENAI_API_KEY` | Midscene SDK 模型密钥 |
+| | `MIDSCENE_PLANNING_MODEL_NAME` | 规划模型（可选，默认 gpt-4o） |
+| **solvely-mvp** | `VITE_USE_REMOTE` | `false`=本地开发，`true`=远程 |
+| | `VITE_LOCAL_AGENT_URL` | 本地 Agent 地址 `http://localhost:8000` |
 
 ---
 
@@ -893,114 +608,31 @@ cd .. && make deploy
 
 ## 🔧 开发调试
 
-### 后端调试
-
 ```bash
-# 开启详细日志
-export ASK_DEBUG=1
-python agent_server.py
+# 后端：开启详细日志
+ASK_DEBUG=1 python agent_server.py
 
-# 查看缓存状态
-curl http://localhost:8000/api/cache/stats
+# Midscene Sidecar：热重载模式
+cd agent-server/midscene-sidecar && npm run dev
 
-# 查看遥测数据
-curl http://localhost:8000/api/telemetry/stats
-```
-
-### Midscene Sidecar 调试
-
-```bash
-# 开发模式（热重载 + 详细日志）
-cd agent-server/midscene-sidecar
-npm run dev
-
-# 查看 Midscene 报告（HTML）
-open midscene_run/report/
-
-# 校验用例步骤质量
-curl -s -X POST http://localhost:3000/validate-testcase \
-  -H "Content-Type: application/json" \
-  -d '{"testcase":{"steps":["点击按钮"]}, "mode":"mixed"}' | jq .
-
-# 查看缓存状态
-curl http://localhost:3000/cache/stats
-```
-
-### 前端调试
-
-```bash
-# 开发模式（自动热重载）
-cd solvely-mvp
-npm run dev
-
-# Chrome DevTools
-# 右键点击扩展侧边栏 → 「检查」
+# 前端：自动热重载
+cd solvely-mvp && npm run dev
+# Chrome DevTools：右键点击扩展侧边栏 → 「检查」
 ```
 
 ---
 
 ## 🐛 常见问题
 
-### 后端
-
 | 问题 | 解决方案 |
 |------|---------|
-| `ModuleNotFoundError` | `pip install -r requirements.txt` |
-| `OPENAI_API_KEY is not set` | 创建 `.env` 文件并填入 API Key |
+| `OPENAI_API_KEY is not set` | 创建 `.env` 并填入 API Key |
 | `address already in use` | `lsof -ti:8000 \| xargs kill` |
-| ChromaDB SSL 错误 | 检查网络环境或使用离线 Embedding 模型 |
-| PDF 转图片失败 | `brew install poppler` |
-
-### 前端
-
-| 问题 | 解决方案 |
-|------|---------|
-| `Cannot find module` | `npm install` |
-| Sidepanel 加载失败 | 确认 `.output/chrome-mv3/sidepanel.html` 存在 |
-| API 调用超时 | 降低 `THINKING_BUDGET`，设置 `ASK_USE_LLM_SUMMARY=0` |
-
-### UI 自动化 (Midscene Sidecar)
-
-| 问题 | 解决方案 |
-|------|---------|
-| Chrome 调试端口未开启 | 运行 `./run_chrome.sh` 或 `./run_chrome_headless.sh` |
-| 端口 9222 被占用 | `lsof -t -i:9222 \| xargs kill -9` |
-| 端口 3000 被占用 | `lsof -ti:3000 \| xargs kill` |
+| Chrome 调试端口 9222 被占用 | `lsof -t -i:9222 \| xargs kill -9` |
 | 混合模式步骤全回退 aiAct | 检查步骤格式是否符合 STEP_FORMAT_GUIDE |
-| 步骤推断置信度低 | 使用 `POST /validate-testcase` 检查步骤质量 |
-| Midscene SDK 报错 | 检查 `OPENAI_API_KEY` 和 `OPENAI_BASE_URL` 环境变量 |
-| 缓存导致执行不一致 | 清除 `midscene_run/cache/` 目录或使用 `strategy: false` |
-
----
-
-## 📊 性能优化
-
-### 降低响应时间
-
-```env
-# 关闭思考预算（最快）
-ASK_TESTCASE_THINKING_BUDGET=0
-ASK_TESTPOINT_THINKING_BUDGET=0
-
-# 降低输出长度
-ASK_TESTCASE_MAX_TOKENS=10000
-
-# 关闭调试日志
-ASK_DEBUG=0
-
-# 关闭历史摘要
-ASK_USE_LLM_SUMMARY=0
-```
-
-### 利用缓存
-
-```env
-# 启用 LLM 响应缓存（默认 24h TTL）
-LLM_CACHE_TTL=86400
-
-# 启用 Embedding 缓存（默认 7 天）
-EMBEDDING_CACHE_TTL=604800
-```
+| PDF 转图片失败 | `brew install poppler` |
+| ChromaDB SSL 错误 | 检查网络环境或使用离线 Embedding 模型 |
+| API 调用超时 | 降低 `THINKING_BUDGET`，设置 `ASK_USE_LLM_SUMMARY=0` |
 
 ---
 
