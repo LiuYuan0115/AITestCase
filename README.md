@@ -203,7 +203,7 @@ cp .env.example .env
 - **文档版本管理**：支持版本历史、版本对比、回滚
 
 <p align="center">
-  <img src="docs/images/role-selector.png" alt="角色选择器" width="600">
+  <img src="docs/images/role-selector.png" alt="角色选择器" width="400">
   <br><em>角色选择器：PM / DEV / QA 一键切换</em>
 </p>
 
@@ -222,7 +222,7 @@ cp .env.example .env
 | **测试** | UI 自动化测试       | 测试报告              |
 
 <p align="center">
-  <img src="docs/images/workflow-progress.png" alt="QA 工作流进度" width="600">
+  <img src="docs/images/workflow-progress.png" alt="QA 工作流进度" width="400">
   <br><em>QA 工作流进度条</em>
 </p>
 
@@ -255,12 +255,12 @@ cp .env.example .env
 - 支持"复制全部"一键复制整棵树
 
 <p align="center">
-  <img src="docs/images/testpoint-mindmap.png" alt="测试点思维导图" width="800">
+  <img src="docs/images/testpoint-mindmap.png" alt="测试点思维导图" width="600">
   <br><em>测试点思维导图预览</em>
 </p>
 
 <p align="center">
-  <img src="docs/images/testcase-mindmap.png" alt="测试用例思维导图" width="800">
+  <img src="docs/images/testcase-mindmap.png" alt="测试用例思维导图" width="600">
   <br><em>测试用例思维导图预览</em>
 </p>
 
@@ -295,7 +295,7 @@ cp .env.example .env
 - **质量报告**：可视化质量评估报告面板
 
 <p align="center">
-  <img src="docs/images/quality-report.png" alt="质量评估报告" width="600">
+  <img src="docs/images/quality-report.png" alt="质量评估报告" width="400">
   <br><em>AI 质检评估报告面板</em>
 </p>
 
@@ -327,7 +327,7 @@ cp .env.example .env
 - **有头/无头双模式**：CDP 连接已有浏览器或独立启动 Puppeteer
 
 <p align="center">
-  <img src="docs/images/ui-mode-switch.png" alt="UI 自动化模式切换" width="600">
+  <img src="docs/images/ui-mode-switch.png" alt="UI 自动化模式切换" width="400">
   <br><em>三种执行模式切换（自由 / 混合 / 回归）</em>
 </p>
 
