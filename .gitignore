@@ -105,6 +105,12 @@ image_gallery.html
 # 方案文档目录（不提交到代码库）
 方案/
 
+# 个人 Git 工作流文档（不提交到任何仓库）
+GIT_WORKFLOW.md
+
+# Solvely Browser Extension（独立仓库，不提交）
+Solvely Browser Extension/
+
 # 子目录 .idea
 **/.idea/
 

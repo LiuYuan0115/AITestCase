@@ -1419,6 +1419,11 @@
             </div>
         </div>
         
+    <!-- 可视化测试面板（FlowEditor） -->
+    <div v-if="showFlowEditor" class="flow-editor-overlay">
+      <FlowEditor @close="showFlowEditor = false" @result="handleFlowResult" />
+    </div>
+
     <!-- 截图弹窗（QA自动化测试用） -->
         <div v-if="showScreenshotModal" class="screenshot-modal-overlay" @click.self="showScreenshotModal = false">
             <div class="screenshot-modal">
@@ -1471,7 +1476,7 @@ import { uploadRawPrd, uploadAuxDoc, upsertDocs, getDocContent, type DocUpsertIt
 import { askV2 } from '@/utils/askApi';
 import type { DocRef } from '@/utils/refRegistry';
 import MindMapPreview from '@/components/MindMapPreview.vue';
-// Phase 4: 新组件导入
+import FlowEditor from '@/components/flow/FlowEditor.vue';
 import RoleSelector from '@/components/RoleSelector.vue';
 import WorkflowProgress from '@/components/WorkflowProgress.vue';
 import ChatMessage from '@/components/ChatMessage.vue';
@@ -1483,14 +1488,10 @@ import BatchUploader from '@/components/BatchUploader.vue';
 import TaskProgressBar from '@/components/TaskProgressBar.vue';
 import NeoTooltip from '@/components/common/NeoTooltip.vue';
 import { preferences, type TestCaseOutputFormat } from '@/utils/preferences';
-// Phase 5: 新输入组件
 import ChatInput from '@/components/ChatInput.vue';
-// Phase 4: Composables 导入
 import { useSession, useRole, useWorkflow, useTaskProgress } from '@/composables';
-// Phase 5: 文件上传 Composable
 import { useFileUpload } from '@/composables/useFileUpload';
 import type { Attachment, ChatSendPayload, EvaluationReport } from '@/types/chat';
-// Phase 4: 消息适配器
 import { adaptLegacyMessage, canUndoMessage, getOriginalIndex, getActionType, type AdaptedChatMessage } from '@/utils/messageAdapter';
 import { getLocalAgentUrl } from '@/utils/agentUrl';
 import { browser } from 'wxt/browser';
@@ -2292,6 +2293,7 @@ const isHeadlessMode = ref(false); // UI自动化测试：有头/无头模式
 const uiWorkflowMode = ref<'direct' | 'closed_loop'>('closed_loop'); // UI自动化工作流模式
 const uiAutoHeal = ref(true); // 闭环模式自愈开关
 const uiMaxHealRounds = ref(1); // 闭环模式最大自愈轮数
+const showFlowEditor = ref(false); // 可视化测试面板开关
 
 // ================= Midscene Engine State =================
 const uiEngine = ref<'legacy' | 'midscene'>('midscene');
@@ -6140,7 +6142,6 @@ const confirmAndGenerateTestCases = async () => {
           params: {
               text: useDocRefs ? '' : baseText,
           },
-          instruction: '基于优化后的PRD（可参考测试点）生成可执行测试用例，覆盖正向/边界/异常/权限/数据校验。',
           docRefs: useDocRefs ? docRefs : undefined,
           additionalPrds: useDocRefs ? undefined : additionalPrdParams,
           outputFormat: testCaseOutputFormat.value,
@@ -6231,7 +6232,6 @@ const proceedToTestPoints = async () => {
           params: {
               text: useDocRefs ? '' : baseText,
           },
-          instruction: '请基于优化后的PRD按模块输出测试点，覆盖正向/边界/异常/权限/数据校验，并标注优先级。',
           docRefs: useDocRefs ? docRefs : undefined,
           additionalPrds: useDocRefs ? undefined : additionalPrdParams
       });
@@ -6285,7 +6285,6 @@ const proceedToTestCasesFromPRD = async () => {
           params: {
               text: useDocRefs ? '' : baseText,
           },
-          instruction: '基于优化后的PRD直接生成可执行测试用例（含前置条件/步骤/预期结果/优先级），覆盖正向/边界/异常/权限/数据校验。',
           docRefs: useDocRefs ? docRefs : undefined,
           additionalPrds: useDocRefs ? undefined : additionalPrdParams,
           outputFormat: testCaseOutputFormat.value,
@@ -6358,7 +6357,6 @@ const proceedToTestCases = async () => {
           params: {
               text: useDocRefs ? '' : baseText,
           },
-          instruction: '基于测试点生成可执行测试用例（含前置条件/步骤/预期结果/优先级），覆盖正向/边界/异常/权限/数据校验。',
           docRefs: useDocRefs ? docRefs : undefined,
           additionalPrds: useDocRefs ? undefined : additionalPrdParams,
           outputFormat: testCaseOutputFormat.value,
@@ -6414,6 +6412,22 @@ const previewingScreenshot = ref<{step: string; base64: string} | null>(null);
 const toggleUiDoc = (type: 'plan' | 'plan_json' | 'report') => {
     uiViewType.value = type;
     viewMode.value = 'preview';
+};
+
+// 处理可视化测试结果
+const handleFlowResult = (result: any) => {
+    console.log('[App] FlowEditor result:', result);
+    // 将结果转换为报告格式
+    if (result && result.status) {
+        const reportMd = `# 可视化测试完成\n\n状态: ${result.status}\n通过: ${result.summary?.passed || 0}\n失败: ${result.summary?.failed || 0}`;
+        projectState.documents.uiReport = reportMd;
+        // 提示用户
+        if (result.status === 'success') {
+            addMessage('ai', `✅ 可视化测试执行完成！通过 ${result.summary?.passed || 0} 个步骤，失败 ${result.summary?.failed || 0} 个步骤。`);
+        } else {
+            addMessage('ai', `⚠️ 可视化测试执行完成，部分步骤失败。通过 ${result.summary?.passed || 0} 个，失败 ${result.summary?.failed || 0} 个。`);
+        }
+    }
 };
 
 // 显示截图弹窗
@@ -10527,6 +10541,19 @@ button {
 .markdown-preview :deep(pre) :deep(code) {
   background: none;
   padding: 0;
+}
+
+/* Flow Editor Overlay */
+.flow-editor-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #f8f9fa;
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Screenshot Modal */

@@ -1,0 +1,108 @@
+{
+  "id": "template_login",
+  "name": "插件登录流程",
+  "description": "Solvely 插件侧栏登录测试流程",
+  "category": "login",
+  "variables": [
+    {
+      "name": "email",
+      "label": "邮箱",
+      "type": "string",
+      "required": true,
+      "default": "lyly12@solvely.ai",
+      "placeholder": "请输入邮箱"
+    },
+    {
+      "name": "password",
+      "label": "密码",
+      "type": "secret",
+      "required": true,
+      "default": "111111",
+      "placeholder": "请输入密码"
+    }
+  ],
+  "steps": [
+    {
+      "id": "s0",
+      "name": "等待页面加载",
+      "target": "plugin",
+      "action": "wait",
+      "params": { "timeout": 2000 },
+      "onError": "skip",
+      "enabled": true
+    },
+    {
+      "id": "s1",
+      "name": "点击用户头像",
+      "target": "plugin",
+      "action": "click",
+      "selector": { "type": "css", "value": "[data-testid=\"account\"]" },
+      "onError": "fail",
+      "enabled": true
+    },
+    {
+      "id": "s2",
+      "name": "输入邮箱",
+      "target": "plugin",
+      "action": "input",
+      "selector": { "type": "ai", "value": "邮箱输入框" },
+      "params": { "value": "{{email}}" },
+      "onError": "fail",
+      "enabled": true
+    },
+    {
+      "id": "s3",
+      "name": "点击 Next",
+      "target": "plugin",
+      "action": "click",
+      "selector": { "type": "ai", "value": "Next 按钮" },
+      "onError": "fail",
+      "enabled": true
+    },
+    {
+      "id": "s4",
+      "name": "等待 2 秒",
+      "target": "plugin",
+      "action": "wait",
+      "params": { "timeout": 2000 },
+      "onError": "skip",
+      "enabled": true
+    },
+    {
+      "id": "s5",
+      "name": "输入密码",
+      "target": "plugin",
+      "action": "input",
+      "selector": { "type": "ai", "value": "密码输入框" },
+      "params": { "value": "{{password}}" },
+      "onError": "fail",
+      "enabled": true
+    },
+    {
+      "id": "s6",
+      "name": "点击 Next 登录",
+      "target": "plugin",
+      "action": "click",
+      "selector": { "type": "ai", "value": "Next 按钮" },
+      "onError": "fail",
+      "enabled": true
+    },
+    {
+      "id": "s7",
+      "name": "截图登录结果",
+      "target": "plugin",
+      "action": "screenshot",
+      "onError": "skip",
+      "enabled": true
+    }
+  ],
+  "options": {
+    "headless": false,
+    "autoScreenshot": true,
+    "autoHeal": true,
+    "maxRetries": 2,
+    "stepTimeout": 10000,
+    "flowTimeout": 60000
+  },
+  "isPreset": true
+}

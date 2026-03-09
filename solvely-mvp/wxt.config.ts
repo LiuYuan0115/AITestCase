@@ -18,7 +18,7 @@ export default defineConfig({
   manifest: {
     name: "AI Test Case",
     description: "Automated PRD & Test Case Analysis",
-    version: "0.0.7",
+    version: "0.0.9",
     // 插件图标（占位资源：可用图四同名覆盖 `public/icons/logo.svg`）
     icons: {
       "16": "icons/logo.svg",

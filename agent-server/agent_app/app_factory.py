@@ -763,6 +763,18 @@ def create_app(
         return FileResponse(filepath, media_type=media_type)
 
     # -----------------------------
+    # Flow（可视化测试）
+    # -----------------------------
+    from agent_app.flow.routes import router as flow_router
+    from agent_app.flow.template_store import init_template_store
+    
+    # 初始化模板存储
+    init_template_store(session_store=store)
+    
+    # 注册 Flow 路由
+    app.include_router(flow_router)
+
+    # -----------------------------
     # Knowledge Archive & History
     # -----------------------------
 
@@ -1887,24 +1899,30 @@ def create_app(
                 "DELETE /api/ui_agent/screenshots - 清空截图",
                 "GET /api/assets/{filename} - 获取资源文件（截图等）",
                 "DELETE /api/session/{sessionId} - 清除会话",
-                "POST /api/docs/{docId}/archive - 归档文档到历史库 ⭐ NEW",
-                "GET /api/history/search - 搜索历史用例 ⭐ NEW",
-                "GET /api/history/stats - 获取历史库统计 ⭐ NEW",
-                "GET /api/knowledge/list - 列出知识库文档 ⭐ Week8",
-                "POST /api/evaluate - AI 质检评估测试用例 ⭐ NEW",
-                "POST /api/evaluate/simple - 简化评估（无 PRD） ⭐ NEW",
-                "POST /api/evaluate/async - 异步 AI 质检评估 ⭐ Week8",
-                "GET /api/tasks/{taskId} - 查询任务状态 ⭐ Week8",
-                "GET /api/tasks/{taskId}/stream - SSE 任务进度推送 ⭐ Week8",
-                "DELETE /api/tasks/{taskId} - 取消任务 ⭐ Week8",
-                "GET /api/tasks - 列出所有任务 ⭐ Week8",
-                "DELETE /api/tasks - 清理已完成任务 ⭐ Week8",
-                "POST /api/docs/batch-upload - 批量上传文件 ⭐ Week8",
-                "GET /api/cache/stats - 获取缓存统计 ⭐ Week8",
-                "DELETE /api/cache - 清除缓存 ⭐ Week8",
-                "POST /api/v2/chat - 统一聊天接口 (v2) ⭐ Phase3",
-                "POST /api/docs/compose-pdf - PDF 合成 ⭐ Phase2",
-                "POST /api/evaluate/full - 完整 Critic 评估 ⭐ Phase5",
+                "POST /api/flow/execute - 执行可视化测试流程",
+                "GET /api/flow/status/{taskId} - 获取执行状态（SSE）",
+                "GET /api/flow/result/{taskId} - 获取执行结果",
+                "GET /api/flow/templates - 获取模板列表",
+                "POST /api/flow/templates - 保存模板",
+                "DELETE /api/flow/templates/{id} - 删除模板",
+                "POST /api/docs/{docId}/archive - 归档文档到历史库",
+                "GET /api/history/search - 搜索历史用例",
+                "GET /api/history/stats - 获取历史库统计",
+                "GET /api/knowledge/list - 列出知识库文档",
+                "POST /api/evaluate - AI 质检评估测试用例",
+                "POST /api/evaluate/simple - 简化评估（无 PRD）",
+                "POST /api/evaluate/async - 异步 AI 质检评估",
+                "GET /api/tasks/{taskId} - 查询任务状态",
+                "GET /api/tasks/{taskId}/stream - SSE 任务进度推送",
+                "DELETE /api/tasks/{taskId} - 取消任务",
+                "GET /api/tasks - 列出所有任务",
+                "DELETE /api/tasks - 清理已完成任务",
+                "POST /api/docs/batch-upload - 批量上传文件",
+                "GET /api/cache/stats - 获取缓存统计",
+                "DELETE /api/cache - 清除缓存",
+                "POST /api/v2/chat - 统一聊天接口 (v2)",
+                "POST /api/docs/compose-pdf - PDF 合成",
+                "POST /api/evaluate/full - 完整 Critic 评估",
             ],
             "file_processor": FileProcessor.check_dependencies(),
             "ask_configs": get_all_configs_summary(),

@@ -1,0 +1,96 @@
+{
+  "id": "template_payment",
+  "name": "支付链路流程",
+  "description": "测试电商支付流程，从商品页到支付页面的完整链路",
+  "category": "payment",
+  "variables": [
+    {
+      "name": "productUrl",
+      "label": "商品页面",
+      "type": "url",
+      "required": true,
+      "placeholder": "https://shop.example.com/product/123"
+    },
+    {
+      "name": "payMethod",
+      "label": "支付方式",
+      "type": "select",
+      "required": true,
+      "options": ["微信支付", "支付宝", "银行卡"],
+      "defaultValue": "微信支付"
+    }
+  ],
+  "steps": [
+    {
+      "id": "s1",
+      "name": "打开商品页",
+      "target": "page",
+      "action": "navigate",
+      "params": { "value": "{{productUrl}}" },
+      "onError": "fail",
+      "enabled": true
+    },
+    {
+      "id": "s2",
+      "name": "点击购买/加入购物车",
+      "target": "page",
+      "action": "click",
+      "selector": { "type": "ai", "value": "立即购买或加入购物车按钮" },
+      "onError": "fail",
+      "enabled": true
+    },
+    {
+      "id": "s3",
+      "name": "进入结算页",
+      "target": "page",
+      "action": "click",
+      "selector": { "type": "ai", "value": "去结算/提交订单按钮" },
+      "onError": "fail",
+      "enabled": true
+    },
+    {
+      "id": "s4",
+      "name": "选择支付方式",
+      "target": "page",
+      "action": "click",
+      "selector": { "type": "ai", "value": "{{payMethod}} 选项" },
+      "onError": "fail",
+      "enabled": true
+    },
+    {
+      "id": "s5",
+      "name": "确认支付",
+      "target": "page",
+      "action": "click",
+      "selector": { "type": "ai", "value": "确认支付/立即支付按钮" },
+      "onError": "fail",
+      "enabled": true
+    },
+    {
+      "id": "s6",
+      "name": "截图支付页面",
+      "target": "page",
+      "action": "screenshot",
+      "onError": "skip",
+      "enabled": true
+    },
+    {
+      "id": "s7",
+      "name": "验证支付状态",
+      "target": "page",
+      "action": "assert",
+      "selector": { "type": "ai", "value": "支付二维码或支付成功提示" },
+      "onError": "fail",
+      "enabled": true
+    }
+  ],
+  "options": {
+    "headless": false,
+    "autoScreenshot": true,
+    "autoHeal": true,
+    "maxRetries": 1,
+    "stepTimeout": 15000,
+    "flowTimeout": 120000
+  },
+  "isPreset": true
+}
